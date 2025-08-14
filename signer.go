@@ -42,7 +42,7 @@ func (s *Signer) WriteBundle(bndl *sbundle.Bundle, w io.Writer) error {
 	return nil
 }
 
-// SignStatement signs data using the configured options and
+// SignStatement signs an in-toto attestation using the configured options and
 // returns a sigstore bundle. The signing process will try to obtain the
 // signer identity in this order:
 //
@@ -64,12 +64,59 @@ func (s *Signer) SignStatement(data []byte, funcs ...options.SignOptFn) (*sbundl
 		return nil, err
 	}
 	// check that statement is not empty and it is an intoto attestation
-	if err := s.bundleSigner.VerifyContent(&s.Options, data); err != nil {
+	if err := s.bundleSigner.VerifyAttestationContent(&s.Options, data); err != nil {
 		return nil, fmt.Errorf("verifying content: %w", err)
 	}
 
 	// Wrap the attestation in its DSSE envelope
 	content := s.bundleSigner.WrapData(signOpts.PayloadType, data)
+
+	// Get(or generate) the public key
+	keypair, err := s.bundleSigner.GetKeyPair(&s.Options)
+	if err != nil {
+		return nil, err
+	}
+
+	// Run the STS providers to check for ambient credentials
+	if err := s.bundleSigner.GetAmbientTokens(&s.Options); err != nil {
+		return nil, fmt.Errorf("fetching ambient credentials: %w", err)
+	}
+
+	// Get the ID token
+	if err := s.bundleSigner.GetOidcToken(&s.Options); err != nil {
+		return nil, fmt.Errorf("getting ID token: %w", err)
+	}
+
+	// Generate the signer options
+	bundleSignerOption, err := s.bundleSigner.BuildSigstoreSignerOptions(&s.Options)
+	if err != nil {
+		return nil, fmt.Errorf("building options: %w", err)
+	}
+
+	bndl, err := s.bundleSigner.SignBundle(content, keypair, bundleSignerOption)
+	if err != nil {
+		return nil, fmt.Errorf("singing statement: %w", err)
+	}
+	return &sbundle.Bundle{
+		Bundle: bndl,
+	}, nil
+}
+
+// SignMessage signs a payload as a message digest and returns a sigstore bundle.
+func (s *Signer) SignMessage(data []byte, funcs ...options.SignOptFn) (*sbundle.Bundle, error) {
+	signOpts := options.DefaultSign
+	for _, f := range funcs {
+		if err := f(&signOpts); err != nil {
+			return nil, err
+		}
+	}
+	// Verify the defined options:
+	if err := s.Options.Validate(); err != nil {
+		return nil, err
+	}
+
+	// Wrap the attestation in its DSSE envelope
+	content := s.bundleSigner.BuildMessage(data)
 
 	// Get(or generate) the public key
 	keypair, err := s.bundleSigner.GetKeyPair(&s.Options)

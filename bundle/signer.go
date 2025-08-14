@@ -29,8 +29,9 @@ import (
 
 // BundleSigner abstracts the signer implementation to make it easy to mock
 type Signer interface {
-	VerifyContent(*options.Signer, []byte) error
+	VerifyAttestationContent(*options.Signer, []byte) error
 	WrapData(payloadType string, data []byte) *sign.DSSEData
+	BuildMessage(data []byte) *sign.PlainData
 	GetKeyPair(*options.Signer) (*sign.EphemeralKeypair, error)
 	GetAmbientTokens(*options.Signer) error
 	GetOidcToken(*options.Signer) error
@@ -49,8 +50,15 @@ func (bs *DefaultSigner) WrapData(payloadType string, data []byte) *sign.DSSEDat
 	return content
 }
 
+// BuildMessage is the alternative to WrapData.
+func (bs *DefaultSigner) BuildMessage(data []byte) *sign.PlainData {
+	return &sign.PlainData{
+		Data: data,
+	}
+}
+
 // VerifyContent checka that the attestation is in good shape to sign
-func (bs *DefaultSigner) VerifyContent(_ *options.Signer, data []byte) error {
+func (bs *DefaultSigner) VerifyAttestationContent(_ *options.Signer, data []byte) error {
 	if data == nil {
 		return errors.New("payload is empty")
 	}
