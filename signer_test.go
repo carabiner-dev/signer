@@ -90,3 +90,66 @@ func TestSignStatement(t *testing.T) {
 		})
 	}
 }
+
+func TestSignMessage(t *testing.T) {
+	t.Parallel()
+
+	testData := "this is my signed data"
+
+	for _, tt := range []struct {
+		name      string
+		mustErr   bool
+		getSigner func(t *testing.T) bundle.Signer
+	}{
+		{"success", false, func(t *testing.T) bundle.Signer {
+			t.Helper()
+			signer := bundlefakes.FakeSigner{}
+			return &signer
+		}},
+		{"GetKeyPair-fails", true, func(t *testing.T) bundle.Signer {
+			t.Helper()
+			signer := bundlefakes.FakeSigner{}
+			signer.GetKeyPairReturns(nil, errors.New("failed creating keypair"))
+			return &signer
+		}},
+		{"GetAmbientTokens-fails", true, func(t *testing.T) bundle.Signer {
+			t.Helper()
+			signer := bundlefakes.FakeSigner{}
+			signer.GetAmbientTokensReturns(errors.New("fetchin ambient tokens failed"))
+			return &signer
+		}},
+		{"GetOidcToken-fails", true, func(t *testing.T) bundle.Signer {
+			t.Helper()
+			signer := bundlefakes.FakeSigner{}
+			signer.GetOidcTokenReturns(errors.New("getting oidc token fails"))
+			return &signer
+		}},
+		{"BuildSigstoreSignerOptions-fails", true, func(t *testing.T) bundle.Signer {
+			t.Helper()
+			signer := bundlefakes.FakeSigner{}
+			signer.BuildSigstoreSignerOptionsReturns(nil, errors.New("getting signer options fails"))
+			return &signer
+		}},
+		{"SignBundle-fails", true, func(t *testing.T) bundle.Signer {
+			t.Helper()
+			signer := bundlefakes.FakeSigner{}
+			signer.SignBundleReturns(nil, errors.New("signing bundle failed"))
+			return &signer
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			sut := &Signer{
+				Options:      options.DefaultSigner,
+				bundleSigner: tt.getSigner(t),
+			}
+			res, err := sut.SignMessage([]byte(testData))
+			if tt.mustErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.NotNil(t, res)
+		})
+	}
+}
