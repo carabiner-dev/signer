@@ -6,18 +6,21 @@ package bundle
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"math/big"
 	"net/url"
 	"strings"
 	"time"
 
+	intoto "github.com/in-toto/attestation/go/v1"
 	v1 "github.com/sigstore/protobuf-specs/gen/pb-go/bundle/v1"
 	trustroot "github.com/sigstore/protobuf-specs/gen/pb-go/trustroot/v1"
 	"github.com/sigstore/sigstore-go/pkg/root"
 	"github.com/sigstore/sigstore-go/pkg/sign"
 	"github.com/sigstore/sigstore/pkg/oauthflow"
 	"golang.org/x/term"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/carabiner-dev/signer/internal/sts"
 	"github.com/carabiner-dev/signer/internal/tuf"
@@ -47,8 +50,14 @@ func (bs *DefaultSigner) WrapData(payloadType string, data []byte) *sign.DSSEDat
 }
 
 // VerifyContent checka that the attestation is in good shape to sign
-func (bs *DefaultSigner) VerifyContent(*options.Signer, []byte) error {
-	// TODO: WEnsure this is righr
+func (bs *DefaultSigner) VerifyContent(_ *options.Signer, data []byte) error {
+	if data == nil {
+		return errors.New("payload is empty")
+	}
+	st := &intoto.Statement{}
+	if err := protojson.Unmarshal(data, st); err != nil {
+		return errors.New("unable to unmarshal intoto statement from payload")
+	}
 	return nil
 }
 
