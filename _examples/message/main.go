@@ -9,20 +9,11 @@ import (
 	"github.com/carabiner-dev/signer/options"
 )
 
-// When working with bundles, sigstore-go can only verify in-toto
-// attestations. Any other data format can be signed but verification
-// is hardcoded to fail.
-// See https://github.com/sigstore/sigstore-go/issues/509
+// Sample data to sign and verify
+var data = `
+# Random Data
 
-// Sample in-toto attestation to sign and verify
-var attData = `{
-  "predicateType": "https://example.com/my-predicate/v1",
-  "predicate": { "something": "custom" },
-  "type": "https://in-toto.io/Statement/v0.1",
-  "subject": [
-    { "name": "MY-POLICY" }
-  ]
-}
+This is just some random data to be signed as a message
 `
 
 func main() {
@@ -31,11 +22,7 @@ func main() {
 	s := signer.NewSigner()
 
 	// Sign a string and wrap it in a bundle
-	bundle, err := s.SignStatement(
-		//[]byte("This is a test, nothing else. No JSON"),
-		[]byte(attData),
-		options.WithPayloadType("application/vnd.in-toto+json"),
-	)
+	bundle, err := s.SignMessage([]byte(data))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
@@ -53,7 +40,11 @@ func main() {
 	// PART 2: VERIFICATION
 	v := signer.NewVerifier()
 
-	result, err := v.VerifyParsedBundle(bundle, options.WithSkipIdentityCheck(true))
+	result, err := v.VerifyParsedBundle(
+		bundle,
+		options.WithArtifactData([]byte(data)),
+		options.WithSkipIdentityCheck(true),
+	)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
