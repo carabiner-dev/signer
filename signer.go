@@ -42,7 +42,7 @@ func (s *Signer) WriteBundle(bndl *sbundle.Bundle, w io.Writer) error {
 	return nil
 }
 
-// SignBundle signs data using the configured options and
+// SignStatement signs data using the configured options and
 // returns a sigstore bundle. The signing process will try to obtain the
 // signer identity in this order:
 //
@@ -52,7 +52,7 @@ func (s *Signer) WriteBundle(bndl *sbundle.Bundle, w io.Writer) error {
 //     flow in a browser.
 //  3. If no terminal is detected, it will start the sigstore device
 //     flow.
-func (s *Signer) SignBundle(data []byte, funcs ...options.SignOptFn) (*sbundle.Bundle, error) {
+func (s *Signer) SignStatement(data []byte, funcs ...options.SignOptFn) (*sbundle.Bundle, error) {
 	signOpts := options.DefaultSign
 	for _, f := range funcs {
 		if err := f(&signOpts); err != nil {

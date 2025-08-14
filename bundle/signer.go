@@ -188,7 +188,7 @@ func (bs *DefaultSigner) BuildSigstoreSignerOptions(opts *options.Signer) (*sign
 
 		for _, tsaURL := range tsaURLs {
 			tsaOpts := &sign.TimestampAuthorityOptions{
-				URL:     tsaURL,
+				URL:     tsaURL.URL,
 				Timeout: 30 * time.Second,
 				Retries: 1,
 			}
