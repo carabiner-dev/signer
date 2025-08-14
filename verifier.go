@@ -46,7 +46,7 @@ func (v *Verifier) VerifyBundle(bundlePath string) (*verify.VerificationResult, 
 }
 
 // VerifyBundle verifies a signed bundle containing a dsse envelope
-func (v *Verifier) VerifyInlineBundle(bundleContents []byte) (*verify.VerificationResult, error) {
+func (v *Verifier) VerifyInlineBundle(bundleContents []byte, fnOpts ...options.VerifierOptFunc) (*verify.VerificationResult, error) {
 	var bndl sbundle.Bundle
 
 	// Unmarshal the bundle
@@ -57,13 +57,21 @@ func (v *Verifier) VerifyInlineBundle(bundleContents []byte) (*verify.Verificati
 	return v.VerifyParsedBundle(&bndl)
 }
 
-func (v *Verifier) VerifyParsedBundle(bndl *sbundle.Bundle) (*verify.VerificationResult, error) {
-	vrfr, err := v.bundleVerifier.BuildSigstoreVerifier(&v.Options)
+// VerifyParsedBundle verifies a sigstore bundle with the provided options
+func (v *Verifier) VerifyParsedBundle(bndl *sbundle.Bundle, fnOpts ...options.VerifierOptFunc) (*verify.VerificationResult, error) {
+	opts := v.Options
+	for _, fn := range fnOpts {
+		if err := fn(&opts); err != nil {
+			return nil, err
+		}
+	}
+
+	vrfr, err := v.bundleVerifier.BuildSigstoreVerifier(&opts)
 	if err != nil {
 		return nil, fmt.Errorf("creating verifier: %w", err)
 	}
 
-	result, err := v.bundleVerifier.RunVerification(&v.Options, vrfr, bndl)
+	result, err := v.bundleVerifier.RunVerification(&opts, vrfr, bndl)
 	if err != nil {
 		return nil, fmt.Errorf("verifying bundle: %w", err)
 	}
