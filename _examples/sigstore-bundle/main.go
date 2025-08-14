@@ -28,7 +28,7 @@ func main() {
 	s := signer.NewSigner()
 
 	// Sign a string and wrap it in a bundle
-	bundle, err := s.SignBundle(
+	bundle, err := s.SignStatement(
 		//[]byte("This is a test, nothing else. No JSON"),
 		[]byte(attData),
 		options.WithPayloadType("application/vnd.in-toto+json"),
