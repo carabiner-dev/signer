@@ -49,6 +49,7 @@ func (v *Verifier) VerifyBundle(bundlePath string) (*verify.VerificationResult, 
 func (v *Verifier) VerifyInlineBundle(bundleContents []byte) (*verify.VerificationResult, error) {
 	var bndl sbundle.Bundle
 
+	// Unmarshal the bundle
 	err := bndl.UnmarshalJSON(bundleContents)
 	if err != nil {
 		return nil, fmt.Errorf("unmarshaling JSON: %w", err)

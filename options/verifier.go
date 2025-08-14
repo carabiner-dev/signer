@@ -7,16 +7,28 @@ import "github.com/carabiner-dev/signer/internal/tuf"
 
 type Verifier struct {
 	tuf.TufOptions
-	ArtifactDigest      string
-	ArtifactDigestAlgo  string
+	// Artifact digest to check when verifier in addition to the signature
+	ArtifactDigestAlgo string
+	ArtifactDigest     string
+
+	// ExpectedIssuer and ExpectedSan define the issuer and SAN to look for in
+	// the fulcio cert. For a borader matching behavior, choose the *Regex
+	// alternatives.
+	// Verification will fail if thse are not set. To skip the identity check
+	// set SkipIdentityCheck to true.
 	ExpectedIssuer      string
 	ExpectedIssuerRegex string
 	ExpectedSan         string
 	ExpectedSanRegex    string
-	SkipIdentityCheck   bool
-	RequireCTlog        bool
-	RequireTimestamp    bool
-	RequireTlog         bool
+
+	// SkipIdentityCheck makes the verifier skip the identity check. This
+	// will ignore any setting in ExpectedIssuer ExpectedIssuerRegex
+	// ExpectedSan or ExpectedSanRegex
+	SkipIdentityCheck bool
+
+	RequireCTlog     bool
+	RequireTimestamp bool
+	RequireTlog      bool
 }
 
 var DefaultVerifier = Verifier{

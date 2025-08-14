@@ -102,23 +102,24 @@ func (bv *DefaultVerifier) buildVerifierConfig(opts *options.Verifier) []verify.
 func (bv *DefaultVerifier) RunVerification(
 	opts *options.Verifier, sigstoreVerifier VerifyCapable, bndl *bundle.Bundle,
 ) (*verify.VerificationResult, error) {
+	// If this is a DSSE envelope, check it as a payload
 	dsse := bndl.GetDsseEnvelope()
-	if dsse == nil {
-		return nil, fmt.Errorf("bundle does not wrap a DSSE envelope")
-	}
-
-	if dsse.GetPayload() == nil {
-		return nil, fmt.Errorf("unable to extract payload from DSSE envelope")
+	if dsse != nil {
+		if dsse.GetPayload() == nil {
+			return nil, fmt.Errorf("unable to extract payload from DSSE envelope")
+		}
 	}
 
 	// Build the identity policy if set in the options
 	identityPolicies := []verify.PolicyOption{}
 	switch {
+	// Only ignore the isentity check if the options is explicitly set
 	case opts.SkipIdentityCheck:
-		logrus.Debug("No identity defined, signier identity will not be checked")
 		identityPolicies = append(identityPolicies, verify.WithoutIdentitiesUnsafe())
+
 	case opts.ExpectedIssuer != "" || opts.ExpectedIssuerRegex != "" ||
 		opts.ExpectedSan != "" || opts.ExpectedSanRegex != "":
+		// Here we pass the expected identities to the sigstore-go library
 		expectedIdentity, err := verify.NewShortCertificateIdentity(
 			opts.ExpectedIssuer,      // Issuer
 			opts.ExpectedIssuerRegex, // issuerRegex
