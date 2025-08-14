@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: Copyright 2025 Carabiner Systems, Inc
 // SPDX-License-Identifier: Apache-2.0
 
+//go:generate go run github.com/maxbrunsfeld/counterfeiter/v6 -generate
+
 package bundle
 
 import (
@@ -14,7 +16,7 @@ import (
 	"time"
 
 	intoto "github.com/in-toto/attestation/go/v1"
-	v1 "github.com/sigstore/protobuf-specs/gen/pb-go/bundle/v1"
+	protobundle "github.com/sigstore/protobuf-specs/gen/pb-go/bundle/v1"
 	trustroot "github.com/sigstore/protobuf-specs/gen/pb-go/trustroot/v1"
 	"github.com/sigstore/sigstore-go/pkg/root"
 	"github.com/sigstore/sigstore-go/pkg/sign"
@@ -28,6 +30,8 @@ import (
 )
 
 // BundleSigner abstracts the signer implementation to make it easy to mock
+//
+//counterfeiter:generate . Signer
 type Signer interface {
 	VerifyAttestationContent(*options.Signer, []byte) error
 	WrapData(payloadType string, data []byte) *sign.DSSEData
@@ -36,7 +40,7 @@ type Signer interface {
 	GetAmbientTokens(*options.Signer) error
 	GetOidcToken(*options.Signer) error
 	BuildSigstoreSignerOptions(*options.Signer) (*sign.BundleOptions, error)
-	SignBundle(content sign.Content, keypair sign.Keypair, opts *sign.BundleOptions) (*v1.Bundle, error)
+	SignBundle(content sign.Content, keypair sign.Keypair, opts *sign.BundleOptions) (*protobundle.Bundle, error)
 }
 
 // DefaultSigner implements the BundleSigner interface for the signer
@@ -230,7 +234,7 @@ func (bs *DefaultSigner) BuildSigstoreSignerOptions(opts *options.Signer) (*sign
 }
 
 // SignBundle signs the DSSE envelop and returns the new bundle
-func (bs *DefaultSigner) SignBundle(content sign.Content, keypair sign.Keypair, opts *sign.BundleOptions) (*v1.Bundle, error) {
+func (bs *DefaultSigner) SignBundle(content sign.Content, keypair sign.Keypair, opts *sign.BundleOptions) (*protobundle.Bundle, error) {
 	bndl, err := sign.Bundle(content, keypair, *opts)
 	if err != nil {
 		return nil, fmt.Errorf("signing DSSE wrapper: %w", err)

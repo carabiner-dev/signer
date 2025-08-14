@@ -23,6 +23,8 @@ type VerifyCapable interface {
 
 // BundleVerifier abstracts the verification implementation to make it easy to
 // mock for testing.
+//
+//counterfeiter:generate . Verifier
 type Verifier interface {
 	OpenBundle(string) (*bundle.Bundle, error)
 	BuildSigstoreVerifier(*options.Verifier) (VerifyCapable, error)
