@@ -54,7 +54,7 @@ func (v *Verifier) VerifyInlineBundle(bundleContents []byte, fnOpts ...options.V
 	if err != nil {
 		return nil, fmt.Errorf("unmarshaling JSON: %w", err)
 	}
-	return v.VerifyParsedBundle(&bndl)
+	return v.VerifyParsedBundle(&bndl, fnOpts...)
 }
 
 // VerifyParsedBundle verifies a sigstore bundle with the provided options
