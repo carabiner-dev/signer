@@ -26,23 +26,13 @@ type Verifier struct {
 }
 
 // VerifyBundle verifies a signed bundle containing a dsse envelope
-func (v *Verifier) VerifyBundle(bundlePath string) (*verify.VerificationResult, error) {
+func (v *Verifier) VerifyBundle(bundlePath string, fnOpts ...options.VerifierOptFunc) (*verify.VerificationResult, error) {
 	bndl, err := v.bundleVerifier.OpenBundle(bundlePath)
 	if err != nil {
 		return nil, fmt.Errorf("opening bundle: %w", err)
 	}
 
-	vrfr, err := v.bundleVerifier.BuildSigstoreVerifier(&v.Options)
-	if err != nil {
-		return nil, fmt.Errorf("creating verifier: %w", err)
-	}
-
-	result, err := v.bundleVerifier.RunVerification(&v.Options, vrfr, bndl)
-	if err != nil {
-		return nil, fmt.Errorf("verifying bundle: %w", err)
-	}
-
-	return result, err
+	return v.VerifyParsedBundle(bndl, fnOpts...)
 }
 
 // VerifyBundle verifies a signed bundle containing a dsse envelope
