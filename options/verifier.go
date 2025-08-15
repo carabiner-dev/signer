@@ -63,9 +63,9 @@ func WithExpectedIdentity(issuer, san string) VerifierOptFunc {
 	}
 }
 
-// WithExpectedIdentity serts the ExpectedIssuerRegex and ExptectedSanRegex options
-// and unsets the non-regex alternatives
-func WithExpectedIdentityReged(issuer, san string) VerifierOptFunc {
+// WithExpectedIdentityRegex sets the ExpectedIssuerRegex and ExptectedSanRegex
+// options and unsets the non-regex alternatives.
+func WithExpectedIdentityRegex(issuer, san string) VerifierOptFunc {
 	return func(v *Verifier) error {
 		// Check the regular expressions
 		if _, err := regexp.Compile(issuer); err != nil {
@@ -83,8 +83,8 @@ func WithExpectedIdentityReged(issuer, san string) VerifierOptFunc {
 	}
 }
 
-// WithSkipIdentityCheck instructs the verifier to no t check the signature
-// identities
+// WithSkipIdentityCheck instructs the verifier to not check the signature
+// identities, only the signed payload will be checked.
 func WithSkipIdentityCheck(yesno bool) VerifierOptFunc {
 	return func(v *Verifier) error {
 		v.SkipIdentityCheck = yesno
