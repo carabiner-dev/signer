@@ -68,8 +68,11 @@ func (s *Signer) SignStatement(data []byte, funcs ...options.SignOptFn) (*sbundl
 		return nil, fmt.Errorf("verifying content: %w", err)
 	}
 
-	// Wrap the attestation in its DSSE envelope
-	content := s.bundleSigner.WrapData(signOpts.PayloadType, data)
+	// Wrap the attestation in its DSSE envelope. Note that we override the
+	// payload type as sigstore-go rejects anything that is not in-toto.
+	// (plus we already verified the data to be a statement).
+	// See https://github.com/sigstore/sigstore-go/issues/509
+	content := s.bundleSigner.WrapData("application/vnd.in-toto+json", data)
 
 	// Get(or generate) the public key
 	keypair, err := s.bundleSigner.GetKeyPair(&s.Options)
