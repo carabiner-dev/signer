@@ -9,10 +9,10 @@ require (
 	github.com/sigstore/sigstore v1.9.5
 	github.com/sigstore/sigstore-go v1.1.1
 	github.com/sirupsen/logrus v1.9.3
-	github.com/stretchr/testify v1.11.0
+	github.com/stretchr/testify v1.11.1
 	github.com/theupdateframework/go-tuf/v2 v2.1.1
 	golang.org/x/term v0.34.0
-	google.golang.org/protobuf v1.36.7
+	google.golang.org/protobuf v1.36.8
 	sigs.k8s.io/release-utils v0.12.1
 )
 
