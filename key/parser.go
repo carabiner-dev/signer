@@ -4,7 +4,6 @@
 package key
 
 import (
-	"crypto"
 	"crypto/dsa"
 	"crypto/ecdh"
 	"crypto/ecdsa"
@@ -24,12 +23,12 @@ func NewParser() *Parser {
 type Parser struct{}
 
 // ParsePublicKey parses a public key that can be used to verify
-func (p *Parser) ParsePublicKey(pubKeyData []byte) (crypto.PublicKey, error) {
+func (p *Parser) ParsePublicKey(pubKeyData []byte) (*Public, error) {
 	return parseKeyBytes(pubKeyData)
 }
 
 // parseKeyBytes is the parser function. It's a helper to expose it to tests.
-func parseKeyBytes(pubKeyData []byte) (crypto.PublicKey, error) {
+func parseKeyBytes(pubKeyData []byte) (*Public, error) {
 	blk, _ := pem.Decode(pubKeyData)
 	if blk == nil || blk.Bytes == nil {
 		return nil, errors.New("unable to decode key from data")
@@ -40,10 +39,16 @@ func parseKeyBytes(pubKeyData []byte) (crypto.PublicKey, error) {
 		return nil, fmt.Errorf("parsing public key from PEM data: %w", err)
 	}
 
+	ret := &Public{
+		Scheme: "",
+		Data:   string(pubKeyData),
+		Key:    pub,
+	}
+
 	switch pub.(type) {
 	case *rsa.PublicKey, *dsa.PublicKey, *ecdsa.PublicKey,
 		ed25519.PublicKey, *ecdh.PublicKey:
-		return pub, nil
+		return ret, nil
 	default:
 		return nil, fmt.Errorf("unsupported key type: %T", pub)
 	}

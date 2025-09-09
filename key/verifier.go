@@ -25,7 +25,26 @@ func NewVerifier() *Verifier {
 	return &Verifier{}
 }
 
-func hashMessage()
+type Public struct {
+	Scheme Scheme
+	Data   string
+	Key    crypto.PublicKey
+}
+
+type Scheme string
+
+const (
+	RsaSsaPssSha256     Scheme = "rsassa-pss-sha256"
+	RsaSsaPssSha384     Scheme = "rsassa-pss-sha384"
+	RsaSsaPssSha512     Scheme = "rsassa-pss-sha512"
+	EcdsaSha2nistP224   Scheme = "ecdsa-sha2-nistp224"
+	EcdsaSha2nistP256   Scheme = "ecdsa-sha2-nistp256"
+	EcdsaSha2nistP384   Scheme = "ecdsa-sha2-nistp384"
+	EcdsaSha2nistP521   Scheme = "ecdsa-sha2-nistp521"
+	EcdsaSha256nistP256 Scheme = "ecdsa-sha256-nistp256"
+	EcdsaSha384nistP384 Scheme = "ecdsa-sha384-nistp384"
+	Ed25519             Scheme = "ed2551956"
+)
 
 // VerifyMessage verifies the signature by getting the whole message
 func (v *Verifier) VerifyMessage(pubKey crypto.PublicKey, message []byte, signature []byte) (bool, error) {
@@ -44,7 +63,6 @@ func (v *Verifier) VerifyMessage(pubKey crypto.PublicKey, message []byte, signat
 		sum := hashType.New().Sum(message)
 		return verifyECDSA(k, hashType, sum, signature)
 	case *rsa.PublicKey:
-		k.
 		return verifyRSA(k, hashType, sum, signature)
 	case ed25519.PublicKey:
 		return verifyEd25519Message(k, message, signature)
