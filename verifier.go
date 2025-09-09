@@ -6,6 +6,7 @@ package signer
 import (
 	"fmt"
 
+	sdsse "github.com/sigstore/protobuf-specs/gen/pb-go/dsse"
 	sbundle "github.com/sigstore/sigstore-go/pkg/bundle"
 	"github.com/sigstore/sigstore-go/pkg/verify"
 
@@ -17,6 +18,7 @@ func NewVerifier() *Verifier {
 	return &Verifier{
 		Options:        options.DefaultVerifier,
 		bundleVerifier: &bundle.DefaultVerifier{},
+		dsseVerifier: &key.defaulDSSEVerifier
 	}
 }
 
@@ -67,4 +69,17 @@ func (v *Verifier) VerifyParsedBundle(bndl *sbundle.Bundle, fnOpts ...options.Ve
 	}
 
 	return result, err
+}
+
+// VerifyDSSE verifies a DSSE envelope
+func (v *Verifier) VerifyDSSE(env *sdsse.Envelope, fnOpts ...options.VerifierOptFunc) (*verify.VerificationResult, error) {
+	opts := v.Options
+	for _, fn := range fnOpts {
+		if err := fn(&opts); err != nil {
+			return nil, err
+		}
+	}
+
+	kv := key.Verifier{}
+
 }
