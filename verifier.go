@@ -11,20 +11,24 @@ import (
 	"github.com/sigstore/sigstore-go/pkg/verify"
 
 	"github.com/carabiner-dev/signer/bundle"
+	"github.com/carabiner-dev/signer/dsse"
+	"github.com/carabiner-dev/signer/key"
 	"github.com/carabiner-dev/signer/options"
 )
 
+// NewVerifier creates a new verifier with default options and verifiers
 func NewVerifier() *Verifier {
 	return &Verifier{
 		Options:        options.DefaultVerifier,
 		bundleVerifier: &bundle.DefaultVerifier{},
-		dsseVerifier: &key.defaulDSSEVerifier
+		dsseVerifier:   &dsse.DefaultVerifier{},
 	}
 }
 
 type Verifier struct {
 	Options        options.Verifier
 	bundleVerifier bundle.Verifier
+	dsseVerifier   dsse.Verifier
 }
 
 // VerifyBundle verifies a signed bundle containing a dsse envelope
@@ -71,8 +75,18 @@ func (v *Verifier) VerifyParsedBundle(bndl *sbundle.Bundle, fnOpts ...options.Ve
 	return result, err
 }
 
-// VerifyDSSE verifies a DSSE envelope
-func (v *Verifier) VerifyDSSE(env *sdsse.Envelope, fnOpts ...options.VerifierOptFunc) (*verify.VerificationResult, error) {
+// VerifyDSSE parses a DSSE envelope from a file and returns it
+func (v *Verifier) VerifyDSSE(path string, keys []*key.Public, fnOpts ...options.VerifierOptFunc) (*key.VerificationResult, error) {
+	env, err := v.dsseVerifier.OpenEnvelope(path)
+	if err != nil {
+		return nil, fmt.Errorf("parsing DSSE envelope: %w", err)
+	}
+
+	return v.VerifyParsedDSSE(env, keys, fnOpts...)
+}
+
+// VerifyParsedDSSE verifies an already parsed DSSE envelope
+func (v *Verifier) VerifyParsedDSSE(env *sdsse.Envelope, keys []*key.Public, fnOpts ...options.VerifierOptFunc) (*key.VerificationResult, error) {
 	opts := v.Options
 	for _, fn := range fnOpts {
 		if err := fn(&opts); err != nil {
@@ -80,6 +94,12 @@ func (v *Verifier) VerifyDSSE(env *sdsse.Envelope, fnOpts ...options.VerifierOpt
 		}
 	}
 
-	kv := key.Verifier{}
+	// Build the key verifier to check the envelope signatures
+	keyVerifier, err := v.dsseVerifier.BuildKeyVerifier(&opts)
+	if err != nil {
+		return nil, fmt.Errorf("building key verifier: %w", err)
+	}
 
+	// Verify and return the results
+	return v.dsseVerifier.RunVerification(&opts, keyVerifier, env, keys)
 }
