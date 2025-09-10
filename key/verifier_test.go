@@ -39,7 +39,11 @@ func TestVerifyHash(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			k, err := NewParser().ParsePublicKey(Scheme(tt.scheme), []byte(tt.keyData))
+			opts := []FnOpt{}
+			if tt.scheme != "" {
+				opts = append(opts, WithScheme(Scheme(tt.scheme)))
+			}
+			k, err := NewParser().ParsePublicKey([]byte(tt.keyData), opts...)
 			require.NoError(t, err)
 
 			// Deocde the signature

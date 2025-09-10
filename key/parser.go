@@ -22,9 +22,36 @@ func NewParser() *Parser {
 
 type Parser struct{}
 
+type KeyParseOptions struct {
+	Scheme Scheme
+}
+
+type FnOpt func(*KeyParseOptions)
+
+// WithScheme defines a scheme for a key.
+func WithScheme(scheme Scheme) FnOpt {
+	return func(kpo *KeyParseOptions) {
+		kpo.Scheme = scheme
+	}
+}
+
 // ParsePublicKey parses a public key that can be used to verify
-func (p *Parser) ParsePublicKey(scheme Scheme, pubKeyData []byte) (*Public, error) {
-	return parseKeyBytes(pubKeyData)
+func (p *Parser) ParsePublicKey(pubKeyData []byte, funcs ...FnOpt) (*Public, error) {
+	opts := KeyParseOptions{}
+	for _, f := range funcs {
+		f(&opts)
+	}
+	k, err := parseKeyBytes(pubKeyData)
+	if err != nil {
+		return nil, err
+	}
+
+	if opts.Scheme != "" {
+		if err := k.SetScheme(opts.Scheme); err != nil {
+			return nil, fmt.Errorf("setting key scheme: %w", err)
+		}
+	}
+	return k, nil
 }
 
 // parseKeyBytes is the parser function. It's a helper to expose it to tests.

@@ -106,7 +106,12 @@ func TestRunVerification(t *testing.T) {
 			keydata, err := os.ReadFile(filepath.Join("testdata", tt.keyPath))
 			require.NoError(t, err)
 
-			pubKey, err := key.NewParser().ParsePublicKey(key.Scheme(tt.scheme), keydata)
+			opts := []key.FnOpt{}
+			if tt.scheme != "" {
+				opts = append(opts, key.WithScheme(key.Scheme(tt.scheme)))
+			}
+
+			pubKey, err := key.NewParser().ParsePublicKey(keydata, opts...)
 			require.NoError(t, err)
 
 			res, err := v.RunVerification(&options.Verifier{}, key.NewVerifier(), env, []*key.Public{pubKey})
