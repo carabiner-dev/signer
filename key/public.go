@@ -23,7 +23,7 @@ type (
 	Scheme            string
 	Type              string
 	PublicKeyProvider interface {
-		PublicKey() *Public
+		PublicKey() (*Public, error)
 	}
 )
 
@@ -135,6 +135,6 @@ func (p *Public) Curve() string {
 }
 
 // Public is the most basic public key provider. It just returns itself
-func (p *Public) PublicKey() *Public {
-	return p
+func (p *Public) PublicKey() (*Public, error) {
+	return p, nil
 }
