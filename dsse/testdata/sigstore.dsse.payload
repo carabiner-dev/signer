@@ -1,0 +1,67 @@
+{
+  "predicateType": "",
+  "predicate": {
+    "header": {
+      "last-reviewed": "2025-02-06",
+      "last-updated": "2025-02-06",
+      "schema-version": "2.0.0",
+      "url": "https://carabiner.dev/projects/bind"
+    },
+    "project": {
+      "administrators": [
+        {
+          "affiliation": "Carabiner Systems",
+          "email": "puerco@carabiner.dev",
+          "name": "Puerco",
+          "primary": true
+        }
+      ],
+      "name": "Bind",
+      "vulnerability-reporting": {
+        "bug-bounty-available": false,
+        "reports-accepted": true
+      }
+    },
+    "repository": {
+      "accepts-automated-change-request": true,
+      "accepts-change-request": true,
+      "core-team": [
+        {
+          "affiliation": "Carabiner Systems, Inc",
+          "email": "puerco@carabiner.dev",
+          "name": "Puerco",
+          "primary": true
+        }
+      ],
+      "distribution-points": [
+        {
+          "comment": "GitHub Release Page",
+          "uri": "https://github.com/carabiner-dev/bnd/releases"
+        }
+      ],
+      "documentation": {
+        "contributing-guide": "",
+        "dependency-management-policy": "",
+        "governance": "",
+        "review-policy": "",
+        "security-policy": ""
+      },
+      "license": {
+        "expression": "Apache-2.0"
+      },
+      "status": "active",
+      "url": "https://github.com/carabiner-dev/bnd"
+    }
+  },
+  "type": "https://in-toto.io/Statement/v1",
+  "subject": [
+    {
+      "name": "509a159a6a29c480a26b7dcc47b6553da1bd90f3",
+      "uri": "git+ssh://github.com/carabiner-dev/bnd@509a159a6a29c480a26b7dcc47b6553da1bd90f3",
+      "digest": {
+        "gitCommit": "509a159a6a29c480a26b7dcc47b6553da1bd90f3",
+        "sha1": "509a159a6a29c480a26b7dcc47b6553da1bd90f3"
+      }
+    }
+  ]
+}
