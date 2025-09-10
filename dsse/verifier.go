@@ -40,7 +40,10 @@ func (dv *DefaultVerifier) RunVerification(
 	digests := map[crypto.Hash][]byte{}
 	digestStrs := map[string]string{}
 	for _, kp := range keys {
-		k := kp.PublicKey()
+		k, err := kp.PublicKey()
+		if err != nil {
+			return nil, fmt.Errorf("getting public key: %w", err)
+		}
 		if _, ok := digests[k.HashType]; ok {
 			continue
 		}
@@ -56,7 +59,10 @@ func (dv *DefaultVerifier) RunVerification(
 	// Got all required hashes, verify
 	for _, sig := range env.GetSignatures() {
 		for _, kp := range keys {
-			k := kp.PublicKey()
+			k, err := kp.PublicKey()
+			if err != nil {
+				return nil, fmt.Errorf("getting public key: %w", err)
+			}
 			pass, err := kv.VerifyDigest(k, digests[k.HashType], sig.GetSig())
 			if err == nil {
 				if pass {
