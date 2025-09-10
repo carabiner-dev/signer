@@ -4,6 +4,7 @@
 package key
 
 import (
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
@@ -24,14 +25,16 @@ type GenerateOptions struct {
 	Type         Type
 	Curve        elliptic.Curve
 	UseECMarshal bool
+	RSAHashType  crypto.Hash
 	KeyLength    int
 }
 
 // DefaultGenerateOptions default key generation options
 var DefaultGenerateOptions = GenerateOptions{
-	Type:      ECDSA,
-	Curve:     elliptic.P256(),
-	KeyLength: 4096,
+	Type:        ECDSA,
+	Curve:       elliptic.P256(),
+	RSAHashType: crypto.SHA256,
+	KeyLength:   4096,
 }
 
 type FnGenOpt func(*GenerateOptions) error
@@ -71,6 +74,25 @@ func (gen *Generator) GenerateKeyPair(funcs ...FnGenOpt) (*Private, error) {
 
 	switch opts.Type {
 	case ECDSA:
+		var hasher crypto.Hash
+		var s Scheme
+		switch opts.Curve.Params().Name {
+		case elliptic.P224().Params().Name: // "P-256"
+			hasher = crypto.SHA224
+			s = EcdsaSha2nistP224
+		case elliptic.P256().Params().Name: // "P-256"
+			hasher = crypto.SHA256
+			s = EcdsaSha2nistP256
+		case elliptic.P384().Params().Name: // "P-384"
+			hasher = crypto.SHA384
+			s = EcdsaSha2nistP384
+		case elliptic.P521().Params().Name: // P-521
+			hasher = crypto.SHA512
+			s = EcdsaSha2nistP521
+		default:
+			return nil, fmt.Errorf("unsupported elliptic curve")
+		}
+
 		privateKey, err := ecdsa.GenerateKey(opts.Curve, rand.Reader)
 		if err != nil {
 			return nil, fmt.Errorf("generating ECDSA key: %w", err)
@@ -95,13 +117,24 @@ func (gen *Generator) GenerateKeyPair(funcs ...FnGenOpt) (*Private, error) {
 
 		return &Private{
 			Type:     opts.Type,
-			Scheme:   "",
-			HashType: 0,
+			Scheme:   s,
+			HashType: hasher,
 			Data:     string(data),
 			Key:      privateKey,
 		}, nil
 
 	case RSA:
+		var s Scheme
+		switch opts.RSAHashType {
+		case crypto.SHA256:
+			s = RsaSsaPssSha256
+		case crypto.SHA384:
+			s = RsaSsaPssSha384
+		case crypto.SHA512:
+			s = RsaSsaPssSha512
+		default:
+			return nil, fmt.Errorf("unsupported hasher for RSA")
+		}
 		privateKey, err := rsa.GenerateKey(rand.Reader, opts.KeyLength)
 		if err != nil {
 			return nil, fmt.Errorf("generating RSA key pair: %w", err)
@@ -115,8 +148,8 @@ func (gen *Generator) GenerateKeyPair(funcs ...FnGenOpt) (*Private, error) {
 
 		return &Private{
 			Type:     opts.Type,
-			Scheme:   "",
-			HashType: 0,
+			Scheme:   s,
+			HashType: opts.RSAHashType,
 			Data:     string(data),
 			Key:      privateKey,
 		}, nil
