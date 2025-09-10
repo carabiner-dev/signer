@@ -114,7 +114,7 @@ func TestRunVerification(t *testing.T) {
 			pubKey, err := key.NewParser().ParsePublicKey(keydata, opts...)
 			require.NoError(t, err)
 
-			res, err := v.RunVerification(&options.Verifier{}, key.NewVerifier(), env, []*key.Public{pubKey})
+			res, err := v.RunVerification(&options.Verifier{}, key.NewVerifier(), env, []key.PublicKeyProvider{pubKey})
 			if tt.mustErr {
 				require.Error(t, err)
 				return

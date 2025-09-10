@@ -18,7 +18,7 @@ import (
 )
 
 type Verifier interface {
-	RunVerification(*options.Verifier, *key.Verifier, *sdsse.Envelope, []*key.Public) (*key.VerificationResult, error)
+	RunVerification(*options.Verifier, *key.Verifier, *sdsse.Envelope, []key.PublicKeyProvider) (*key.VerificationResult, error)
 	BuildKeyVerifier(*options.Verifier) (*key.Verifier, error)
 	OpenEnvelope(string) (*sdsse.Envelope, error)
 }
@@ -27,7 +27,7 @@ type DefaultVerifier struct{}
 
 // RunVerification verifies the DSSE envelope
 func (dv *DefaultVerifier) RunVerification(
-	opts *options.Verifier, kv *key.Verifier, env *sdsse.Envelope, keys []*key.Public,
+	opts *options.Verifier, kv *key.Verifier, env *sdsse.Envelope, keys []key.PublicKeyProvider,
 ) (*key.VerificationResult, error) {
 	if env == nil {
 		return nil, fmt.Errorf("")
@@ -39,7 +39,8 @@ func (dv *DefaultVerifier) RunVerification(
 
 	digests := map[crypto.Hash][]byte{}
 	digestStrs := map[string]string{}
-	for _, k := range keys {
+	for _, kp := range keys {
+		k := kp.PublicKey()
 		if _, ok := digests[k.HashType]; ok {
 			continue
 		}
@@ -54,7 +55,8 @@ func (dv *DefaultVerifier) RunVerification(
 
 	// Got all required hashes, verify
 	for _, sig := range env.GetSignatures() {
-		for _, k := range keys {
+		for _, kp := range keys {
+			k := kp.PublicKey()
 			pass, err := kv.VerifyDigest(k, digests[k.HashType], sig.GetSig())
 			if err == nil {
 				if pass {

@@ -76,7 +76,7 @@ func (v *Verifier) VerifyParsedBundle(bndl *sbundle.Bundle, fnOpts ...options.Ve
 }
 
 // VerifyDSSE parses a DSSE envelope from a file and returns it
-func (v *Verifier) VerifyDSSE(path string, keys []*key.Public, fnOpts ...options.VerifierOptFunc) (*key.VerificationResult, error) {
+func (v *Verifier) VerifyDSSE(path string, keys []key.PublicKeyProvider, fnOpts ...options.VerifierOptFunc) (*key.VerificationResult, error) {
 	env, err := v.dsseVerifier.OpenEnvelope(path)
 	if err != nil {
 		return nil, fmt.Errorf("parsing DSSE envelope: %w", err)
@@ -86,7 +86,7 @@ func (v *Verifier) VerifyDSSE(path string, keys []*key.Public, fnOpts ...options
 }
 
 // VerifyParsedDSSE verifies an already parsed DSSE envelope
-func (v *Verifier) VerifyParsedDSSE(env *sdsse.Envelope, keys []*key.Public, fnOpts ...options.VerifierOptFunc) (*key.VerificationResult, error) {
+func (v *Verifier) VerifyParsedDSSE(env *sdsse.Envelope, keys []key.PublicKeyProvider, fnOpts ...options.VerifierOptFunc) (*key.VerificationResult, error) {
 	opts := v.Options
 	for _, fn := range fnOpts {
 		if err := fn(&opts); err != nil {

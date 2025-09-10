@@ -20,8 +20,11 @@ var (
 )
 
 type (
-	Scheme string
-	Type   string
+	Scheme            string
+	Type              string
+	PublicKeyProvider interface {
+		PublicKey() *Public
+	}
 )
 
 const (
@@ -129,4 +132,9 @@ func (p *Public) Curve() string {
 	}
 
 	return ""
+}
+
+// Public is the most basic public key provider. It just returns itself
+func (p *Public) PublicKey() *Public {
+	return p
 }

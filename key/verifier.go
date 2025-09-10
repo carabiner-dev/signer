@@ -34,7 +34,8 @@ type VerificationResult struct {
 }
 
 // VerifyMessage verifies the signature by getting the whole message
-func (v *Verifier) VerifyMessage(pubKey *Public, message, signature []byte) (bool, error) {
+func (v *Verifier) VerifyMessage(pkeyProv PublicKeyProvider, message, signature []byte) (bool, error) {
+	pubKey := pkeyProv.PublicKey()
 	switch pubKey.Type {
 	case ECDSA:
 		h := pubKey.HashType.New()
@@ -56,7 +57,8 @@ func (v *Verifier) VerifyMessage(pubKey *Public, message, signature []byte) (boo
 	}
 }
 
-func (v *Verifier) VerifyDigestString(pubKey *Public, digestString string, signature []byte) (bool, error) {
+func (v *Verifier) VerifyDigestString(pkeyProv PublicKeyProvider, digestString string, signature []byte) (bool, error) {
+	pubKey := pkeyProv.PublicKey()
 	digest, err := hex.DecodeString(digestString)
 	if err != nil {
 		return false, fmt.Errorf("decoding digest: %w", err)
@@ -66,7 +68,8 @@ func (v *Verifier) VerifyDigestString(pubKey *Public, digestString string, signa
 }
 
 // VerifyDigest checks a sigest signature against a digest byte slice
-func (v *Verifier) VerifyDigest(pubKey *Public, digest, signature []byte) (bool, error) {
+func (v *Verifier) VerifyDigest(pkeyProv PublicKeyProvider, digest, signature []byte) (bool, error) {
+	pubKey := pkeyProv.PublicKey()
 	switch pubKey.Type {
 	case ECDSA:
 		return verifyECDSA(pubKey, digest, signature)
