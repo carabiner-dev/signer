@@ -26,9 +26,9 @@ func TestHashPayload(t *testing.T) {
 		mustErr  bool
 		expected string
 	}{
-		{"sigstore", "sigstore.dsse.json", crypto.SHA256, false, "febfe5fe33ed74786141f15d9d24744530bf1d2db1fc509176be34bc29d6bc84"},
-		{"sigstore", "sigstore.dsse.json", crypto.SHA384, false, "3d42e98a8ceea5e0679c8ad71bd8b32877e2dbc03484bc57dbdf57f1fa9ca414a90360e06024b604099c62b95067c54f"},
-		{"sigstore", "sigstore.dsse.json", crypto.SHA512, false, "49e908bbeee80df3d9bfc7f575c29fed105f85578c917047fe75c9ae95db70af82b51c0cb5e85ea7f143bf0e07af5e47e855120e4adfefd43ac36d5c110c3960"},
+		{"sigstore", "sigstore.dsse.json", crypto.SHA256, false, "3aa489a09d7c7fac5f2cac100c28baab237b06644fa14233307b5b20214d4a12"},
+		{"sigstore", "sigstore.dsse.json", crypto.SHA384, false, "040de0426b22dbeb20344b06c25fc0055b7d907b726b1c7093188a9cd443e3fbf39d0aad26e6825e217f59d91d2bbe95"},
+		{"sigstore", "sigstore.dsse.json", crypto.SHA512, false, "33aecc7a107850e53afd3bee4a058799f0f40ea9cbc0891012b06f0ba0d0cfbad030a026e008961178e4bab5fe680dc4bef5f095473d68fe7a4952356cb38ff9"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()

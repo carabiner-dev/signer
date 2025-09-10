@@ -124,6 +124,7 @@ func verifyECDSA(pubKey *Public, digest, signature []byte) (bool, error) {
 
 	// Ensure the curves match the algorithms as per FIPS 186-4
 	curveErr := errors.New("invalid curve in public key")
+	//nolint:exhaustive // Not all hashes in the world apply :)
 	switch pubKey.HashType {
 	case crypto.SHA224:
 		if pubKey.Curve() != elliptic.P224().Params().Name { // "P-224"

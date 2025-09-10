@@ -96,7 +96,10 @@ func (dv *DefaultVerifier) OpenEnvelope(path string) (*sdsse.Envelope, error) {
 	return env, nil
 }
 
-// hashPayload hashes the envelope payload with the supplied hasher
+// hashPayload generates the payload hash using the supplied hasher. Note that
+// this function is not a normal hasher, it implements the DSSE PAE encoding
+// and the returned digest is from the PAE message constructed according to the
+// DSSE specification.
 func hashPayload(env *sdsse.Envelope, hasher crypto.Hash) ([]byte, error) {
 	if env == nil {
 		return nil, errors.New("no envelope supplied")
@@ -124,7 +127,7 @@ func hashPayload(env *sdsse.Envelope, hasher crypto.Hash) ([]byte, error) {
 // This function was stolen from the Secure System Labs dsse packager.
 func paeEncode(env *sdsse.Envelope) []byte {
 	// payloadType string, payload []byte) []byte {
-	return []byte(fmt.Sprintf("DSSEv1 %d %s %d %s",
+	return fmt.Appendf(nil, "DSSEv1 %d %s %d %s",
 		len(env.GetPayloadType()), env.GetPayloadType(),
-		len(env.GetPayload()), env.GetPayload()))
+		len(env.GetPayload()), env.GetPayload())
 }
