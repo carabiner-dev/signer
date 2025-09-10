@@ -5,7 +5,6 @@ package key
 
 import (
 	"crypto"
-	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
@@ -15,6 +14,7 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 )
@@ -25,89 +25,55 @@ func NewVerifier() *Verifier {
 	return &Verifier{}
 }
 
-type Public struct {
-	Scheme Scheme
-	Data   string
-	Key    crypto.PublicKey
+// VerificationResult captures the key verification result
+type VerificationResult struct {
+	Key      *Public
+	Time     time.Time
+	Digest   map[string]string
+	Verified bool
 }
 
-type Scheme string
-
-const (
-	RsaSsaPssSha256     Scheme = "rsassa-pss-sha256"
-	RsaSsaPssSha384     Scheme = "rsassa-pss-sha384"
-	RsaSsaPssSha512     Scheme = "rsassa-pss-sha512"
-	EcdsaSha2nistP224   Scheme = "ecdsa-sha2-nistp224"
-	EcdsaSha2nistP256   Scheme = "ecdsa-sha2-nistp256"
-	EcdsaSha2nistP384   Scheme = "ecdsa-sha2-nistp384"
-	EcdsaSha2nistP521   Scheme = "ecdsa-sha2-nistp521"
-	EcdsaSha256nistP256 Scheme = "ecdsa-sha256-nistp256"
-	EcdsaSha384nistP384 Scheme = "ecdsa-sha384-nistp384"
-	Ed25519             Scheme = "ed2551956"
-)
-
 // VerifyMessage verifies the signature by getting the whole message
-func (v *Verifier) VerifyMessage(pubKey crypto.PublicKey, message []byte, signature []byte) (bool, error) {
-	switch k := pubKey.(type) {
-	case *ecdsa.PublicKey:
-		var hashType crypto.Hash
-		switch k.Curve.Params().Name {
-		case elliptic.P256().Params().Name: // "P-256"
-			hashType = crypto.SHA256
-		case elliptic.P384().Params().Name: // "P-384"
-			hashType = crypto.SHA384
-		case elliptic.P521().Params().Name: // P-521
-			hashType = crypto.SHA512
+func (v *Verifier) VerifyMessage(pubKey *Public, message, signature []byte) (bool, error) {
+	switch pubKey.Type {
+	case ECDSA:
+		h := pubKey.HashType.New()
+		if _, err := h.Write(message); err != nil {
+			return false, fmt.Errorf("writing message to hasher: %w", err)
 		}
-
-		sum := hashType.New().Sum(message)
-		return verifyECDSA(k, hashType, sum, signature)
-	case *rsa.PublicKey:
-		return verifyRSA(k, hashType, sum, signature)
-	case ed25519.PublicKey:
-		return verifyEd25519Message(k, message, signature)
-	case *ecdh.PublicKey:
-		return false, fmt.Errorf("key type not yet supported: %T", pubKey)
+		return verifyECDSA(pubKey, h.Sum(nil), signature)
+	case RSA:
+		h := pubKey.HashType.New()
+		if _, err := h.Write(message); err != nil {
+			return false, fmt.Errorf("writing message to hasher: %w", err)
+		}
+		return verifyRSA(pubKey, h.Sum(nil), signature)
+	case ED25519:
+		return verifyEd25519Message(pubKey, message, signature)
 	default:
-		// *dsa.PublicKey is deprectated, we don't support it. Also ecdh keys
+		// *dsa.PublicKey is deprectated, we don't support it.
 		return false, fmt.Errorf("unsupported key type: %T", pubKey)
 	}
 }
 
-func (v *Verifier) VerifyDigest(pubKey crypto.PublicKey, digestString string, signature []byte) (bool, error) {
-	// Parse the digest string
-	algo, digestValue, ok := strings.Cut(digestString, ":")
-	if !ok {
-		return false, errors.New("digest string not well formed")
-	}
-	sum, err := hex.DecodeString(digestValue)
+func (v *Verifier) VerifyDigestString(pubKey *Public, digestString string, signature []byte) (bool, error) {
+	digest, err := hex.DecodeString(digestString)
 	if err != nil {
 		return false, fmt.Errorf("decoding digest: %w", err)
 	}
 
-	// TODO(puerco): This probably belongs in the hasher package
-	var hashType crypto.Hash
-	// Create the hasher from the label
-	switch strings.ToLower(algo) {
-	case "sha1", "gitCommit":
-		hashType = crypto.SHA1
-	case "sha256":
-		hashType = crypto.SHA256
-	case "sha512":
-		hashType = crypto.SHA512
-	default:
-		return false, fmt.Errorf("unable to build hasher from %q", algo)
-	}
+	return v.VerifyDigest(pubKey, digest, signature)
+}
 
-	switch k := pubKey.(type) {
-	case *ecdsa.PublicKey:
-		return verifyECDSA(k, hashType, sum, signature)
-	case *rsa.PublicKey:
-		return verifyRSA(k, hashType, sum, signature)
-	case ed25519.PublicKey:
+// VerifyDigest checks a sigest signature against a digest byte slice
+func (v *Verifier) VerifyDigest(pubKey *Public, digest, signature []byte) (bool, error) {
+	switch pubKey.Type {
+	case ECDSA:
+		return verifyECDSA(pubKey, digest, signature)
+	case RSA:
+		return verifyRSA(pubKey, digest, signature)
+	case ED25519:
 		return false, errors.New("cannot verify ed25519 signatures from hash")
-	case *ecdh.PublicKey:
-		return false, fmt.Errorf("key type not yet supported: %T", pubKey)
 	default:
 		// *dsa.PublicKey is deprectated, we don't support it. Also ecdh keys
 		return false, fmt.Errorf("unsupported key type: %T", pubKey)
@@ -119,20 +85,28 @@ type signatureValues struct {
 }
 
 // verifyRSA verifies RSA using PSS
-func verifyRSA(pubKey *rsa.PublicKey, hashType crypto.Hash, digest []byte, signature []byte) (bool, error) {
+func verifyRSA(pubKey *Public, digest, signature []byte) (bool, error) {
+	rsaKey, ok := pubKey.Key.(*rsa.PublicKey)
+	if !ok {
+		return false, fmt.Errorf("unable to verify, key is not an RSA key")
+	}
+
+	// If it's not a PSS key, then
+	if !strings.HasPrefix(string(pubKey.Scheme), "rsassa-pss") {
+		if err := rsa.VerifyPKCS1v15(rsaKey, pubKey.HashType, digest, signature); err != nil {
+			if errors.Is(err, rsa.ErrVerification) {
+				return false, nil
+			}
+			return false, err
+		}
+	}
+
 	pssOptions := &rsa.PSSOptions{
 		SaltLength: rsa.PSSSaltLengthEqualsHash,
-		Hash:       hashType,
+		Hash:       pubKey.HashType,
 	}
 
-	if err := rsa.VerifyPKCS1v15(pubKey, hashType, digest, signature); err != nil {
-		if errors.Is(err, rsa.ErrVerification) {
-			return false, nil
-		}
-		return false, err
-	}
-
-	if err := rsa.VerifyPSS(pubKey, hashType, digest, signature, pssOptions); err != nil {
+	if err := rsa.VerifyPSS(rsaKey, pubKey.HashType, digest, signature, pssOptions); err != nil {
 		if errors.Is(err, rsa.ErrVerification) {
 			return false, nil
 		}
@@ -141,26 +115,34 @@ func verifyRSA(pubKey *rsa.PublicKey, hashType crypto.Hash, digest []byte, signa
 	return true, nil
 }
 
-// verifyECDSA
-func verifyECDSA(pubKey *ecdsa.PublicKey, hashType crypto.Hash, digest []byte, signature []byte) (bool, error) {
-	// Ensure the curves matche the algos as per FIPS 186-4
-	curveName := pubKey.Curve.Params().Name
-	var curveErr = errors.New("invalid curve in public key")
-	switch hashType {
+// verifyECDSA verifies a digest signed with an ECDSA key.
+func verifyECDSA(pubKey *Public, digest, signature []byte) (bool, error) {
+	ecdsaKey, ok := pubKey.Key.(*ecdsa.PublicKey)
+	if !ok {
+		return false, errors.New("unable to verify, key is not an ECDSA public key")
+	}
+
+	// Ensure the curves match the algorithms as per FIPS 186-4
+	curveErr := errors.New("invalid curve in public key")
+	switch pubKey.HashType {
+	case crypto.SHA224:
+		if pubKey.Curve() != elliptic.P224().Params().Name { // "P-224"
+			return false, curveErr
+		}
 	case crypto.SHA256:
-		if curveName != elliptic.P256().Params().Name { // "P-256"
+		if pubKey.Curve() != elliptic.P256().Params().Name { // "P-256"
 			return false, curveErr
 		}
 	case crypto.SHA384:
-		if curveName != elliptic.P384().Params().Name { // "P-384"
+		if pubKey.Curve() != elliptic.P384().Params().Name { // "P-384"
 			return false, curveErr
 		}
 	case crypto.SHA512:
-		if curveName != elliptic.P521().Params().Name { // "P-521"
+		if pubKey.Curve() != elliptic.P521().Params().Name { // "P-521"
 			return false, curveErr
 		}
 	default:
-		return false, fmt.Errorf("unsupported ECDSA configuration: curve %s with hash %v", curveName, hashType)
+		return false, fmt.Errorf("unsupported ECDSA configuration: curve %s with hash %v", pubKey.Curve(), pubKey.HashType)
 	}
 
 	// Parse the DER encoded signature
@@ -170,23 +152,25 @@ func verifyECDSA(pubKey *ecdsa.PublicKey, hashType crypto.Hash, digest []byte, s
 	}
 
 	// Verify the signature
-	return ecdsa.Verify(pubKey, digest, sig.R, sig.S), nil
+	return ecdsa.Verify(ecdsaKey, digest, sig.R, sig.S), nil
 }
 
 // verifyEd25519 verifies an Ed25519 signature
-func verifyEd25519Message(pubKey ed25519.PublicKey, message []byte, signature []byte) (bool, error) {
+func verifyEd25519Message(pubKey *Public, message, signature []byte) (bool, error) {
+	edKey, ok := pubKey.Key.(ed25519.PublicKey)
+	if !ok {
+		return false, fmt.Errorf("unable to verify, key is not an ed25519 public key")
+	}
 	// Signature must be 64 bytes long
 	if len(signature) != ed25519.SignatureSize {
 		return false, errors.New("invalid ed25519 signature length")
 	}
 
 	// Key must be 32 bytes, always
-	if len(pubKey) != ed25519.PublicKeySize {
+	if len(edKey) != ed25519.PublicKeySize {
 		return false, errors.New("invalid ed25519 key length")
 	}
 
 	// Verify the signature (Ed25519 doesn't require separate hashing)
-	valid := ed25519.Verify(pubKey, message, signature)
-
-	return valid, nil
+	return ed25519.Verify(edKey, message, signature), nil
 }
