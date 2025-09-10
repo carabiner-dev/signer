@@ -1,7 +1,17 @@
 # Carabiner Signer Library
 
 Easy digital signing library with support for [sigstore](https://www.sigstore.dev/)
-and (upcoming) support for simpler signing with key pairs.
+bundles, [DSSE](https://github.com/secure-systems-lab/dsse) envelopes and (upcoming)
+support for simpler signing with key pairs.
+
+## Signing Sigstore Bundles
+
+Signing data with sigstore and bundling it is super easy. The library takes
+care of producing the signing key pair and fulcio certificate for you. Once
+the signing operation is done, the Carabiner signer registers it in the
+Rekor transparency log.
+
+### Example
 
 ```golang
 package main
@@ -34,6 +44,51 @@ func main() {
 	}
 }
 ```
+
+## Dead Simple Signing Envelope (DSSE)
+
+Initial support for DSSE has been implemented since v0.2.0. The library can verify
+envelopes signed with arbitrary keys.
+
+### Example
+
+```golang
+package main
+
+import (
+	"fmt"
+	"os"
+
+	"github.com/carabiner-dev/signer"
+)
+
+func main() {
+	v := signer.NewVerifier()
+	res, err := v.VerifyDSSE("attestation.dsse.json", []key.PublicKeyProvider{
+		// Add your keys here
+	})
+	if err != nil {
+		fmt.Printf("Error verifying: %v\n", err)
+	}
+
+	if res.Verified {
+		fmt.Println("DSSE envelope verified!")
+	} else {
+		fmt.Println("DSSE envelope failed verification.")
+	}
+}
+```
+
+## Key Pair Handling
+
+The `key` package will handle all aspects with keys. For now only public key
+parsing is implemented.
+
+Most verifying operations take a `key.PublicKeyProvider`. This interface is
+masks any object that can provide a public key object for use in cryptographic
+operations. The `key.Public` obkect is the most basic `PublicKeyProvider` but
+we may implement more complex providers such as cache interfaces and key
+maagement systems clients.
 
 ## Status
 
