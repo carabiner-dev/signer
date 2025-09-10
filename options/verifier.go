@@ -4,6 +4,7 @@
 package options
 
 import (
+	"crypto"
 	"crypto/sha256"
 	"fmt"
 	"regexp"
@@ -37,6 +38,9 @@ type Verifier struct {
 	RequireCTlog     bool
 	RequireTimestamp bool
 	RequireTlog      bool
+
+	// Public keys to verify DSSE envelopes
+	PubKeys []crypto.PublicKey
 }
 
 var DefaultVerifier = Verifier{

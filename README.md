@@ -41,6 +41,13 @@ The library has simple signing function to sign and verify attestations and
 arbitrary data into sigstore bundles. The current functionality is considered
 stable but the library is still under active feature development.
 
+Full [DSSE](https://github.com/secure-systems-lab/dsse) signature verification
+is now implemented in the signer module. The main verifier exposes functions to
+verify the signatures of DSSE envelopes and their payloads.
+
+The library also includes a `key` package that handles public key parsing and
+signature verification.
+
 ### Upcoming Features
 
 Some of the features we are working on that will soon show up in this module

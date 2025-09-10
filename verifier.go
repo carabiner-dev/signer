@@ -6,23 +6,29 @@ package signer
 import (
 	"fmt"
 
+	sdsse "github.com/sigstore/protobuf-specs/gen/pb-go/dsse"
 	sbundle "github.com/sigstore/sigstore-go/pkg/bundle"
 	"github.com/sigstore/sigstore-go/pkg/verify"
 
 	"github.com/carabiner-dev/signer/bundle"
+	"github.com/carabiner-dev/signer/dsse"
+	"github.com/carabiner-dev/signer/key"
 	"github.com/carabiner-dev/signer/options"
 )
 
+// NewVerifier creates a new verifier with default options and verifiers
 func NewVerifier() *Verifier {
 	return &Verifier{
 		Options:        options.DefaultVerifier,
 		bundleVerifier: &bundle.DefaultVerifier{},
+		dsseVerifier:   &dsse.DefaultVerifier{},
 	}
 }
 
 type Verifier struct {
 	Options        options.Verifier
 	bundleVerifier bundle.Verifier
+	dsseVerifier   dsse.Verifier
 }
 
 // VerifyBundle verifies a signed bundle containing a dsse envelope
@@ -67,4 +73,33 @@ func (v *Verifier) VerifyParsedBundle(bndl *sbundle.Bundle, fnOpts ...options.Ve
 	}
 
 	return result, err
+}
+
+// VerifyDSSE parses a DSSE envelope from a file and returns it
+func (v *Verifier) VerifyDSSE(path string, keys []key.PublicKeyProvider, fnOpts ...options.VerifierOptFunc) (*key.VerificationResult, error) {
+	env, err := v.dsseVerifier.OpenEnvelope(path)
+	if err != nil {
+		return nil, fmt.Errorf("parsing DSSE envelope: %w", err)
+	}
+
+	return v.VerifyParsedDSSE(env, keys, fnOpts...)
+}
+
+// VerifyParsedDSSE verifies an already parsed DSSE envelope
+func (v *Verifier) VerifyParsedDSSE(env *sdsse.Envelope, keys []key.PublicKeyProvider, fnOpts ...options.VerifierOptFunc) (*key.VerificationResult, error) {
+	opts := v.Options
+	for _, fn := range fnOpts {
+		if err := fn(&opts); err != nil {
+			return nil, err
+		}
+	}
+
+	// Build the key verifier to check the envelope signatures
+	keyVerifier, err := v.dsseVerifier.BuildKeyVerifier(&opts)
+	if err != nil {
+		return nil, fmt.Errorf("building key verifier: %w", err)
+	}
+
+	// Verify and return the results
+	return v.dsseVerifier.RunVerification(&opts, keyVerifier, env, keys)
 }
