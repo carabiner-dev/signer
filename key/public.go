@@ -6,7 +6,11 @@ package key
 import (
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/elliptic"
+	"crypto/rsa"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -52,6 +56,24 @@ type Public struct {
 	HashType crypto.Hash
 	Data     string
 	Key      crypto.PublicKey
+}
+
+// ID computes a key id by hashing the key data and triming it to the first bytes
+func (p *Public) ID() string {
+	var hash [32]byte
+	switch pubKey := p.Key.(type) {
+	case *rsa.PublicKey:
+		hash = sha256.Sum256(pubKey.N.Bytes())
+	case *ecdsa.PublicKey:
+		coords := append(pubKey.X.Bytes(), pubKey.Y.Bytes()...)
+		hash = sha256.Sum256(coords)
+		return hex.EncodeToString(hash[:8])
+	case ed25519.PublicKey:
+		hash = sha256.Sum256(pubKey)
+	default:
+		return ""
+	}
+	return hex.EncodeToString(hash[:8])
 }
 
 // SetScheme sets the scheme string in the key, verifying consistency and defining

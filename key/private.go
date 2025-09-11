@@ -8,7 +8,9 @@ import (
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 
@@ -22,6 +24,28 @@ type Private struct {
 	HashType crypto.Hash
 	Data     string
 	Key      crypto.PublicKey
+}
+
+// ID computes a key id by hashing the key data and triming it to the first 8 bytes
+func (p *Private) ID() string {
+	var hash [32]byte
+	pub, err := p.PublicKey()
+	if err != nil {
+		return ""
+	}
+	switch pubKey := pub.Key.(type) {
+	case *rsa.PublicKey:
+		hash = sha256.Sum256(pubKey.N.Bytes())
+	case *ecdsa.PublicKey:
+		coords := append(pubKey.X.Bytes(), pubKey.Y.Bytes()...)
+		hash = sha256.Sum256(coords)
+		return hex.EncodeToString(hash[:8])
+	case ed25519.PublicKey:
+		hash = sha256.Sum256(pubKey)
+	default:
+		return ""
+	}
+	return hex.EncodeToString(hash[:8])
 }
 
 // PublicKey derives the public key from the provate one and returns a Public
