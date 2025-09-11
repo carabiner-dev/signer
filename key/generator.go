@@ -125,6 +125,7 @@ func (gen *Generator) GenerateKeyPair(funcs ...FnGenOpt) (*Private, error) {
 
 	case RSA:
 		var s Scheme
+		//nolint:exhaustive // We don't support just any hash
 		switch opts.RSAHashType {
 		case crypto.SHA256:
 			s = RsaSsaPssSha256

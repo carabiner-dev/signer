@@ -60,6 +60,9 @@ func (v *Verifier) VerifyMessage(pkeyProv PublicKeyProvider, message, signature 
 	}
 }
 
+// VerifyDigestString verifies the signature from a digest string. The
+// provided string must be a hex encoded string of a hash produced by
+// algorithm defined in the public key abstraction.
 func (v *Verifier) VerifyDigestString(pkeyProv PublicKeyProvider, digestString string, signature []byte) (bool, error) {
 	pubKey, err := pkeyProv.PublicKey()
 	if err != nil {
