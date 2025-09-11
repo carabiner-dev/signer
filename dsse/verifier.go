@@ -56,6 +56,10 @@ func (dv *DefaultVerifier) RunVerification(
 		digestStrs[k.HashType.String()] = fmt.Sprintf("%x", digest)
 	}
 
+	// Build a slice to collect the keys that can verify the
+	// signatures
+	var matchedKeys = []*key.Public{}
+
 	// Got all required hashes, verify
 	for _, sig := range env.GetSignatures() {
 		for _, kp := range keys {
@@ -66,21 +70,18 @@ func (dv *DefaultVerifier) RunVerification(
 			pass, err := kv.VerifyDigest(k, digests[k.HashType], sig.GetSig())
 			if err == nil {
 				if pass {
-					return &key.VerificationResult{
-						Key:      k,
-						Time:     time.Now(),
-						Digest:   digestStrs,
-						Verified: true,
-					}, nil
+					matchedKeys = append(matchedKeys, k)
+
 				}
 			}
 		}
 	}
+
 	return &key.VerificationResult{
-		Key:      nil,
+		Keys:     matchedKeys,
 		Time:     time.Now(),
 		Digest:   digestStrs,
-		Verified: false,
+		Verified: len(matchedKeys) > 0,
 	}, nil
 }
 

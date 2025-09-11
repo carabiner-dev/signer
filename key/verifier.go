@@ -27,7 +27,7 @@ func NewVerifier() *Verifier {
 
 // VerificationResult captures the key verification result
 type VerificationResult struct {
-	Key      *Public
+	Keys     []*Public
 	Time     time.Time
 	Digest   map[string]string
 	Verified bool
