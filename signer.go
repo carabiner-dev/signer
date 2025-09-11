@@ -4,13 +4,16 @@
 package signer
 
 import (
+	"errors"
 	"fmt"
 	"io"
 
+	sdsse "github.com/sigstore/protobuf-specs/gen/pb-go/dsse"
 	sbundle "github.com/sigstore/sigstore-go/pkg/bundle"
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/carabiner-dev/signer/bundle"
+	"github.com/carabiner-dev/signer/dsse"
 	"github.com/carabiner-dev/signer/options"
 )
 
@@ -20,12 +23,14 @@ func NewSigner() *Signer {
 	return &Signer{
 		Options:      options.DefaultSigner,
 		bundleSigner: &bundle.DefaultSigner{},
+		dsseSigner:   &dsse.DefaultSigner{},
 	}
 }
 
 type Signer struct {
 	Options      options.Signer
 	bundleSigner bundle.Signer
+	dsseSigner   dsse.Signer
 }
 
 // WriteBundle writes the bundle JSON to
@@ -150,4 +155,73 @@ func (s *Signer) SignMessage(data []byte, funcs ...options.SignOptFn) (*sbundle.
 	return &sbundle.Bundle{
 		Bundle: bndl,
 	}, nil
+}
+
+// SignStatementToDSSE is a convenience method around SignMessageToDSSE that
+// sets the in-toto payload type autmatically
+func (s *Signer) SignStatementToDSSE(data []byte, funcs ...options.SignOptFn) (*sdsse.Envelope, error) {
+	funcs = append(funcs, options.WithPayloadType("https://in-toto.io/Statement/v1"))
+	return s.SignMessageToDSSE(data, funcs...)
+}
+
+// SignMessageToDSSE wraps a payload in a dsse envelope and signs it.
+func (s *Signer) SignMessageToDSSE(message []byte, funcs ...options.SignOptFn) (*sdsse.Envelope, error) {
+	signOpts := options.DefaultSign
+	for _, f := range funcs {
+		if err := f(&signOpts); err != nil {
+			return nil, err
+		}
+	}
+
+	if signOpts.PayloadType == "" {
+		return nil, errors.New("payload type not defined")
+	}
+
+	// Create the new envelope
+	envelope, err := s.dsseSigner.WrapPayload(signOpts.PayloadType, message)
+	if err != nil {
+		return nil, fmt.Errorf("wrapping payload: %w", err)
+	}
+
+	if err := s.dsseSigner.Sign(envelope, signOpts.Keys); err != nil {
+		return nil, fmt.Errorf("signing envelope: %w", err)
+	}
+
+	return envelope, nil
+}
+
+// SignEnvelope wraps a payload in a dsse envelope and signs it.
+func (s *Signer) SignEnvelope(envelope *sdsse.Envelope, funcs ...options.SignOptFn) (*sdsse.Envelope, error) {
+	signOpts := options.DefaultSign
+	for _, f := range funcs {
+		if err := f(&signOpts); err != nil {
+			return nil, err
+		}
+	}
+
+	// Call the underlying signer
+	if err := s.dsseSigner.Sign(envelope, signOpts.Keys); err != nil {
+		return nil, fmt.Errorf("signing envelope: %w", err)
+	}
+
+	return envelope, nil
+}
+
+// WriteDSSEEnvelope marshals a DSSE envelope to JSON and writes it to a
+// an io.Writer
+func (s *Signer) WriteDSSEEnvelope(env *sdsse.Envelope, w io.Writer) error {
+	marshaler := protojson.MarshalOptions{
+		Multiline: true,
+		Indent:    "  ",
+	}
+	data, err := marshaler.Marshal(env)
+	if err != nil {
+		return fmt.Errorf("marshaling envelope: %w", err)
+	}
+
+	if _, err := w.Write(data); err != nil {
+		return fmt.Errorf("writing data to writer sink: %w", err)
+	}
+
+	return nil
 }

@@ -16,6 +16,10 @@ import (
 	"log"
 )
 
+func NewGenerator() *Generator {
+	return &Generator{}
+}
+
 // Generator is a key generator that returns keys wrapped in our key wrappers.
 // The key generator supports ECDSA, RSA and ED25519 and some basic options such
 // as key length and defininig the elliptic curve to use.
