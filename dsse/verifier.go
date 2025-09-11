@@ -8,8 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
+	"github.com/nozzle/throttler"
 	sdsse "github.com/sigstore/protobuf-specs/gen/pb-go/dsse"
 	"google.golang.org/protobuf/encoding/protojson"
 
@@ -37,13 +39,19 @@ func (dv *DefaultVerifier) RunVerification(
 		return nil, errors.New("did not get a key verifier to check signatures")
 	}
 
+	// Extract the public keys up front for efficiency
+	publicKeys := []*key.Public{}
+	for _, provider := range keys {
+		pk, err := provider.PublicKey()
+		if err != nil {
+			return nil, fmt.Errorf("unable to read public key: %w", err)
+		}
+		publicKeys = append(publicKeys, pk)
+	}
+
 	digests := map[crypto.Hash][]byte{}
 	digestStrs := map[string]string{}
-	for _, kp := range keys {
-		k, err := kp.PublicKey()
-		if err != nil {
-			return nil, fmt.Errorf("getting public key: %w", err)
-		}
+	for _, k := range publicKeys {
 		if _, ok := digests[k.HashType]; ok {
 			continue
 		}
@@ -57,24 +65,31 @@ func (dv *DefaultVerifier) RunVerification(
 	}
 
 	// Build a slice to collect the keys that can verify the
-	// signatures
-	var matchedKeys = []*key.Public{}
+	// signatures, keys that don't match are not reported.
+	matchedKeys := []*key.Public{}
 
-	// Got all required hashes, verify
+	// Got all required data, now verify the sigs in parallel
+	var mutex sync.Mutex
+	t := throttler.New((4), len(env.GetSignatures())*len(keys))
 	for _, sig := range env.GetSignatures() {
-		for _, kp := range keys {
-			k, err := kp.PublicKey()
-			if err != nil {
-				return nil, fmt.Errorf("getting public key: %w", err)
-			}
-			pass, err := kv.VerifyDigest(k, digests[k.HashType], sig.GetSig())
-			if err == nil {
-				if pass {
-					matchedKeys = append(matchedKeys, k)
-
+		for _, k := range publicKeys {
+			go func() {
+				pass, err := kv.VerifyDigest(k, digests[k.HashType], sig.GetSig())
+				if err == nil {
+					if pass {
+						mutex.Lock()
+						matchedKeys = append(matchedKeys, k)
+						mutex.Unlock()
+					}
 				}
-			}
+				t.Done(err)
+			}()
+			t.Throttle()
 		}
+	}
+
+	if err := errors.Join(t.Errs()...); err != nil {
+		return nil, fmt.Errorf("running sig verification: %w", err)
 	}
 
 	return &key.VerificationResult{

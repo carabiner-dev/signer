@@ -100,6 +100,16 @@ func TestRunVerification(t *testing.T) {
 		{"multiple", "rebuild.dsse.json", []string{"rebuild.key", "rebuild.key", "rebuild.key", "rebuild.key", "rebuild.key"}, "", false, true, 5},
 		{"one-matches-one-not", "rebuild.dsse.json", []string{"rebuild.key", "sigstore.dsse.key"}, "", false, true, 1},
 		{"fail-swap-keys", "rebuild.dsse.json", []string{"sigstore.dsse.key"}, "", false, false, 0},
+		{"mass-to-check-parallel", "rebuild.dsse.json", []string{
+			"rebuild.key", "rebuild.key", "rebuild.key", "rebuild.key", "rebuild.key",
+			"sigstore.dsse.key", "sigstore.dsse.key", "sigstore.dsse.key", "sigstore.dsse.key",
+			"rebuild.key", "rebuild.key", "rebuild.key", "rebuild.key", "rebuild.key",
+			"sigstore.dsse.key", "sigstore.dsse.key", "sigstore.dsse.key", "sigstore.dsse.key",
+			"rebuild.key", "rebuild.key", "rebuild.key", "rebuild.key", "rebuild.key",
+			"sigstore.dsse.key", "sigstore.dsse.key", "sigstore.dsse.key", "sigstore.dsse.key",
+			"rebuild.key", "rebuild.key", "rebuild.key", "rebuild.key", "rebuild.key",
+			"sigstore.dsse.key", "sigstore.dsse.key", "sigstore.dsse.key", "sigstore.dsse.key",
+		}, "", false, true, 20},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
