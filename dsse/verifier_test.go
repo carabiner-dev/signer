@@ -86,16 +86,20 @@ func TestOpenEnvelope(t *testing.T) {
 func TestRunVerification(t *testing.T) {
 	t.Parallel()
 	for _, tt := range []struct {
-		name     string
-		dssePath string
-		keyPath  string
-		scheme   string
-		mustErr  bool
-		expect   bool
+		name            string
+		dssePath        string
+		keyPaths        []string
+		scheme          string
+		mustErr         bool
+		expect          bool
+		expectedMatches int
 	}{
-		{"sigstore", "sigstore.dsse.json", "sigstore.dsse.key", "", false, true}, // ecdsa-sha2-nistp384
-		{"rebuild", "rebuild.dsse.json", "rebuild.key", "", false, true},
-		{"fail-swap-keys", "rebuild.dsse.json", "sigstore.dsse.key", "", false, false},
+		{"sigstore", "sigstore.dsse.json", []string{"sigstore.dsse.key"}, "", false, true, 1}, // ecdsa-sha2-nistp384
+		{"rebuild", "rebuild.dsse.json", []string{"rebuild.key"}, "", false, true, 1},
+		// This works because we don't deduplicate keys for now. Let's break this test case :D
+		{"multiple", "rebuild.dsse.json", []string{"rebuild.key", "rebuild.key", "rebuild.key", "rebuild.key", "rebuild.key"}, "", false, true, 5},
+		{"one-matches-one-not", "rebuild.dsse.json", []string{"rebuild.key", "sigstore.dsse.key"}, "", false, true, 1},
+		{"fail-swap-keys", "rebuild.dsse.json", []string{"sigstore.dsse.key"}, "", false, false, 0},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
@@ -103,18 +107,23 @@ func TestRunVerification(t *testing.T) {
 			env, err := v.OpenEnvelope(filepath.Join("testdata", tt.dssePath))
 			require.NoError(t, err)
 
-			keydata, err := os.ReadFile(filepath.Join("testdata", tt.keyPath))
-			require.NoError(t, err)
+			pubKeys := []key.PublicKeyProvider{}
+			for _, path := range tt.keyPaths {
+				// Parse the keys
+				keydata, err := os.ReadFile(filepath.Join("testdata", path))
+				require.NoError(t, err)
 
-			opts := []key.FnOpt{}
-			if tt.scheme != "" {
-				opts = append(opts, key.WithScheme(key.Scheme(tt.scheme)))
+				opts := []key.FnOpt{}
+				if tt.scheme != "" {
+					opts = append(opts, key.WithScheme(key.Scheme(tt.scheme)))
+				}
+
+				pubKey, err := key.NewParser().ParsePublicKey(keydata, opts...)
+				require.NoError(t, err)
+				pubKeys = append(pubKeys, pubKey)
 			}
 
-			pubKey, err := key.NewParser().ParsePublicKey(keydata, opts...)
-			require.NoError(t, err)
-
-			res, err := v.RunVerification(&options.Verifier{}, key.NewVerifier(), env, []key.PublicKeyProvider{pubKey})
+			res, err := v.RunVerification(&options.Verifier{}, key.NewVerifier(), env, pubKeys)
 			if tt.mustErr {
 				require.Error(t, err)
 				return
@@ -122,6 +131,7 @@ func TestRunVerification(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, res)
 			require.Equal(t, tt.expect, res.Verified)
+			require.Len(t, res.Keys, tt.expectedMatches)
 		})
 	}
 }
