@@ -7,10 +7,13 @@ import (
 	"errors"
 	"testing"
 
+	sdsse "github.com/sigstore/protobuf-specs/gen/pb-go/dsse"
 	"github.com/stretchr/testify/require"
 
 	"github.com/carabiner-dev/signer/bundle"
 	"github.com/carabiner-dev/signer/bundle/bundlefakes"
+	"github.com/carabiner-dev/signer/dsse"
+	"github.com/carabiner-dev/signer/dsse/dssefakes"
 	"github.com/carabiner-dev/signer/options"
 )
 
@@ -150,6 +153,84 @@ func TestSignMessage(t *testing.T) {
 			}
 			require.NoError(t, err)
 			require.NotNil(t, res)
+		})
+	}
+}
+
+func TestSignEnvelope(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name      string
+		mustErr   bool
+		getSigner func(*testing.T) dsse.Signer
+	}{
+		{"success", false, func(t *testing.T) dsse.Signer {
+			t.Helper()
+			return &dssefakes.FakeSigner{}
+		}},
+		{"signing-fails", true, func(t *testing.T) dsse.Signer {
+			t.Helper()
+			s := &dssefakes.FakeSigner{}
+			s.SignReturns(errors.New("error signing"))
+			return s
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dsseSigner := tt.getSigner(t)
+
+			signer := &Signer{
+				dsseSigner: dsseSigner,
+			}
+
+			err := signer.SignEnvelope(&sdsse.Envelope{})
+			if tt.mustErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestSignStatementToDSSE(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name      string
+		mustErr   bool
+		getSigner func(*testing.T) dsse.Signer
+	}{
+		{"success", false, func(t *testing.T) dsse.Signer {
+			t.Helper()
+			return &dssefakes.FakeSigner{}
+		}},
+		{"wrap-payload-fails", true, func(t *testing.T) dsse.Signer {
+			t.Helper()
+			s := &dssefakes.FakeSigner{}
+			s.WrapPayloadReturns(nil, errors.New("error signing"))
+			return s
+		}},
+		{"signing-fails", true, func(t *testing.T) dsse.Signer {
+			t.Helper()
+			s := &dssefakes.FakeSigner{}
+			s.SignReturns(errors.New("error signing"))
+			return s
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dsseSigner := tt.getSigner(t)
+
+			signer := &Signer{
+				dsseSigner: dsseSigner,
+			}
+
+			_, err := signer.SignStatementToDSSE([]byte("test"))
+			if tt.mustErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
 		})
 	}
 }
