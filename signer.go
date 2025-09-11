@@ -190,21 +190,21 @@ func (s *Signer) SignMessageToDSSE(message []byte, funcs ...options.SignOptFn) (
 	return envelope, nil
 }
 
-// SignEnvelope wraps a payload in a dsse envelope and signs it.
-func (s *Signer) SignEnvelope(envelope *sdsse.Envelope, funcs ...options.SignOptFn) (*sdsse.Envelope, error) {
+// SignEnvelope signs an existing envelope with the specified keys
+func (s *Signer) SignEnvelope(envelope *sdsse.Envelope, funcs ...options.SignOptFn) error {
 	signOpts := options.DefaultSign
 	for _, f := range funcs {
 		if err := f(&signOpts); err != nil {
-			return nil, err
+			return err
 		}
 	}
 
 	// Call the underlying signer
 	if err := s.dsseSigner.Sign(envelope, signOpts.Keys); err != nil {
-		return nil, fmt.Errorf("signing envelope: %w", err)
+		return fmt.Errorf("signing envelope: %w", err)
 	}
 
-	return envelope, nil
+	return nil
 }
 
 // WriteDSSEEnvelope marshals a DSSE envelope to JSON and writes it to a
