@@ -44,7 +44,7 @@ func (bv *DefaultVerifier) OpenBundle(path string) (*bundle.Bundle, error) {
 }
 
 // BuildSigstoreVerifier creates a configured sigstore verifier from the
-// configured options
+// configured options.
 // TODO(puerco): Abstract the returned verifier
 func (bv *DefaultVerifier) BuildSigstoreVerifier(opts *options.Verifier) (VerifyCapable, error) {
 	trustedMaterial, err := bv.assembleTrustedMaterial(opts)
