@@ -11,35 +11,36 @@ import (
 	"github.com/carabiner-dev/signer/internal/tuf"
 )
 
+// DefaultSigstore is the default options set to configure the bundle
+// verifier to use the sigstore public good instance.
+var DefaultSigstore = Sigstore{
+	Timestamp:     true,
+	AppendToRekor: true,
+
+	HideOIDCOptions: true,
+	OidcRedirectURL: "http://localhost:0/auth/callback",
+	OidcIssuer:      "https://oauth2.sigstore.dev/auth",
+	OidcClientID:    "sigstore",
+
+	// URLs default the public good instances
+	FulcioURL: "https://fulcio.sigstore.dev",
+	RekorURL:  "https://rekor.sigstore.dev",
+}
+
 var DefaultSigner = Signer{
 	TufOptions: tuf.TufOptions{
 		TufRootURL:  tuf.SigstorePublicGoodBaseURL,
 		TufRootPath: "",
 		Fetcher:     tuf.Defaultfetcher(),
 	},
-	Timestamp:     true,
-	AppendToRekor: true,
-
-	OidcRedirectURL: "http://localhost:0/auth/callback",
-	OidcIssuer:      "https://oauth2.sigstore.dev/auth",
-	OidcClientID:    "sigstore",
+	Sigstore: DefaultSigstore,
 }
 
 // Signer
 type Signer struct {
 	tuf.TufOptions
-	Token         *oauthflow.OIDCIDToken
-	Timestamp     bool
-	AppendToRekor bool
-	DisableSTS    bool
-
-	// OidcRedirectURL defines the URL that the browser will redirect to.
-	// if the port is set to 0, bind will randomize it to a high number
-	// port before starting the OIDC flow.
-	OidcRedirectURL  string
-	OidcIssuer       string
-	OidcClientID     string
-	OidcClientSecret string
+	Sigstore
+	Token *oauthflow.OIDCIDToken
 }
 
 // Validate checks the signer options

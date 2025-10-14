@@ -92,10 +92,6 @@ func (bs *DefaultSigner) GetKeyPair(opts *options.Signer) (*sign.EphemeralKeypai
 }
 
 func tempSigningConfigBuilder(opts *options.Signer) (*root.SigningConfig, error) {
-	// These two are not yet exposed in the SignerOptions
-	fulcioURL := "https://fulcio.sigstore.dev"
-	rekorURL := "https://rekor.sigstore.dev"
-
 	// This is:
 	oidcIssuer := options.DefaultSigner.OidcIssuer
 	if opts.OidcIssuer != "" {
@@ -107,7 +103,7 @@ func tempSigningConfigBuilder(opts *options.Signer) (*root.SigningConfig, error)
 		// Fulcio URLs
 		[]root.Service{
 			{
-				URL:                 fulcioURL,
+				URL:                 opts.FulcioURL,
 				MajorAPIVersion:     1,
 				ValidityPeriodStart: time.Now().Add(-time.Hour),
 				ValidityPeriodEnd:   time.Now().Add(time.Hour),
@@ -125,7 +121,7 @@ func tempSigningConfigBuilder(opts *options.Signer) (*root.SigningConfig, error)
 		// Rekor API endpoint
 		[]root.Service{
 			{
-				URL:                 rekorURL,
+				URL:                 opts.RekorURL,
 				MajorAPIVersion:     1,
 				ValidityPeriodStart: time.Now().Add(-time.Hour),
 				ValidityPeriodEnd:   time.Now().Add(time.Hour),
