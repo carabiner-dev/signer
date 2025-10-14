@@ -42,8 +42,8 @@ func TestVerifyParsedBundleIntegration(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			sut := Verifier{
-				Options:        options.DefaultVerifier,
-				bundleVerifier: tt.getVerifier(t),
+				Options:         options.DefaultVerifier,
+				bundleVerifiers: []bundle.Verifier{tt.getVerifier(t)},
 			}
 			_, err := sut.VerifyParsedBundle(nil)
 			if tt.mustErr {

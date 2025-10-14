@@ -4,6 +4,7 @@
 package signer
 
 import (
+	"errors"
 	"fmt"
 
 	sdsse "github.com/sigstore/protobuf-specs/gen/pb-go/dsse"
@@ -19,21 +20,21 @@ import (
 // NewVerifier creates a new verifier with default options and verifiers
 func NewVerifier() *Verifier {
 	return &Verifier{
-		Options:        options.DefaultVerifier,
-		bundleVerifier: &bundle.DefaultVerifier{},
-		dsseVerifier:   &dsse.DefaultVerifier{},
+		Options:         options.DefaultVerifier,
+		bundleVerifiers: []bundle.Verifier{&bundle.DefaultVerifier{}},
+		dsseVerifier:    &dsse.DefaultVerifier{},
 	}
 }
 
 type Verifier struct {
-	Options        options.Verifier
-	bundleVerifier bundle.Verifier
-	dsseVerifier   dsse.Verifier
+	Options         options.Verifier
+	bundleVerifiers []bundle.Verifier
+	dsseVerifier    dsse.Verifier
 }
 
 // VerifyBundle verifies a signed bundle containing a dsse envelope
 func (v *Verifier) VerifyBundle(bundlePath string, fnOpts ...options.VerifierOptFunc) (*verify.VerificationResult, error) {
-	bndl, err := v.bundleVerifier.OpenBundle(bundlePath)
+	bndl, err := v.bundleVerifiers[0].OpenBundle(bundlePath)
 	if err != nil {
 		return nil, fmt.Errorf("opening bundle: %w", err)
 	}
@@ -62,17 +63,23 @@ func (v *Verifier) VerifyParsedBundle(bndl *sbundle.Bundle, fnOpts ...options.Ve
 		}
 	}
 
-	vrfr, err := v.bundleVerifier.BuildSigstoreVerifier(&opts)
-	if err != nil {
-		return nil, fmt.Errorf("creating verifier: %w", err)
+	var result *verify.VerificationResult
+	errs := []error{}
+	for i := range v.bundleVerifiers {
+		vrfr, err := v.bundleVerifiers[i].BuildSigstoreVerifier(&opts)
+		if err != nil {
+			return nil, fmt.Errorf("creating verifier: %w", err)
+		}
+
+		result, err = v.bundleVerifiers[i].RunVerification(&opts, vrfr, bndl)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("verifying bundle: %w", err))
+			continue
+		}
+		return result, nil
 	}
 
-	result, err := v.bundleVerifier.RunVerification(&opts, vrfr, bndl)
-	if err != nil {
-		return nil, fmt.Errorf("verifying bundle: %w", err)
-	}
-
-	return result, err
+	return nil, errors.Join(errs...)
 }
 
 // VerifyDSSE parses a DSSE envelope from a file and returns it
