@@ -6,15 +6,16 @@ import (
 
 	"github.com/carabiner-dev/signer/bundle"
 	"github.com/carabiner-dev/signer/options"
+	"github.com/carabiner-dev/signer/sigstore"
 	bundlea "github.com/sigstore/sigstore-go/pkg/bundle"
 	"github.com/sigstore/sigstore-go/pkg/verify"
 )
 
 type FakeVerifier struct {
-	BuildSigstoreVerifierStub        func(*options.Verifier) (bundle.VerifyCapable, error)
+	BuildSigstoreVerifierStub        func(*sigstore.InstanceConfig) (bundle.VerifyCapable, error)
 	buildSigstoreVerifierMutex       sync.RWMutex
 	buildSigstoreVerifierArgsForCall []struct {
-		arg1 *options.Verifier
+		arg1 *sigstore.InstanceConfig
 	}
 	buildSigstoreVerifierReturns struct {
 		result1 bundle.VerifyCapable
@@ -37,10 +38,10 @@ type FakeVerifier struct {
 		result1 *bundlea.Bundle
 		result2 error
 	}
-	RunVerificationStub        func(*options.Verifier, bundle.VerifyCapable, *bundlea.Bundle) (*verify.VerificationResult, error)
+	RunVerificationStub        func(*options.SigstoreVerification, bundle.VerifyCapable, *bundlea.Bundle) (*verify.VerificationResult, error)
 	runVerificationMutex       sync.RWMutex
 	runVerificationArgsForCall []struct {
-		arg1 *options.Verifier
+		arg1 *options.SigstoreVerification
 		arg2 bundle.VerifyCapable
 		arg3 *bundlea.Bundle
 	}
@@ -52,15 +53,29 @@ type FakeVerifier struct {
 		result1 *verify.VerificationResult
 		result2 error
 	}
+	VerifyStub        func(*options.Verification, *bundlea.Bundle) (*verify.VerificationResult, error)
+	verifyMutex       sync.RWMutex
+	verifyArgsForCall []struct {
+		arg1 *options.Verification
+		arg2 *bundlea.Bundle
+	}
+	verifyReturns struct {
+		result1 *verify.VerificationResult
+		result2 error
+	}
+	verifyReturnsOnCall map[int]struct {
+		result1 *verify.VerificationResult
+		result2 error
+	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeVerifier) BuildSigstoreVerifier(arg1 *options.Verifier) (bundle.VerifyCapable, error) {
+func (fake *FakeVerifier) BuildSigstoreVerifier(arg1 *sigstore.InstanceConfig) (bundle.VerifyCapable, error) {
 	fake.buildSigstoreVerifierMutex.Lock()
 	ret, specificReturn := fake.buildSigstoreVerifierReturnsOnCall[len(fake.buildSigstoreVerifierArgsForCall)]
 	fake.buildSigstoreVerifierArgsForCall = append(fake.buildSigstoreVerifierArgsForCall, struct {
-		arg1 *options.Verifier
+		arg1 *sigstore.InstanceConfig
 	}{arg1})
 	stub := fake.BuildSigstoreVerifierStub
 	fakeReturns := fake.buildSigstoreVerifierReturns
@@ -81,13 +96,13 @@ func (fake *FakeVerifier) BuildSigstoreVerifierCallCount() int {
 	return len(fake.buildSigstoreVerifierArgsForCall)
 }
 
-func (fake *FakeVerifier) BuildSigstoreVerifierCalls(stub func(*options.Verifier) (bundle.VerifyCapable, error)) {
+func (fake *FakeVerifier) BuildSigstoreVerifierCalls(stub func(*sigstore.InstanceConfig) (bundle.VerifyCapable, error)) {
 	fake.buildSigstoreVerifierMutex.Lock()
 	defer fake.buildSigstoreVerifierMutex.Unlock()
 	fake.BuildSigstoreVerifierStub = stub
 }
 
-func (fake *FakeVerifier) BuildSigstoreVerifierArgsForCall(i int) *options.Verifier {
+func (fake *FakeVerifier) BuildSigstoreVerifierArgsForCall(i int) *sigstore.InstanceConfig {
 	fake.buildSigstoreVerifierMutex.RLock()
 	defer fake.buildSigstoreVerifierMutex.RUnlock()
 	argsForCall := fake.buildSigstoreVerifierArgsForCall[i]
@@ -184,11 +199,11 @@ func (fake *FakeVerifier) OpenBundleReturnsOnCall(i int, result1 *bundlea.Bundle
 	}{result1, result2}
 }
 
-func (fake *FakeVerifier) RunVerification(arg1 *options.Verifier, arg2 bundle.VerifyCapable, arg3 *bundlea.Bundle) (*verify.VerificationResult, error) {
+func (fake *FakeVerifier) RunVerification(arg1 *options.SigstoreVerification, arg2 bundle.VerifyCapable, arg3 *bundlea.Bundle) (*verify.VerificationResult, error) {
 	fake.runVerificationMutex.Lock()
 	ret, specificReturn := fake.runVerificationReturnsOnCall[len(fake.runVerificationArgsForCall)]
 	fake.runVerificationArgsForCall = append(fake.runVerificationArgsForCall, struct {
-		arg1 *options.Verifier
+		arg1 *options.SigstoreVerification
 		arg2 bundle.VerifyCapable
 		arg3 *bundlea.Bundle
 	}{arg1, arg2, arg3})
@@ -211,13 +226,13 @@ func (fake *FakeVerifier) RunVerificationCallCount() int {
 	return len(fake.runVerificationArgsForCall)
 }
 
-func (fake *FakeVerifier) RunVerificationCalls(stub func(*options.Verifier, bundle.VerifyCapable, *bundlea.Bundle) (*verify.VerificationResult, error)) {
+func (fake *FakeVerifier) RunVerificationCalls(stub func(*options.SigstoreVerification, bundle.VerifyCapable, *bundlea.Bundle) (*verify.VerificationResult, error)) {
 	fake.runVerificationMutex.Lock()
 	defer fake.runVerificationMutex.Unlock()
 	fake.RunVerificationStub = stub
 }
 
-func (fake *FakeVerifier) RunVerificationArgsForCall(i int) (*options.Verifier, bundle.VerifyCapable, *bundlea.Bundle) {
+func (fake *FakeVerifier) RunVerificationArgsForCall(i int) (*options.SigstoreVerification, bundle.VerifyCapable, *bundlea.Bundle) {
 	fake.runVerificationMutex.RLock()
 	defer fake.runVerificationMutex.RUnlock()
 	argsForCall := fake.runVerificationArgsForCall[i]
@@ -245,6 +260,71 @@ func (fake *FakeVerifier) RunVerificationReturnsOnCall(i int, result1 *verify.Ve
 		})
 	}
 	fake.runVerificationReturnsOnCall[i] = struct {
+		result1 *verify.VerificationResult
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *FakeVerifier) Verify(arg1 *options.Verification, arg2 *bundlea.Bundle) (*verify.VerificationResult, error) {
+	fake.verifyMutex.Lock()
+	ret, specificReturn := fake.verifyReturnsOnCall[len(fake.verifyArgsForCall)]
+	fake.verifyArgsForCall = append(fake.verifyArgsForCall, struct {
+		arg1 *options.Verification
+		arg2 *bundlea.Bundle
+	}{arg1, arg2})
+	stub := fake.VerifyStub
+	fakeReturns := fake.verifyReturns
+	fake.recordInvocation("Verify", []interface{}{arg1, arg2})
+	fake.verifyMutex.Unlock()
+	if stub != nil {
+		return stub(arg1, arg2)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	return fakeReturns.result1, fakeReturns.result2
+}
+
+func (fake *FakeVerifier) VerifyCallCount() int {
+	fake.verifyMutex.RLock()
+	defer fake.verifyMutex.RUnlock()
+	return len(fake.verifyArgsForCall)
+}
+
+func (fake *FakeVerifier) VerifyCalls(stub func(*options.Verification, *bundlea.Bundle) (*verify.VerificationResult, error)) {
+	fake.verifyMutex.Lock()
+	defer fake.verifyMutex.Unlock()
+	fake.VerifyStub = stub
+}
+
+func (fake *FakeVerifier) VerifyArgsForCall(i int) (*options.Verification, *bundlea.Bundle) {
+	fake.verifyMutex.RLock()
+	defer fake.verifyMutex.RUnlock()
+	argsForCall := fake.verifyArgsForCall[i]
+	return argsForCall.arg1, argsForCall.arg2
+}
+
+func (fake *FakeVerifier) VerifyReturns(result1 *verify.VerificationResult, result2 error) {
+	fake.verifyMutex.Lock()
+	defer fake.verifyMutex.Unlock()
+	fake.VerifyStub = nil
+	fake.verifyReturns = struct {
+		result1 *verify.VerificationResult
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *FakeVerifier) VerifyReturnsOnCall(i int, result1 *verify.VerificationResult, result2 error) {
+	fake.verifyMutex.Lock()
+	defer fake.verifyMutex.Unlock()
+	fake.VerifyStub = nil
+	if fake.verifyReturnsOnCall == nil {
+		fake.verifyReturnsOnCall = make(map[int]struct {
+			result1 *verify.VerificationResult
+			result2 error
+		})
+	}
+	fake.verifyReturnsOnCall[i] = struct {
 		result1 *verify.VerificationResult
 		result2 error
 	}{result1, result2}
