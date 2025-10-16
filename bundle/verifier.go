@@ -7,7 +7,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 
+	"github.com/nozzle/throttler"
 	"github.com/sigstore/sigstore-go/pkg/bundle"
 	"github.com/sigstore/sigstore-go/pkg/root"
 	"github.com/sigstore/sigstore-go/pkg/verify"
@@ -15,8 +17,44 @@ import (
 
 	"github.com/carabiner-dev/signer/internal/tuf"
 	"github.com/carabiner-dev/signer/options"
+	"github.com/carabiner-dev/signer/sigstore"
 )
 
+type BundleOptsFunc func(*DefaultVerifier) error
+
+// WithSigstoreRootsData sets the raw json data holding the sigstore instances
+// configuration
+func WithSigstoreRootsData(data []byte) BundleOptsFunc {
+	return func(v *DefaultVerifier) error {
+		roots, err := sigstore.ParseRoots(data)
+		if err != nil {
+			return err
+		}
+
+		for i := range roots.Roots {
+			ver, err := v.BuildSigstoreVerifier(&roots.Roots[i])
+			if err != nil {
+				return fmt.Errorf("building verifier %d: %w", i, err)
+			}
+			v.Verifiers = append(v.Verifiers, ver)
+		}
+		return nil
+	}
+}
+
+// New creates a new verifier
+func New(funcs ...BundleOptsFunc) Verifier {
+	ret := &DefaultVerifier{}
+	for _, f := range funcs {
+		if err := f(ret); err != nil {
+			log.Default().Print(err)
+		}
+	}
+
+	return ret
+}
+
+// VerifyCapable abstracts the verifier to mock
 type VerifyCapable interface {
 	Verify(verify.SignedEntity, verify.PolicyBuilder) (*verify.VerificationResult, error)
 }
@@ -26,13 +64,16 @@ type VerifyCapable interface {
 //
 //counterfeiter:generate . Verifier
 type Verifier interface {
+	Verify(*options.Verification, *bundle.Bundle) (*verify.VerificationResult, error)
 	OpenBundle(string) (*bundle.Bundle, error)
-	BuildSigstoreVerifier(*options.Verifier) (VerifyCapable, error)
-	RunVerification(*options.Verifier, VerifyCapable, *bundle.Bundle) (*verify.VerificationResult, error)
+	BuildSigstoreVerifier(*sigstore.InstanceConfig) (VerifyCapable, error)
+	RunVerification(*options.SigstoreVerification, VerifyCapable, *bundle.Bundle) (*verify.VerificationResult, error)
 }
 
 // DefaultVerifier implements the BundleVerifier interface.
-type DefaultVerifier struct{}
+type DefaultVerifier struct {
+	Verifiers []VerifyCapable
+}
 
 // OpenBundle opens a bundle file
 func (bv *DefaultVerifier) OpenBundle(path string) (*bundle.Bundle, error) {
@@ -43,11 +84,53 @@ func (bv *DefaultVerifier) OpenBundle(path string) (*bundle.Bundle, error) {
 	return b, nil
 }
 
+// Verify is the main verification function to check bundles
+func (bv *DefaultVerifier) Verify(opts *options.Verification, bndl *bundle.Bundle) (*verify.VerificationResult, error) {
+	if len(bv.Verifiers) == 0 {
+		return nil, fmt.Errorf("unable to verify bundle, no sigstore instances loaded")
+	}
+
+	// TODO(puerco): Befor brute forcing all instances, we could try to guess which
+	// instance should be used by looking at the cert issuer.
+
+	var finalRes *verify.VerificationResult
+
+	t := throttler.New(4, len(bv.Verifiers))
+	for i := range bv.Verifiers {
+		go func() {
+			if finalRes != nil {
+				t.Done(nil)
+				return
+			}
+
+			// Run the verification
+			res, err := bv.RunVerification(&opts.SigstoreVerification, bv.Verifiers[i], bndl)
+			if err != nil {
+				t.Done(err)
+				return
+			}
+
+			// No error with a result? Then we got it.
+			if res != nil {
+				finalRes = res
+			}
+
+			t.Done(nil)
+		}()
+		t.Throttle()
+	}
+
+	if finalRes != nil {
+		return finalRes, nil
+	}
+	return nil, fmt.Errorf("unable to verify with the configured sigstore instances: %w", t.Err())
+}
+
 // BuildSigstoreVerifier creates a configured sigstore verifier from the
 // configured options.
 // TODO(puerco): Abstract the returned verifier
-func (bv *DefaultVerifier) BuildSigstoreVerifier(opts *options.Verifier) (VerifyCapable, error) {
-	trustedMaterial, err := bv.assembleTrustedMaterial(opts)
+func (bv *DefaultVerifier) BuildSigstoreVerifier(conf *sigstore.InstanceConfig) (VerifyCapable, error) {
+	trustedMaterial, err := bv.assembleTrustedMaterial(conf)
 	if err != nil {
 		return nil, fmt.Errorf("building trusted materials: %w", err)
 	}
@@ -56,18 +139,18 @@ func (bv *DefaultVerifier) BuildSigstoreVerifier(opts *options.Verifier) (Verify
 	}
 
 	// Create the verifier
-	sigstoreVerifier, err := verify.NewVerifier(trustedMaterial, bv.buildVerifierConfig(opts)...)
+	sigstoreVerifier, err := verify.NewVerifier(trustedMaterial, bv.buildVerifierConfig(conf)...)
 	if err != nil {
 		return nil, fmt.Errorf("building sigstore verifier: %w", err)
 	}
 	return sigstoreVerifier, nil
 }
 
-func (bv *DefaultVerifier) assembleTrustedMaterial(opts *options.Verifier) (root.TrustedMaterialCollection, error) {
+func (bv *DefaultVerifier) assembleTrustedMaterial(conf *sigstore.InstanceConfig) (root.TrustedMaterialCollection, error) {
 	trustedMaterial := make(root.TrustedMaterialCollection, 0)
 
 	// Fetch the trusted root data
-	data, err := tuf.GetRoot(&opts.TufOptions)
+	data, err := tuf.GetRoot(&conf.TufOptions)
 	if err != nil {
 		return nil, fmt.Errorf("fetching trusted root: %w", err)
 	}
@@ -82,18 +165,22 @@ func (bv *DefaultVerifier) assembleTrustedMaterial(opts *options.Verifier) (root
 }
 
 // buildVerifierConfig creates a verifier configuration from an options set
-func (bv *DefaultVerifier) buildVerifierConfig(opts *options.Verifier) []verify.VerifierOption {
+func (bv *DefaultVerifier) buildVerifierConfig(conf *sigstore.InstanceConfig) []verify.VerifierOption {
 	config := []verify.VerifierOption{}
 
-	if opts.RequireCTlog {
+	if conf.RequireCTlog {
 		config = append(config, verify.WithSignedCertificateTimestamps(1))
 	}
 
-	if opts.RequireTimestamp {
+	if conf.RequireSignedTimestamps {
+		config = append(config, verify.WithSignedTimestamps(1))
+	}
+
+	if conf.RequireObserverTimestamp {
 		config = append(config, verify.WithObserverTimestamps(1))
 	}
 
-	if opts.RequireTlog {
+	if conf.RequireTlog {
 		config = append(config, verify.WithTransparencyLog(1))
 	}
 
@@ -102,7 +189,7 @@ func (bv *DefaultVerifier) buildVerifierConfig(opts *options.Verifier) []verify.
 
 // RunVerification verifies an artifact using the provided verifier
 func (bv *DefaultVerifier) RunVerification(
-	opts *options.Verifier, sigstoreVerifier VerifyCapable, bndl *bundle.Bundle,
+	opts *options.SigstoreVerification, sigstoreVerifier VerifyCapable, bndl *bundle.Bundle,
 ) (*verify.VerificationResult, error) {
 	// If this is a DSSE envelope, check it as a payload
 	dsse := bndl.GetDsseEnvelope()
@@ -124,7 +211,7 @@ func (bv *DefaultVerifier) RunVerification(
 		// Here we pass the expected identities to the sigstore-go library
 		expectedIdentity, err := verify.NewShortCertificateIdentity(
 			opts.ExpectedIssuer,      // Issuer
-			opts.ExpectedIssuerRegex, // issuerRegex
+			opts.ExpectedIssuerRegex, // IssuerRegex
 			opts.ExpectedSan,         // SAN
 			opts.ExpectedSanRegex,    // SAN regex
 		)
