@@ -26,24 +26,18 @@ func TestVerifyParsedBundleIntegration(t *testing.T) {
 			v := bundlefakes.FakeVerifier{}
 			return &v
 		}},
-		{"BuildSigstoreVerifier-fails", true, func(t *testing.T) bundle.Verifier {
+		{"verify-fails", true, func(t *testing.T) bundle.Verifier {
 			t.Helper()
 			v := bundlefakes.FakeVerifier{}
-			v.BuildSigstoreVerifierReturns(nil, errors.New("building verifier failed"))
-			return &v
-		}},
-		{"BuildSigstoreVeRunVerificationrifier-fails", true, func(t *testing.T) bundle.Verifier {
-			t.Helper()
-			v := bundlefakes.FakeVerifier{}
-			v.RunVerificationReturns(nil, errors.New("verifying failed"))
+			v.VerifyReturns(nil, errors.New("verifying failed"))
 			return &v
 		}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			sut := Verifier{
-				Options:         options.DefaultVerifier,
-				bundleVerifiers: []bundle.Verifier{tt.getVerifier(t)},
+				Options:        options.DefaultVerifier,
+				bundleVerifier: tt.getVerifier(t),
 			}
 			_, err := sut.VerifyParsedBundle(nil)
 			if tt.mustErr {
