@@ -11,9 +11,8 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"fmt"
-
-	"github.com/pkg/errors"
 )
 
 func NewParser() *Parser {
