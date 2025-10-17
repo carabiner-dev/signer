@@ -8,8 +8,14 @@ on:
     branches: [ "main" ]
   workflow_dispatch: {}
 
+permissions: {}
+
 jobs:
   test:
+    permissions:
+      id-token: write # needed for keyless signing
+      contents: read
+
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
@@ -24,6 +30,8 @@ jobs:
         cache: true
 
     - name: Test
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
       run: |
         go get -d ./...
         go test -v ./...

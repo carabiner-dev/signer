@@ -5,6 +5,7 @@ package signer
 
 import (
 	"errors"
+	"os"
 	"testing"
 
 	sdsse "github.com/sigstore/protobuf-specs/gen/pb-go/dsse"
@@ -233,4 +234,24 @@ func TestSignStatementToDSSE(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+func TestSignWithDefaults(t *testing.T) {
+	t.Parallel()
+	// Only run this if we're running in githu actions
+	if os.Getenv("GITHUB_ACTIONS") != "true" {
+		t.Skip("(not running in an actions workflow)")
+	}
+	s := NewSigner()
+	statementData, err := os.ReadFile("bundle/testdata/statement.json")
+	require.NoError(t, err)
+	bundle, err := s.SignStatement(statementData)
+	require.NoError(t, err)
+	require.NotNil(t, bundle)
+
+	// Test verifying it
+	v := NewVerifier()
+	res, err := v.VerifyParsedBundle(bundle)
+	require.NoError(t, err)
+	require.NotNil(t, res)
 }
