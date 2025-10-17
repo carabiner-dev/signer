@@ -14,6 +14,10 @@ import (
 	"github.com/carabiner-dev/signer/key"
 )
 
+func NewSigner() Signer {
+	return &DefaultSigner{}
+}
+
 // SignerOptions captures the options to sign
 type SignerOptions struct {
 	Keys []key.PrivateKeyProvider
