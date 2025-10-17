@@ -29,7 +29,7 @@ var DefaultSigstore = Sigstore{
 
 var DefaultSigner = Signer{
 	TufOptions: tuf.TufOptions{
-		TufRootURL:  tuf.SigstorePublicGoodBaseURL,
+		// TufRootURL:  tuf.SigstorePublicGoodBaseURL,
 		TufRootPath: "",
 		Fetcher:     tuf.Defaultfetcher(),
 	},

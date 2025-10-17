@@ -26,16 +26,10 @@ func TestVerifyParsedBundleIntegration(t *testing.T) {
 			v := bundlefakes.FakeVerifier{}
 			return &v
 		}},
-		{"BuildSigstoreVerifier-fails", true, func(t *testing.T) bundle.Verifier {
+		{"verify-fails", true, func(t *testing.T) bundle.Verifier {
 			t.Helper()
 			v := bundlefakes.FakeVerifier{}
-			v.BuildSigstoreVerifierReturns(nil, errors.New("building verifier failed"))
-			return &v
-		}},
-		{"BuildSigstoreVeRunVerificationrifier-fails", true, func(t *testing.T) bundle.Verifier {
-			t.Helper()
-			v := bundlefakes.FakeVerifier{}
-			v.RunVerificationReturns(nil, errors.New("verifying failed"))
+			v.VerifyReturns(nil, errors.New("verifying failed"))
 			return &v
 		}},
 	} {

@@ -1,0 +1,42 @@
+{
+    "roots": [
+        {
+            "id": "sigstore",
+            "issuer-org": "sigstore.dev",
+            "tuf-root-url": "https://tuf-repo-cdn.sigstore.dev",
+            "fulcio-url": "https://fulcio.sigstore.dev",
+            "rekor-url": "https://rekor.sigstore.dev",
+            "ctfe-url": "ctfe.sigstore.dev",
+            
+            "oidc-redirect-url": "http://localhost:0/auth/callback",
+            "oidc-issuer": "https://oauth2.sigstore.dev/auth",
+            "oidc-client-id": "sigstore",
+            "oidc-client-secret": "",
+
+            "rekor-append": true,
+
+            "require-ct-log": true,
+            "require-observer-timestamp": true,
+            "require-tlog": true
+        },
+        {
+            "id": "github",
+            "issuer-org": "GitHub, Inc.",
+            "tuf-root-url": "https://tuf-repo.github.com",
+            "fulcio-url": "https://fulcio.githubapp.com",
+            "rekor-url": "",
+            "tsa-url": "https://timestamp.githubapp.com",
+
+            "oidc-redirect-url": "http://localhost:0/auth/callback",
+            "oidc-issuer": "",
+            "oidc-client-id": "sigstore",
+            "oidc-client-secret": "",
+
+            "require-ct-log": false,
+            "require-observer-timestamp": false,
+            "require-signed-timestamps": true,
+            "require-tlog": false            
+        }
+    ]
+}
+

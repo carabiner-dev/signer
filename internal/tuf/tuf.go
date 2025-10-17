@@ -5,6 +5,8 @@ package tuf
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
 
 	"github.com/sigstore/sigstore-go/pkg/tuf"
@@ -12,28 +14,31 @@ import (
 	"sigs.k8s.io/release-utils/version"
 )
 
-const SigstorePublicGoodBaseURL = "https://tuf-repo-cdn.sigstore.dev"
-
 // TufOptions captures the TUF options handled by bind
 type TufOptions struct {
 	Fetcher     fetcher.Fetcher
-	TufRootPath string
-	TufRootURL  string
+	TufRootPath string `json:"tuf-root-path"`
+	TufRootURL  string `json:"tuf-root-url"`
+	RootData    []byte `json:"root-data"`
 }
 
 // GetClient returns a TUF client configured with the options
 func GetClient(opts *TufOptions) (*tuf.Client, error) {
-	// Build the TUF client:
-	tufOpts := tuf.DefaultOptions()
-	tufOpts.RepositoryBaseURL = SigstorePublicGoodBaseURL
-	tufOpts.Fetcher = Defaultfetcher()
-
-	if opts.Fetcher != nil {
-		tufOpts.Fetcher = opts.Fetcher
+	home, err := os.UserHomeDir()
+	if err != nil {
+		// Fall back to using a TUF repository in the temp location
+		home = os.TempDir()
 	}
 
-	if opts.TufRootURL != "" {
-		tufOpts.RepositoryBaseURL = opts.TufRootURL
+	tufOpts := &tuf.Options{
+		CacheValidity:             0,
+		ForceCache:                false,
+		Root:                      opts.RootData,
+		CachePath:                 filepath.Join(home, ".sigstore", "root"),
+		RepositoryBaseURL:         opts.TufRootURL,
+		DisableLocalCache:         false,
+		DisableConsistentSnapshot: false,
+		Fetcher:                   Defaultfetcher(),
 	}
 
 	client, err := tuf.New(tufOpts)
@@ -55,7 +60,6 @@ func GetRoot(opts *TufOptions) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("fetching TUF root data: %w", err)
 	}
-
 	return data, nil
 }
 
@@ -64,8 +68,7 @@ func Defaultfetcher() fetcher.Fetcher {
 	f := fetcher.NewDefaultFetcher()
 	agentString := fmt.Sprintf(
 		"Carabiner Signer/%s (%s; %s; Carabiner Systems; https://github.com/carabiner-dev/signer)",
-		version.GetVersionInfo().GitVersion,
-		runtime.GOOS, runtime.GOARCH,
+		version.GetVersionInfo().GitVersion, runtime.GOOS, runtime.GOARCH,
 	)
 	f.SetHTTPUserAgent(agentString)
 	return f

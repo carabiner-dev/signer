@@ -1,0 +1,23 @@
+{
+    "roots": [
+       {
+            "id": "github",
+            "issuer-org": "GitHub, Inc.",
+            "tuf-root-url": "https://tuf-repo.github.com",
+            "fulcio-url": "https://fulcio.githubapp.com",
+            "rekor-url": "",
+            "tsa-url": "https://timestamp.githubapp.com",
+
+            "oidc-redirect-url": "http://localhost:0/auth/callback",
+            "oidc-issuer": "",
+            "oidc-client-id": "sigstore",
+            "oidc-client-secret": "",
+
+            "require-ct-log": false,
+            "require-observer-timestamp": false,
+            "require-signed-timestamps": true,
+            "require-tlog": false            
+        }
+    ]
+}
+
