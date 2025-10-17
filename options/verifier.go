@@ -5,11 +5,9 @@ package options
 
 import (
 	"crypto"
-	_ "embed"
-)
 
-//go:embed sigstore-roots.json
-var DefaultRoots []byte
+	"github.com/carabiner-dev/signer/sigstore"
+)
 
 type VerifierOptFunc func(*Verifier)
 
@@ -37,7 +35,7 @@ type Verifier struct {
 // DefaultVerifier default options to configure the verifier
 var DefaultVerifier = Verifier{
 	Verification:      DefaultVerification,
-	SigstoreRootsData: DefaultRoots, // Embedded data from the file
+	SigstoreRootsData: sigstore.DefaultRoots, // Embedded data from the file
 }
 
 // WithSigstoreRootsPath sets the path to the sigstore roots configuration file

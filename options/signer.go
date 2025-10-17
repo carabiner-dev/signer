@@ -6,11 +6,12 @@ package options
 import (
 	"errors"
 
+	"github.com/carabiner-dev/signer/sigstore"
 	"github.com/sigstore/sigstore/pkg/oauthflow"
 )
 
 var DefaultSigner = Signer{
-	SigstoreRootsData: DefaultRoots, // Embedded data from the rootsfile
+	SigstoreRootsData: sigstore.DefaultRoots, // Embedded data from the rootsfile
 }
 
 // Signer

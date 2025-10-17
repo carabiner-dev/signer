@@ -10,6 +10,9 @@ import (
 	"os"
 )
 
+//go:embed sigstore-roots.json
+var DefaultRoots []byte
+
 //go:embed roots
 var rootFiles embed.FS
 

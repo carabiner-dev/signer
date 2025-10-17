@@ -15,7 +15,7 @@ import (
 // TestEnsureDefaultSigstore checks that the default sigstore
 // options match the first instance in the roots file.
 func TestEnsureDefaultSigstore(t *testing.T) {
-	conf, err := sigstore.ParseRoots(DefaultRoots)
+	conf, err := sigstore.ParseRoots(sigstore.DefaultRoots)
 	require.NoError(t, err)
 
 	moded := DefaultSigstore
@@ -37,13 +37,13 @@ func TestDefaultRoots(t *testing.T) {
 	}{
 		{"top-level-file", func(t *testing.T) *sigstore.SigstoreRoots {
 			t.Helper()
-			roots, err := sigstore.ParseRootsFile("sigstore-roots.json")
+			roots, err := sigstore.ParseRootsFile("../sigstore-roots.json")
 			require.NoError(t, err)
 			return roots
 		}},
 		{"options-embed", func(t *testing.T) *sigstore.SigstoreRoots {
 			t.Helper()
-			roots, err := sigstore.ParseRoots(DefaultRoots)
+			roots, err := sigstore.ParseRoots(sigstore.DefaultRoots)
 			require.NoError(t, err)
 			return roots
 		}},
