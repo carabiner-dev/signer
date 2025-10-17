@@ -1,0 +1,32 @@
+{
+  "predicateType": "http://github.com/carabiner-dev/snappy/specs/branch-rules.yaml",
+  "predicate": {
+    "headers": {
+      "Date": "Tue, 20 May 2025 02:12:39 GMT",
+      "Etag": "\"d021ddf1d7ff4a5dcef28f5a2240b85b88f84b1e077a464809338d172afa15eb\"",
+      "Server": "github.com",
+      "X-Github-Api-Version-Selected": "2022-11-28",
+      "X-Github-Request-Id": "3882:13A898:4CE1F5A:9A51AA4:682BE517"
+    },
+    "id": "github.com/openvex/go-vex@main",
+    "metadata": {
+      "date": "2025-05-20T02:12:39.736304345Z",
+      "endpoint": "repos/openvex/go-vex/rules/branches/main",
+      "method": "GET"
+    },
+    "name": "github.com/openvex/go-vex@main",
+    "type": "http://github.com/carabiner-dev/snappy/specs/branch-rules.yaml",
+    "url": "git+https://github.com/openvex/go-vex/@main",
+    "values": []
+  },
+  "_type": "https://in-toto.io/Statement/v1",
+  "subject": [
+    {
+      "name": "github.com/openvex/go-vex@main",
+      "uri": "git+https://github.com/openvex/go-vex/@main",
+      "digest": {
+        "sha256": "d98532da0e064468f1d433543b5797f81d4a057f1534e8b3531d7aac5f6fe133"
+      }
+    }
+  ]
+}

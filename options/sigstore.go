@@ -60,37 +60,94 @@ type Sigstore struct {
 	RequireObserverTimestamp bool `json:"require-observer-timestamp"`
 }
 
-// Verify checks the integrity of the sigstore options
-func (s *Sigstore) Verify() error {
+// Ensure the options have the required OIDC fields
+func (s *Sigstore) ValidateOIDC() error {
 	errs := []error{}
+	if s.OidcClientID == "" {
+		errs = append(errs, errors.New("OIDC client ID is missing"))
+	}
+
+	if s.OidcIssuer == "" {
+		errs = append(errs, errors.New("OIDC issuer URL missing"))
+	}
+
+	if s.OidcRedirectURL == "" {
+		errs = append(errs, errors.New("OIDC redirect URL missing"))
+	}
+	return errors.Join(errs...)
+}
+
+var DefaultSigstore = Sigstore{
+	Timestamp:     true,
+	AppendToRekor: true,
+
+	TufOptions: tuf.TufOptions{
+		TufRootURL: "https://tuf-repo-cdn.sigstore.dev",
+	},
+
+	HideOIDCOptions: true,
+	OidcRedirectURL: "http://localhost:0/auth/callback",
+	OidcIssuer:      "https://oauth2.sigstore.dev/auth",
+	OidcClientID:    "sigstore",
+
+	// URLs default the public good instances
+	FulcioURL: "https://fulcio.sigstore.dev",
+	RekorURL:  "https://rekor.sigstore.dev",
+
+	RequireCTlog:             true,
+	RequireTlog:              true,
+	RequireObserverTimestamp: true,
+}
+
+// ValidateTimestamps
+func (s *Sigstore) ValidateTimestamps() error {
+	if !s.RequireCTlog && !s.RequireTlog && !s.RequireObserverTimestamp && !s.RequireSignedTimestamps {
+		return errors.New("at least one method to check timestamps must be set")
+	}
+	return nil
+}
+
+// ValidateSigner check the options required to sign
+func (s *Sigstore) ValidateSigner() error {
+	errs := []error{
+		s.ValidateOIDC(),
+	}
 	if s.RekorURL == "" {
-		errs = append(errs, errors.New("rekor url not set"))
+		if s.AppendToRekor {
+			errs = append(errs, errors.New("rekor url not set (and append to rekor is set)"))
+		}
 	} else {
 		if _, err := url.Parse(s.RekorURL); err != nil {
-			return fmt.Errorf("invalid Rekor URL value")
+			errs = append(errs, fmt.Errorf("invalid Rekor URL"))
 		}
 	}
 	if s.FulcioURL == "" {
 		errs = append(errs, errors.New("fulcio url not set"))
 	} else {
 		if _, err := url.Parse(s.RekorURL); err != nil {
-			return fmt.Errorf("invalid Rekor URL value")
+			errs = append(errs, fmt.Errorf("invalid Rekor URL"))
 		}
 	}
+	return errors.Join(errs...)
+}
 
-	if s.OidcIssuer == "" {
-		errs = append(errs, errors.New("OIDC issuer URL not set"))
+func (s *Sigstore) ValidateVerifier() error {
+	errs := []error{
+		s.ValidateTimestamps(),
+	}
+	if s.FulcioURL == "" {
+		errs = append(errs, errors.New("fulcio url not set"))
 	} else {
 		if _, err := url.Parse(s.RekorURL); err != nil {
-			return fmt.Errorf("invalid OIDC issuer URL")
+			errs = append(errs, fmt.Errorf("invalid Rekor URL value"))
 		}
 	}
-
-	if s.OidcClientID == "" {
-		errs = append(errs, fmt.Errorf("no OIDC client id set"))
-	}
-
 	return errors.Join(errs...)
+}
+
+// Validate checks the integrity of the sigstore options
+func (s *Sigstore) Validate() error {
+	return s.ValidateVerifier()
 }
 
 // AddFlags adds flags to a spf13/cobra command exposing the sigstore

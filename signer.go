@@ -10,20 +10,43 @@ import (
 
 	sdsse "github.com/sigstore/protobuf-specs/gen/pb-go/dsse"
 	sbundle "github.com/sigstore/sigstore-go/pkg/bundle"
+	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/carabiner-dev/signer/bundle"
 	"github.com/carabiner-dev/signer/dsse"
 	"github.com/carabiner-dev/signer/options"
+	"github.com/carabiner-dev/signer/sigstore"
 )
 
 const GitHubTimeStamperURL = "https://timestamp.githubapp.com/api/v1/timestamp"
 
+// NewSigner creates a new signer and initializes it with the default sigstore
+// roots embedded in the package.
 func NewSigner() *Signer {
+	// Parse the default roots, by default we sign using the first sigstore
+	// root which is tested to ensure it is sign-capable
+	opts := options.DefaultSigner
+	roots, err := sigstore.ParseRoots(opts.SigstoreRootsData)
+	if err == nil && len(roots.Roots) > 0 {
+		opts.Sigstore = roots.Roots[0].Sigstore
+	} else {
+		// This is a fatal err. This should never happen as the package embeds
+		// the roots information and we have unit tests to check they are valid
+		// but we rather fail here instead of leaving apps to do something funky
+		// with the signer if for some reason the roots data is invalid.
+		errm := ""
+		if err != nil {
+			errm = fmt.Sprintf(" (%s)", err.Error())
+		} else if len(roots.Roots) == 0 {
+			errm = " (no roots defined)"
+		}
+		logrus.Fatalf("failed parsing roots config%s", errm)
+	}
 	return &Signer{
-		Options:      options.DefaultSigner,
-		bundleSigner: &bundle.DefaultSigner{},
-		dsseSigner:   &dsse.DefaultSigner{},
+		Options:      opts,
+		bundleSigner: bundle.NewSigner(),
+		dsseSigner:   dsse.NewSigner(),
 	}
 }
 
@@ -66,7 +89,7 @@ func (s *Signer) SignStatement(data []byte, funcs ...options.SignOptFn) (*sbundl
 	}
 	// Verify the defined options:
 	if err := s.Options.Validate(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("validating options for signing: %w", err)
 	}
 	// check that statement is not empty and it is an intoto attestation
 	if err := s.bundleSigner.VerifyAttestationContent(&s.Options, data); err != nil {

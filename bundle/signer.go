@@ -43,6 +43,10 @@ type Signer interface {
 	SignBundle(content sign.Content, keypair sign.Keypair, opts *sign.BundleOptions) (*protobundle.Bundle, error)
 }
 
+func NewSigner() Signer {
+	return &DefaultSigner{}
+}
+
 // DefaultSigner implements the BundleSigner interface for the signer
 type DefaultSigner struct{}
 
