@@ -16,7 +16,6 @@ import (
 	"github.com/carabiner-dev/signer/dsse"
 	"github.com/carabiner-dev/signer/dsse/dssefakes"
 	"github.com/carabiner-dev/signer/options"
-	"github.com/carabiner-dev/signer/sigstore"
 )
 
 func TestSignStatement(t *testing.T) {
@@ -32,10 +31,7 @@ func TestSignStatement(t *testing.T) {
 }
 `
 	opts := options.DefaultSigner
-	// Parse the roots
-	roots, err := sigstore.ParseRoots(opts.SigstoreRootsData)
-	require.NoError(t, err)
-	opts.Instance = roots.Roots[0].Instance
+	require.NoError(t, opts.Validate())
 
 	for _, tt := range []struct {
 		name      string
@@ -108,9 +104,7 @@ func TestSignMessage(t *testing.T) {
 
 	// Parse the roots
 	opts := options.DefaultSigner
-	roots, err := sigstore.ParseRoots(opts.SigstoreRootsData)
-	require.NoError(t, err)
-	opts.Instance = roots.Roots[0].Instance
+	require.NoError(t, opts.Validate())
 
 	for _, tt := range []struct {
 		name      string
