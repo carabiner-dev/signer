@@ -29,7 +29,7 @@ func NewSigner() *Signer {
 	opts := options.DefaultSigner
 	roots, err := sigstore.ParseRoots(opts.SigstoreRootsData)
 	if err == nil && len(roots.Roots) > 0 {
-		opts.Sigstore = roots.Roots[0].Sigstore
+		opts.Instance = roots.Roots[0].Instance
 	} else {
 		// This is a fatal err. This should never happen as the package embeds
 		// the roots information and we have unit tests to check they are valid

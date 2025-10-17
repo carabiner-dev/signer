@@ -35,7 +35,7 @@ func TestSignStatement(t *testing.T) {
 	// Parse the roots
 	roots, err := sigstore.ParseRoots(opts.SigstoreRootsData)
 	require.NoError(t, err)
-	opts.Sigstore = roots.Roots[0].Sigstore
+	opts.Instance = roots.Roots[0].Instance
 
 	for _, tt := range []struct {
 		name      string
@@ -110,7 +110,7 @@ func TestSignMessage(t *testing.T) {
 	opts := options.DefaultSigner
 	roots, err := sigstore.ParseRoots(opts.SigstoreRootsData)
 	require.NoError(t, err)
-	opts.Sigstore = roots.Roots[0].Sigstore
+	opts.Instance = roots.Roots[0].Instance
 
 	for _, tt := range []struct {
 		name      string
