@@ -7,8 +7,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/carabiner-dev/signer/sigstore"
 	"github.com/sigstore/sigstore/pkg/oauthflow"
+
+	"github.com/carabiner-dev/signer/sigstore"
 )
 
 var DefaultSigner = Signer{
@@ -38,7 +39,7 @@ func (so *Signer) ParseRoots() error {
 		return fmt.Errorf("no root configuration found")
 	}
 
-	so.Sigstore.Instance = roots.Roots[0].Instance
+	so.Instance = roots.Roots[0].Instance
 	so.parsedRoots = true
 	return nil
 }
