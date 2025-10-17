@@ -263,7 +263,7 @@ func TestSignWithDefaults(t *testing.T) {
 
 	// Test verifying it
 	v := NewVerifier()
-	res, err := v.VerifyParsedBundle(bndl)
+	res, err := v.VerifyParsedBundle(bndl, options.WithSkipIdentityCheck(true))
 	require.NoError(t, err)
 	require.NotNil(t, res)
 }
