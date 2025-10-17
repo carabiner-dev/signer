@@ -8,8 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-
-	"github.com/carabiner-dev/signer/options"
 )
 
 //go:embed roots
@@ -29,7 +27,7 @@ type SigstoreRoots struct {
 type InstanceConfig struct {
 	ID        string `json:"id"`
 	IssuerOrg string `json:"issuer-org"`
-	options.Sigstore
+	Instance
 }
 
 // ParseRootsFile parses a sigstore roots file
