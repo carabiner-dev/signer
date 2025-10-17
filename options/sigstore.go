@@ -102,7 +102,7 @@ var DefaultSigstore = Sigstore{
 // ValidateTimestamps
 func (s *Sigstore) ValidateTimestamps() error {
 	if !s.RequireCTlog && !s.RequireTlog && !s.RequireObserverTimestamp && !s.RequireSignedTimestamps {
-		return errors.New("At least one method to check timestamps must be set")
+		return errors.New("at least one method to check timestamps must be set")
 	}
 	return nil
 }

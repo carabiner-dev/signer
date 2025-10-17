@@ -16,6 +16,7 @@ import (
 	"github.com/carabiner-dev/signer/dsse"
 	"github.com/carabiner-dev/signer/dsse/dssefakes"
 	"github.com/carabiner-dev/signer/options"
+	"github.com/carabiner-dev/signer/sigstore"
 )
 
 func TestSignStatement(t *testing.T) {
@@ -30,6 +31,11 @@ func TestSignStatement(t *testing.T) {
   ]
 }
 `
+	opts := options.DefaultSigner
+	// Parse the roots
+	roots, err := sigstore.ParseRoots(opts.SigstoreRootsData)
+	require.NoError(t, err)
+	opts.Sigstore = roots.Roots[0].Sigstore
 
 	for _, tt := range []struct {
 		name      string
@@ -81,7 +87,7 @@ func TestSignStatement(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			sut := &Signer{
-				Options:      options.DefaultSigner,
+				Options:      opts,
 				bundleSigner: tt.getSigner(t),
 			}
 			res, err := sut.SignStatement([]byte(attData))
@@ -99,6 +105,12 @@ func TestSignMessage(t *testing.T) {
 	t.Parallel()
 
 	testData := "this is my signed data"
+
+	// Parse the roots
+	opts := options.DefaultSigner
+	roots, err := sigstore.ParseRoots(opts.SigstoreRootsData)
+	require.NoError(t, err)
+	opts.Sigstore = roots.Roots[0].Sigstore
 
 	for _, tt := range []struct {
 		name      string
@@ -144,7 +156,7 @@ func TestSignMessage(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			sut := &Signer{
-				Options:      options.DefaultSigner,
+				Options:      opts,
 				bundleSigner: tt.getSigner(t),
 			}
 			res, err := sut.SignMessage([]byte(testData))
@@ -245,13 +257,13 @@ func TestSignWithDefaults(t *testing.T) {
 	s := NewSigner()
 	statementData, err := os.ReadFile("bundle/testdata/statement.json")
 	require.NoError(t, err)
-	bundle, err := s.SignStatement(statementData)
+	bndl, err := s.SignStatement(statementData)
 	require.NoError(t, err)
-	require.NotNil(t, bundle)
+	require.NotNil(t, bndl)
 
 	// Test verifying it
 	v := NewVerifier()
-	res, err := v.VerifyParsedBundle(bundle)
+	res, err := v.VerifyParsedBundle(bndl)
 	require.NoError(t, err)
 	require.NotNil(t, res)
 }

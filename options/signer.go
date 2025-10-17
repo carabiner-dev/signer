@@ -23,7 +23,7 @@ type Signer struct {
 // Validate checks the signer options
 func (so *Signer) Validate() error {
 	errs := []error{
-		so.Sigstore.ValidateSigner(),
+		so.ValidateSigner(),
 	}
 	return errors.Join(errs...)
 }

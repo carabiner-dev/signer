@@ -8,9 +8,9 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/stretchr/testify/require"
 
 	"github.com/carabiner-dev/signer/options"
-	"github.com/stretchr/testify/require"
 )
 
 // TestEnsureDefaultSigstore checks that the default sigstore
@@ -55,7 +55,7 @@ func TestDefaultRoots(t *testing.T) {
 
 			// Require at least one root
 			require.GreaterOrEqual(t, len(roots.Roots), 1)
-			require.NoError(t, roots.Roots[0].Sigstore.ValidateSigner())
+			require.NoError(t, roots.Roots[0].ValidateSigner())
 
 			// Verify all returned sets are valid
 			for _, r := range roots.Roots {
