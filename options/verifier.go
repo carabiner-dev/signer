@@ -9,7 +9,7 @@ import (
 )
 
 //go:embed sigstore-roots.json
-var defaultRoots []byte
+var DefaultRoots []byte
 
 type VerifierOptFunc func(*Verifier)
 
@@ -37,7 +37,7 @@ type Verifier struct {
 // DefaultVerifier default options to configure the verifier
 var DefaultVerifier = Verifier{
 	Verification:      DefaultVerification,
-	SigstoreRootsData: defaultRoots, // Embedded data from the file
+	SigstoreRootsData: DefaultRoots, // Embedded data from the file
 }
 
 // WithSigstoreRootsPath sets the path to the sigstore roots configuration file

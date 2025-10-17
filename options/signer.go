@@ -10,7 +10,7 @@ import (
 )
 
 var DefaultSigner = Signer{
-	SigstoreRootsData: defaultRoots, // Embedded data from the rootsfile
+	SigstoreRootsData: DefaultRoots, // Embedded data from the rootsfile
 }
 
 // Signer
@@ -22,18 +22,8 @@ type Signer struct {
 
 // Validate checks the signer options
 func (so *Signer) Validate() error {
-	errs := []error{}
-	if so.OidcIssuer == "" {
-		errs = append(errs, errors.New("OIDC issuer not set"))
+	errs := []error{
+		so.Sigstore.ValidateSigner(),
 	}
-
-	if so.OidcClientID == "" {
-		errs = append(errs, errors.New("OIDC client not set"))
-	}
-
-	if so.OidcRedirectURL == "" {
-		errs = append(errs, errors.New("OIDC redirect URL not set"))
-	}
-
 	return errors.Join(errs...)
 }
