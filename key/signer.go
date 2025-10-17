@@ -9,10 +9,9 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strings"
-
-	"github.com/pkg/errors"
 )
 
 func NewSigner() *Signer {

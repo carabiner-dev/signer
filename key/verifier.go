@@ -11,12 +11,11 @@ import (
 	"crypto/rsa"
 	"encoding/asn1"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/big"
 	"strings"
 	"time"
-
-	"github.com/pkg/errors"
 )
 
 type Verifier struct{}

@@ -7,7 +7,6 @@ require (
 	github.com/in-toto/attestation v1.1.2
 	github.com/maxbrunsfeld/counterfeiter/v6 v6.12.0
 	github.com/nozzle/throttler v0.0.0-20180817012639-2ea982251481
-	github.com/pkg/errors v0.9.1
 	github.com/sigstore/protobuf-specs v0.5.0
 	github.com/sigstore/sigstore v1.9.6-0.20250729224751-181c5d3339b3
 	github.com/sigstore/sigstore-go v1.1.3
@@ -99,6 +98,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.3 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/sagikazarmark/locafero v0.7.0 // indirect

@@ -12,9 +12,8 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/pem"
+	"errors"
 	"fmt"
-
-	"github.com/pkg/errors"
 )
 
 // Private abstracts a private key use mainly to sign.
