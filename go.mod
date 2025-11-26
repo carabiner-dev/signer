@@ -1,6 +1,6 @@
 module github.com/carabiner-dev/signer
 
-go 1.24.8
+go 1.24.9
 
 require (
 	github.com/google/go-cmp v0.7.0
@@ -13,7 +13,7 @@ require (
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.10.1
 	github.com/stretchr/testify v1.11.1
-	github.com/theupdateframework/go-tuf/v2 v2.2.0
+	github.com/theupdateframework/go-tuf/v2 v2.3.0
 	golang.org/x/term v0.37.0
 	google.golang.org/protobuf v1.36.10
 	sigs.k8s.io/release-utils v0.12.2
