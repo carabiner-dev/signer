@@ -4,7 +4,7 @@
 version: v2
 
 modules:
-  - path: proto/carabiner/signer
+  - path: proto/
     lint:
       except:
         - ENUM_VALUE_PREFIX

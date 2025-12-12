@@ -5,7 +5,7 @@ syntax = "proto3";
 package carabiner.signer.v1;
 
 import "google/protobuf/timestamp.proto";
-import "v1/identity.proto";
+import "carabiner/signer/v1/identity.proto";
 
 option go_package = "github.com/carabiner-dev/policy/api/v1";
 
