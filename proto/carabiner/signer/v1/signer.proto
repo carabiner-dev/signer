@@ -7,7 +7,7 @@ package carabiner.signer.v1;
 import "google/protobuf/timestamp.proto";
 import "carabiner/signer/v1/identity.proto";
 
-option go_package = "github.com/carabiner-dev/policy/api/v1";
+option go_package = "github.com/carabiner-dev/signer/api/v1";
 
 // Results of the signature verification process
 message Verification  {

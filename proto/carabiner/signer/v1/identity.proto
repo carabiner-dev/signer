@@ -4,7 +4,7 @@
 syntax = "proto3";
 package carabiner.signer.v1;
 
-option go_package = "github.com/carabiner-dev/policy/api/v1";
+option go_package = "github.com/carabiner-dev/signer/api/v1";
 
 // Identity captures a signer identity. An identity can one of:
 //   a) A sigstore identity

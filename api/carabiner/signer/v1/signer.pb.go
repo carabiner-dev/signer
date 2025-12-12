@@ -169,7 +169,7 @@ const file_carabiner_signer_v1_signer_proto_rawDesc = "" +
 	"Identities\x12\x18\n" +
 	"\amessage\x18\x04 \x01(\tR\amessage\x12\x14\n" +
 	"\x05error\x18\x05 \x01(\tR\x05errorB\xbc\x01\n" +
-	"\x17com.carabiner.signer.v1B\vSignerProtoP\x01Z&github.com/carabiner-dev/policy/api/v1\xa2\x02\x03CSX\xaa\x02\x13Carabiner.Signer.V1\xca\x02\x13Carabiner\\Signer\\V1\xe2\x02\x1fCarabiner\\Signer\\V1\\GPBMetadata\xea\x02\x15Carabiner::Signer::V1b\x06proto3"
+	"\x17com.carabiner.signer.v1B\vSignerProtoP\x01Z&github.com/carabiner-dev/signer/api/v1\xa2\x02\x03CSX\xaa\x02\x13Carabiner.Signer.V1\xca\x02\x13Carabiner\\Signer\\V1\xe2\x02\x1fCarabiner\\Signer\\V1\\GPBMetadata\xea\x02\x15Carabiner::Signer::V1b\x06proto3"
 
 var (
 	file_carabiner_signer_v1_signer_proto_rawDescOnce sync.Once
