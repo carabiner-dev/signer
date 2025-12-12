@@ -1,8 +1,9 @@
 module github.com/carabiner-dev/signer
 
-go 1.25.0
+go 1.25.5
 
 require (
+	github.com/carabiner-dev/attestation v0.2.0
 	github.com/google/go-cmp v0.7.0
 	github.com/in-toto/attestation v1.1.2
 	github.com/maxbrunsfeld/counterfeiter/v6 v6.12.1
