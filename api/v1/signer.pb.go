@@ -5,7 +5,7 @@
 // versions:
 // 	protoc-gen-go v1.36.10
 // 	protoc        (unknown)
-// source: v1/signer.proto
+// source: carabiner/signer/v1/signer.proto
 
 package v1
 
@@ -35,7 +35,7 @@ type Verification struct {
 
 func (x *Verification) Reset() {
 	*x = Verification{}
-	mi := &file_v1_signer_proto_msgTypes[0]
+	mi := &file_carabiner_signer_v1_signer_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -47,7 +47,7 @@ func (x *Verification) String() string {
 func (*Verification) ProtoMessage() {}
 
 func (x *Verification) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_signer_proto_msgTypes[0]
+	mi := &file_carabiner_signer_v1_signer_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -60,7 +60,7 @@ func (x *Verification) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Verification.ProtoReflect.Descriptor instead.
 func (*Verification) Descriptor() ([]byte, []int) {
-	return file_v1_signer_proto_rawDescGZIP(), []int{0}
+	return file_carabiner_signer_v1_signer_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *Verification) GetSignature() *SignatureVerification {
@@ -91,7 +91,7 @@ type SignatureVerification struct {
 
 func (x *SignatureVerification) Reset() {
 	*x = SignatureVerification{}
-	mi := &file_v1_signer_proto_msgTypes[1]
+	mi := &file_carabiner_signer_v1_signer_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -103,7 +103,7 @@ func (x *SignatureVerification) String() string {
 func (*SignatureVerification) ProtoMessage() {}
 
 func (x *SignatureVerification) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_signer_proto_msgTypes[1]
+	mi := &file_carabiner_signer_v1_signer_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -116,7 +116,7 @@ func (x *SignatureVerification) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SignatureVerification.ProtoReflect.Descriptor instead.
 func (*SignatureVerification) Descriptor() ([]byte, []int) {
-	return file_v1_signer_proto_rawDescGZIP(), []int{1}
+	return file_carabiner_signer_v1_signer_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *SignatureVerification) GetDate() *timestamppb.Timestamp {
@@ -154,11 +154,11 @@ func (x *SignatureVerification) GetError() string {
 	return ""
 }
 
-var File_v1_signer_proto protoreflect.FileDescriptor
+var File_carabiner_signer_v1_signer_proto protoreflect.FileDescriptor
 
-const file_v1_signer_proto_rawDesc = "" +
+const file_carabiner_signer_v1_signer_proto_rawDesc = "" +
 	"\n" +
-	"\x0fv1/signer.proto\x12\x13carabiner.signer.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x11v1/identity.proto\"X\n" +
+	" carabiner/signer/v1/signer.proto\x12\x13carabiner.signer.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\"carabiner/signer/v1/identity.proto\"X\n" +
 	"\fVerification\x12H\n" +
 	"\tsignature\x18\x01 \x01(\v2*.carabiner.signer.v1.SignatureVerificationR\tsignature\"\xd2\x01\n" +
 	"\x15SignatureVerification\x12.\n" +
@@ -169,28 +169,28 @@ const file_v1_signer_proto_rawDesc = "" +
 	"Identities\x12\x18\n" +
 	"\amessage\x18\x04 \x01(\tR\amessage\x12\x14\n" +
 	"\x05error\x18\x05 \x01(\tR\x05errorB\xbc\x01\n" +
-	"\x17com.carabiner.signer.v1B\vSignerProtoP\x01Z&github.com/carabiner-dev/policy/api/v1\xa2\x02\x03CSX\xaa\x02\x13Carabiner.Signer.V1\xca\x02\x13Carabiner\\Signer\\V1\xe2\x02\x1fCarabiner\\Signer\\V1\\GPBMetadata\xea\x02\x15Carabiner::Signer::V1b\x06proto3"
+	"\x17com.carabiner.signer.v1B\vSignerProtoP\x01Z&github.com/carabiner-dev/signer/api/v1\xa2\x02\x03CSX\xaa\x02\x13Carabiner.Signer.V1\xca\x02\x13Carabiner\\Signer\\V1\xe2\x02\x1fCarabiner\\Signer\\V1\\GPBMetadata\xea\x02\x15Carabiner::Signer::V1b\x06proto3"
 
 var (
-	file_v1_signer_proto_rawDescOnce sync.Once
-	file_v1_signer_proto_rawDescData []byte
+	file_carabiner_signer_v1_signer_proto_rawDescOnce sync.Once
+	file_carabiner_signer_v1_signer_proto_rawDescData []byte
 )
 
-func file_v1_signer_proto_rawDescGZIP() []byte {
-	file_v1_signer_proto_rawDescOnce.Do(func() {
-		file_v1_signer_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_v1_signer_proto_rawDesc), len(file_v1_signer_proto_rawDesc)))
+func file_carabiner_signer_v1_signer_proto_rawDescGZIP() []byte {
+	file_carabiner_signer_v1_signer_proto_rawDescOnce.Do(func() {
+		file_carabiner_signer_v1_signer_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_carabiner_signer_v1_signer_proto_rawDesc), len(file_carabiner_signer_v1_signer_proto_rawDesc)))
 	})
-	return file_v1_signer_proto_rawDescData
+	return file_carabiner_signer_v1_signer_proto_rawDescData
 }
 
-var file_v1_signer_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
-var file_v1_signer_proto_goTypes = []any{
+var file_carabiner_signer_v1_signer_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_carabiner_signer_v1_signer_proto_goTypes = []any{
 	(*Verification)(nil),          // 0: carabiner.signer.v1.Verification
 	(*SignatureVerification)(nil), // 1: carabiner.signer.v1.SignatureVerification
 	(*timestamppb.Timestamp)(nil), // 2: google.protobuf.Timestamp
 	(*Identity)(nil),              // 3: carabiner.signer.v1.Identity
 }
-var file_v1_signer_proto_depIdxs = []int32{
+var file_carabiner_signer_v1_signer_proto_depIdxs = []int32{
 	1, // 0: carabiner.signer.v1.Verification.signature:type_name -> carabiner.signer.v1.SignatureVerification
 	2, // 1: carabiner.signer.v1.SignatureVerification.date:type_name -> google.protobuf.Timestamp
 	3, // 2: carabiner.signer.v1.SignatureVerification.Identities:type_name -> carabiner.signer.v1.Identity
@@ -201,27 +201,27 @@ var file_v1_signer_proto_depIdxs = []int32{
 	0, // [0:3] is the sub-list for field type_name
 }
 
-func init() { file_v1_signer_proto_init() }
-func file_v1_signer_proto_init() {
-	if File_v1_signer_proto != nil {
+func init() { file_carabiner_signer_v1_signer_proto_init() }
+func file_carabiner_signer_v1_signer_proto_init() {
+	if File_carabiner_signer_v1_signer_proto != nil {
 		return
 	}
-	file_v1_identity_proto_init()
+	file_carabiner_signer_v1_identity_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_v1_signer_proto_rawDesc), len(file_v1_signer_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_carabiner_signer_v1_signer_proto_rawDesc), len(file_carabiner_signer_v1_signer_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
-		GoTypes:           file_v1_signer_proto_goTypes,
-		DependencyIndexes: file_v1_signer_proto_depIdxs,
-		MessageInfos:      file_v1_signer_proto_msgTypes,
+		GoTypes:           file_carabiner_signer_v1_signer_proto_goTypes,
+		DependencyIndexes: file_carabiner_signer_v1_signer_proto_depIdxs,
+		MessageInfos:      file_carabiner_signer_v1_signer_proto_msgTypes,
 	}.Build()
-	File_v1_signer_proto = out.File
-	file_v1_signer_proto_goTypes = nil
-	file_v1_signer_proto_depIdxs = nil
+	File_carabiner_signer_v1_signer_proto = out.File
+	file_carabiner_signer_v1_signer_proto_goTypes = nil
+	file_carabiner_signer_v1_signer_proto_depIdxs = nil
 }
