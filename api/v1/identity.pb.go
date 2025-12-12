@@ -5,7 +5,7 @@
 // versions:
 // 	protoc-gen-go v1.36.10
 // 	protoc        (unknown)
-// source: v1/identity.proto
+// source: carabiner/signer/v1/identity.proto
 
 package v1
 
@@ -41,7 +41,7 @@ type Identity struct {
 
 func (x *Identity) Reset() {
 	*x = Identity{}
-	mi := &file_v1_identity_proto_msgTypes[0]
+	mi := &file_carabiner_signer_v1_identity_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -53,7 +53,7 @@ func (x *Identity) String() string {
 func (*Identity) ProtoMessage() {}
 
 func (x *Identity) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_identity_proto_msgTypes[0]
+	mi := &file_carabiner_signer_v1_identity_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -66,7 +66,7 @@ func (x *Identity) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Identity.ProtoReflect.Descriptor instead.
 func (*Identity) Descriptor() ([]byte, []int) {
-	return file_v1_identity_proto_rawDescGZIP(), []int{0}
+	return file_carabiner_signer_v1_identity_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *Identity) GetId() string {
@@ -109,7 +109,7 @@ type IdentitySigstore struct {
 
 func (x *IdentitySigstore) Reset() {
 	*x = IdentitySigstore{}
-	mi := &file_v1_identity_proto_msgTypes[1]
+	mi := &file_carabiner_signer_v1_identity_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -121,7 +121,7 @@ func (x *IdentitySigstore) String() string {
 func (*IdentitySigstore) ProtoMessage() {}
 
 func (x *IdentitySigstore) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_identity_proto_msgTypes[1]
+	mi := &file_carabiner_signer_v1_identity_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -134,7 +134,7 @@ func (x *IdentitySigstore) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IdentitySigstore.ProtoReflect.Descriptor instead.
 func (*IdentitySigstore) Descriptor() ([]byte, []int) {
-	return file_v1_identity_proto_rawDescGZIP(), []int{1}
+	return file_carabiner_signer_v1_identity_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *IdentitySigstore) GetMode() string {
@@ -170,7 +170,7 @@ type IdentityKey struct {
 
 func (x *IdentityKey) Reset() {
 	*x = IdentityKey{}
-	mi := &file_v1_identity_proto_msgTypes[2]
+	mi := &file_carabiner_signer_v1_identity_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -182,7 +182,7 @@ func (x *IdentityKey) String() string {
 func (*IdentityKey) ProtoMessage() {}
 
 func (x *IdentityKey) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_identity_proto_msgTypes[2]
+	mi := &file_carabiner_signer_v1_identity_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -195,7 +195,7 @@ func (x *IdentityKey) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IdentityKey.ProtoReflect.Descriptor instead.
 func (*IdentityKey) Descriptor() ([]byte, []int) {
-	return file_v1_identity_proto_rawDescGZIP(), []int{2}
+	return file_carabiner_signer_v1_identity_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *IdentityKey) GetId() string {
@@ -231,7 +231,7 @@ type IdentityRef struct {
 
 func (x *IdentityRef) Reset() {
 	*x = IdentityRef{}
-	mi := &file_v1_identity_proto_msgTypes[3]
+	mi := &file_carabiner_signer_v1_identity_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -243,7 +243,7 @@ func (x *IdentityRef) String() string {
 func (*IdentityRef) ProtoMessage() {}
 
 func (x *IdentityRef) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_identity_proto_msgTypes[3]
+	mi := &file_carabiner_signer_v1_identity_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -256,7 +256,7 @@ func (x *IdentityRef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IdentityRef.ProtoReflect.Descriptor instead.
 func (*IdentityRef) Descriptor() ([]byte, []int) {
-	return file_v1_identity_proto_rawDescGZIP(), []int{3}
+	return file_carabiner_signer_v1_identity_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *IdentityRef) GetId() string {
@@ -266,11 +266,11 @@ func (x *IdentityRef) GetId() string {
 	return ""
 }
 
-var File_v1_identity_proto protoreflect.FileDescriptor
+var File_carabiner_signer_v1_identity_proto protoreflect.FileDescriptor
 
-const file_v1_identity_proto_rawDesc = "" +
+const file_carabiner_signer_v1_identity_proto_rawDesc = "" +
 	"\n" +
-	"\x11v1/identity.proto\x12\x13carabiner.signer.v1\"\xf1\x01\n" +
+	"\"carabiner/signer/v1/identity.proto\x12\x13carabiner.signer.v1\"\xf1\x01\n" +
 	"\bIdentity\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12F\n" +
 	"\bsigstore\x18\x02 \x01(\v2%.carabiner.signer.v1.IdentitySigstoreH\x00R\bsigstore\x88\x01\x01\x127\n" +
@@ -290,28 +290,28 @@ const file_v1_identity_proto_rawDesc = "" +
 	"\x04data\x18\x03 \x01(\tR\x04data\"\x1d\n" +
 	"\vIdentityRef\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02idB\xbe\x01\n" +
-	"\x17com.carabiner.signer.v1B\rIdentityProtoP\x01Z&github.com/carabiner-dev/policy/api/v1\xa2\x02\x03CSX\xaa\x02\x13Carabiner.Signer.V1\xca\x02\x13Carabiner\\Signer\\V1\xe2\x02\x1fCarabiner\\Signer\\V1\\GPBMetadata\xea\x02\x15Carabiner::Signer::V1b\x06proto3"
+	"\x17com.carabiner.signer.v1B\rIdentityProtoP\x01Z&github.com/carabiner-dev/signer/api/v1\xa2\x02\x03CSX\xaa\x02\x13Carabiner.Signer.V1\xca\x02\x13Carabiner\\Signer\\V1\xe2\x02\x1fCarabiner\\Signer\\V1\\GPBMetadata\xea\x02\x15Carabiner::Signer::V1b\x06proto3"
 
 var (
-	file_v1_identity_proto_rawDescOnce sync.Once
-	file_v1_identity_proto_rawDescData []byte
+	file_carabiner_signer_v1_identity_proto_rawDescOnce sync.Once
+	file_carabiner_signer_v1_identity_proto_rawDescData []byte
 )
 
-func file_v1_identity_proto_rawDescGZIP() []byte {
-	file_v1_identity_proto_rawDescOnce.Do(func() {
-		file_v1_identity_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_v1_identity_proto_rawDesc), len(file_v1_identity_proto_rawDesc)))
+func file_carabiner_signer_v1_identity_proto_rawDescGZIP() []byte {
+	file_carabiner_signer_v1_identity_proto_rawDescOnce.Do(func() {
+		file_carabiner_signer_v1_identity_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_carabiner_signer_v1_identity_proto_rawDesc), len(file_carabiner_signer_v1_identity_proto_rawDesc)))
 	})
-	return file_v1_identity_proto_rawDescData
+	return file_carabiner_signer_v1_identity_proto_rawDescData
 }
 
-var file_v1_identity_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
-var file_v1_identity_proto_goTypes = []any{
+var file_carabiner_signer_v1_identity_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_carabiner_signer_v1_identity_proto_goTypes = []any{
 	(*Identity)(nil),         // 0: carabiner.signer.v1.Identity
 	(*IdentitySigstore)(nil), // 1: carabiner.signer.v1.IdentitySigstore
 	(*IdentityKey)(nil),      // 2: carabiner.signer.v1.IdentityKey
 	(*IdentityRef)(nil),      // 3: carabiner.signer.v1.IdentityRef
 }
-var file_v1_identity_proto_depIdxs = []int32{
+var file_carabiner_signer_v1_identity_proto_depIdxs = []int32{
 	1, // 0: carabiner.signer.v1.Identity.sigstore:type_name -> carabiner.signer.v1.IdentitySigstore
 	2, // 1: carabiner.signer.v1.Identity.key:type_name -> carabiner.signer.v1.IdentityKey
 	3, // 2: carabiner.signer.v1.Identity.ref:type_name -> carabiner.signer.v1.IdentityRef
@@ -322,28 +322,28 @@ var file_v1_identity_proto_depIdxs = []int32{
 	0, // [0:3] is the sub-list for field type_name
 }
 
-func init() { file_v1_identity_proto_init() }
-func file_v1_identity_proto_init() {
-	if File_v1_identity_proto != nil {
+func init() { file_carabiner_signer_v1_identity_proto_init() }
+func file_carabiner_signer_v1_identity_proto_init() {
+	if File_carabiner_signer_v1_identity_proto != nil {
 		return
 	}
-	file_v1_identity_proto_msgTypes[0].OneofWrappers = []any{}
-	file_v1_identity_proto_msgTypes[1].OneofWrappers = []any{}
+	file_carabiner_signer_v1_identity_proto_msgTypes[0].OneofWrappers = []any{}
+	file_carabiner_signer_v1_identity_proto_msgTypes[1].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_v1_identity_proto_rawDesc), len(file_v1_identity_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_carabiner_signer_v1_identity_proto_rawDesc), len(file_carabiner_signer_v1_identity_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
-		GoTypes:           file_v1_identity_proto_goTypes,
-		DependencyIndexes: file_v1_identity_proto_depIdxs,
-		MessageInfos:      file_v1_identity_proto_msgTypes,
+		GoTypes:           file_carabiner_signer_v1_identity_proto_goTypes,
+		DependencyIndexes: file_carabiner_signer_v1_identity_proto_depIdxs,
+		MessageInfos:      file_carabiner_signer_v1_identity_proto_msgTypes,
 	}.Build()
-	File_v1_identity_proto = out.File
-	file_v1_identity_proto_goTypes = nil
-	file_v1_identity_proto_depIdxs = nil
+	File_carabiner_signer_v1_identity_proto = out.File
+	file_carabiner_signer_v1_identity_proto_goTypes = nil
+	file_carabiner_signer_v1_identity_proto_depIdxs = nil
 }
