@@ -48,12 +48,10 @@ func TestCI_Provide(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Set up environment
 			if tt.envValue != "" {
-				if err := os.Setenv(VariableGitLabIDToken, tt.envValue); err != nil {
-					t.Fatalf("failed to set env var: %v", err)
-				}
-				defer os.Unsetenv(VariableGitLabIDToken)
+				t.Setenv(VariableGitLabIDToken, tt.envValue)
+				defer os.Unsetenv(VariableGitLabIDToken) //nolint:errcheck
 			} else {
-				os.Unsetenv(VariableGitLabIDToken)
+				os.Unsetenv(VariableGitLabIDToken) //nolint:errcheck
 			}
 
 			// Run the provider

@@ -19,7 +19,7 @@ var (
 )
 
 var DefaultProviders = map[string]Provider{
-	"gitlab": &gitlab.CI{},
+	"gitlab":  &gitlab.CI{},
 	"actions": &github.Actions{},
 }
 

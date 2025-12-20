@@ -18,7 +18,7 @@ import (
 const (
 	// VariableGitLabIDToken is the environment variable that GitLab CI
 	// sets when id_tokens are configured in the pipeline.
-	VariableGitLabIDToken = "SIGSTORE_ID_TOKEN"
+	VariableGitLabIDToken = "SIGSTORE_ID_TOKEN" //nolint:gosec // These are not hardcoded credentials
 )
 
 type CI struct{}
