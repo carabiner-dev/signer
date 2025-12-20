@@ -244,9 +244,13 @@ func TestSignStatementToDSSE(t *testing.T) {
 
 func TestSignWithDefaults(t *testing.T) {
 	t.Parallel()
-	// Only run this if we're running in githu actions
+	// Only run this if we're running in github actions
 	if os.Getenv("GITHUB_ACTIONS") != "true" {
 		t.Skip("(not running in an actions workflow)")
+	}
+	// Skip on fork PRs where OIDC tokens are unavailable for security reasons
+	if os.Getenv("ACTIONS_ID_TOKEN_REQUEST_URL") == "" {
+		t.Skip("(skipping on fork PR - OIDC tokens not available)")
 	}
 	s := NewSigner()
 	statementData, err := os.ReadFile("bundle/testdata/statement.json")
