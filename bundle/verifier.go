@@ -147,7 +147,7 @@ func (bv *DefaultVerifier) BuildSigstoreVerifier(conf *sigstore.InstanceConfig) 
 }
 
 func (bv *DefaultVerifier) assembleTrustedMaterial(conf *sigstore.InstanceConfig) (root.TrustedMaterialCollection, error) {
-	trustedMaterial := make(root.TrustedMaterialCollection, 0)
+	trustedMaterial := make(root.TrustedMaterialCollection, 1)
 
 	// Fetch the trusted root data
 	data, err := tuf.GetRoot(&conf.TufOptions)
@@ -159,8 +159,7 @@ func (bv *DefaultVerifier) assembleTrustedMaterial(conf *sigstore.InstanceConfig
 	if err != nil {
 		return nil, err
 	}
-	trustedMaterial = append(trustedMaterial, trustedRoot)
-
+	trustedMaterial[0] = trustedRoot
 	return trustedMaterial, nil
 }
 
