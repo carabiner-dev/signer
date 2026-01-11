@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 var (
@@ -51,11 +52,13 @@ const (
 // Public key abstracts a public key data and all its features required to
 // verify. After parsing, the original key data is preserved in the srtuct.
 type Public struct {
-	Type     Type
-	Scheme   Scheme
-	HashType crypto.Hash
-	Data     string
-	Key      crypto.PublicKey
+	Type      Type
+	Scheme    Scheme
+	HashType  crypto.Hash
+	Data      string
+	Key       crypto.PublicKey
+	NotBefore *time.Time `json:"not_before"`
+	NotAfter  *time.Time `json:"not_after"`
 }
 
 // ID computes a key id by hashing the key data and triming it to the first bytes

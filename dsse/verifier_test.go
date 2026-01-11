@@ -117,8 +117,8 @@ func TestRunVerification(t *testing.T) {
 			env, err := v.OpenEnvelope(filepath.Join("testdata", tt.dssePath))
 			require.NoError(t, err)
 
-			pubKeys := []key.PublicKeyProvider{}
-			for _, path := range tt.keyPaths {
+			pubKeys := make([]key.PublicKeyProvider, len(tt.keyPaths))
+			for i, path := range tt.keyPaths {
 				// Parse the keys
 				keydata, err := os.ReadFile(filepath.Join("testdata", path))
 				require.NoError(t, err)
@@ -130,7 +130,7 @@ func TestRunVerification(t *testing.T) {
 
 				pubKey, err := key.NewParser().ParsePublicKey(keydata, opts...)
 				require.NoError(t, err)
-				pubKeys = append(pubKeys, pubKey)
+				pubKeys[i] = pubKey
 			}
 
 			res, err := v.RunVerification(&options.Verifier{}, key.NewVerifier(), env, pubKeys)

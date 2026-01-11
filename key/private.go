@@ -14,15 +14,22 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"time"
 )
+
+type PrivateKeyProvider interface {
+	PrivateKey() (*Private, error)
+}
 
 // Private abstracts a private key use mainly to sign.
 type Private struct {
-	Type     Type
-	Scheme   Scheme
-	HashType crypto.Hash
-	Data     string
-	Key      crypto.PublicKey
+	Type      Type
+	Scheme    Scheme
+	HashType  crypto.Hash
+	Data      string
+	Key       crypto.PublicKey
+	NotBefore *time.Time `json:"not_before"`
+	NotAfter  *time.Time `json:"not_after"`
 }
 
 // ID computes a key id by hashing the key data and triming it to the first 8 bytes
@@ -67,11 +74,13 @@ func (p *Private) PublicKey() (*Public, error) {
 		})
 
 		return &Public{
-			Type:     RSA,
-			Scheme:   p.Scheme,
-			HashType: p.HashType,
-			Data:     string(publicKeyPEM),
-			Key:      &public,
+			Type:      RSA,
+			Scheme:    p.Scheme,
+			HashType:  p.HashType,
+			Data:      string(publicKeyPEM),
+			Key:       &public,
+			NotBefore: p.NotBefore,
+			NotAfter:  p.NotAfter,
 		}, nil
 	case *ecdsa.PrivateKey:
 		public := pk.PublicKey
@@ -87,11 +96,13 @@ func (p *Private) PublicKey() (*Public, error) {
 		})
 
 		return &Public{
-			Type:     ECDSA,
-			Scheme:   p.Scheme,
-			HashType: p.HashType,
-			Data:     string(pemEncoded),
-			Key:      &public,
+			Type:      ECDSA,
+			Scheme:    p.Scheme,
+			HashType:  p.HashType,
+			Data:      string(pemEncoded),
+			Key:       &public,
+			NotBefore: p.NotBefore,
+			NotAfter:  p.NotAfter,
 		}, nil
 
 	case ed25519.PrivateKey:
@@ -111,10 +122,12 @@ func (p *Private) PublicKey() (*Public, error) {
 		})
 
 		return &Public{
-			Type:   ED25519,
-			Scheme: Ed25519,
-			Data:   string(pemEncoded),
-			Key:    derivedPublicKey,
+			Type:      ED25519,
+			Scheme:    Ed25519,
+			Data:      string(pemEncoded),
+			Key:       derivedPublicKey,
+			NotBefore: p.NotBefore,
+			NotAfter:  p.NotAfter,
 		}, nil
 	default:
 		return nil, errors.New("unsupported private key type")
@@ -127,10 +140,6 @@ func (p *Private) PrivateKey() (*Private, error) {
 		return nil, fmt.Errorf("private key not set")
 	}
 	return p, nil
-}
-
-type PrivateKeyProvider interface {
-	PrivateKey() (*Private, error)
 }
 
 func marshalPrivateKey(k crypto.PrivateKey) ([]byte, error) {
