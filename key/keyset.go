@@ -102,3 +102,35 @@ func (ks KeySet) GetLatestKey() Key {
 
 	return validKeys[0].key
 }
+
+// ActiveKeys returns all keys whose dates are currently valid or have no dates.
+// A key is active if its NotBefore date has passed (or is nil) and its
+// NotAfter date has not passed (or is nil).
+func (ks KeySet) ActiveKeys() KeySet {
+	return ks.activeKeys(time.Now(), 0)
+}
+
+// ActiveOrRecentlyExpiredKeys returns all active keys plus keys that expired
+// within the given threshold duration.
+func (ks KeySet) ActiveOrRecentlyExpiredKeys(threshold time.Duration) KeySet {
+	return ks.activeKeys(time.Now(), threshold)
+}
+
+// activeKeys is the internal implementation for filtering keys by validity.
+func (ks KeySet) activeKeys(now time.Time, expiredThreshold time.Duration) KeySet {
+	var result KeySet
+	for _, k := range ks {
+		// Skip keys whose NotBefore hasn't passed yet
+		if notBefore := k.GetNotBefore(); notBefore != nil && notBefore.After(now) {
+			continue
+		}
+		// Skip expired keys (unless within threshold)
+		if notAfter := k.GetNotAfter(); notAfter != nil && notAfter.Before(now) {
+			if expiredThreshold == 0 || now.Sub(*notAfter) > expiredThreshold {
+				continue
+			}
+		}
+		result = append(result, k)
+	}
+	return result
+}
