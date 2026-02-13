@@ -8,8 +8,8 @@ import (
 
 	"github.com/sigstore/sigstore/pkg/oauthflow"
 
-	"github.com/carabiner-dev/signer/internal/sts/providers/github"
-	"github.com/carabiner-dev/signer/internal/sts/providers/gitlab"
+	"github.com/carabiner-dev/signer/sts/providers/github"
+	"github.com/carabiner-dev/signer/sts/providers/gitlab"
 )
 
 // Ensure the provider implement
