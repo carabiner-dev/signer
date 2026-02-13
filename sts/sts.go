@@ -5,6 +5,7 @@ package sts
 
 import (
 	"context"
+	"sync"
 
 	"github.com/sigstore/sigstore/pkg/oauthflow"
 
@@ -18,9 +19,28 @@ var (
 	_ Provider = &gitlab.CI{}
 )
 
+// These are the two default STS providers, the signer project has additional
+// providers in https://github.com/carabiner-dev/signer-extras which have a
+// heavier dependency footprint.
 var DefaultProviders = map[string]Provider{
 	"gitlab":  &gitlab.CI{},
 	"actions": &github.Actions{},
+}
+
+var mtx sync.Mutex
+
+// RegisterProvider registers a new provider
+func RegisterProvider(key string, p Provider) {
+	mtx.Lock()
+	DefaultProviders[key] = p
+	mtx.Unlock()
+}
+
+// RegisterProvider registers a new provider
+func UnregisterProvider(key string, p Provider) {
+	mtx.Lock()
+	delete(DefaultProviders, key)
+	mtx.Unlock()
 }
 
 type Provider interface {
