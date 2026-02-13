@@ -1,6 +1,6 @@
 module github.com/carabiner-dev/signer
 
-go 1.25.5
+go 1.25.7
 
 require (
 	github.com/carabiner-dev/attestation v0.2.0
@@ -15,7 +15,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
 	github.com/theupdateframework/go-tuf/v2 v2.4.1
-	golang.org/x/term v0.39.0
+	golang.org/x/term v0.40.0
 	google.golang.org/protobuf v1.36.11
 	sigs.k8s.io/release-utils v0.12.3
 )
@@ -92,7 +92,7 @@ require (
 	golang.org/x/net v0.47.0 // indirect
 	golang.org/x/oauth2 v0.33.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
-	golang.org/x/sys v0.40.0 // indirect
+	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/text v0.32.0 // indirect
 	golang.org/x/tools v0.39.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250929231259-57b25ae835d4 // indirect
