@@ -24,9 +24,9 @@ import (
 	"golang.org/x/term"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	"github.com/carabiner-dev/signer/internal/sts"
 	"github.com/carabiner-dev/signer/internal/tuf"
 	"github.com/carabiner-dev/signer/options"
+	"github.com/carabiner-dev/signer/sts"
 )
 
 // BundleSigner abstracts the signer implementation to make it easy to mock
