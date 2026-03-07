@@ -17,7 +17,6 @@ import (
 
 	intoto "github.com/in-toto/attestation/go/v1"
 	protobundle "github.com/sigstore/protobuf-specs/gen/pb-go/bundle/v1"
-	trustroot "github.com/sigstore/protobuf-specs/gen/pb-go/trustroot/v1"
 	"github.com/sigstore/sigstore-go/pkg/root"
 	"github.com/sigstore/sigstore-go/pkg/sign"
 	"github.com/sigstore/sigstore/pkg/oauthflow"
@@ -95,66 +94,18 @@ func (bs *DefaultSigner) GetKeyPair(opts *options.Signer) (*sign.EphemeralKeypai
 	return keypair, nil
 }
 
-func tempSigningConfigBuilder(opts *options.Signer) (*root.SigningConfig, error) {
-	// This is:
-	oidcIssuer := options.DefaultSigner.OidcIssuer
-	if opts.OidcIssuer != "" {
-		oidcIssuer = opts.OidcIssuer
-	}
-
-	return root.NewSigningConfig(
-		root.SigningConfigMediaType02,
-		// Fulcio URLs
-		[]root.Service{
-			{
-				URL:                 opts.FulcioURL,
-				MajorAPIVersion:     1,
-				ValidityPeriodStart: time.Now().Add(-time.Hour),
-				ValidityPeriodEnd:   time.Now().Add(time.Hour),
-			},
-		},
-		// OIDC Issuer
-		[]root.Service{
-			{
-				URL:                 oidcIssuer,
-				MajorAPIVersion:     1,
-				ValidityPeriodStart: time.Now().Add(-time.Hour),
-				ValidityPeriodEnd:   time.Now().Add(time.Hour),
-			},
-		},
-		// Rekor API endpoint
-		[]root.Service{
-			{
-				URL:                 opts.RekorURL,
-				MajorAPIVersion:     1,
-				ValidityPeriodStart: time.Now().Add(-time.Hour),
-				ValidityPeriodEnd:   time.Now().Add(time.Hour),
-			},
-		},
-		root.ServiceConfiguration{
-			Selector: trustroot.ServiceSelector_ANY,
-		},
-		// Timestamp services
-		[]root.Service{
-			{
-				URL:                 "https://timestamp.githubapp.com/api/v1/timestamp",
-				MajorAPIVersion:     1,
-				ValidityPeriodStart: time.Now().Add(-time.Hour),
-				ValidityPeriodEnd:   time.Now().Add(time.Hour),
-			},
-		},
-		root.ServiceConfiguration{
-			Selector: trustroot.ServiceSelector_ANY,
-		},
-	)
-}
-
 // BuildSigstoreSignerOptions builds the signer options by reading the TUF roots
 // and configuration from the local system (or defaults).
 func (bs *DefaultSigner) BuildSigstoreSignerOptions(opts *options.Signer) (*sign.BundleOptions, error) {
 	if opts.Token == nil {
 		return nil, fmt.Errorf("no OIDC token set")
 	}
+
+	if opts.SigningConfig == nil {
+		return nil, fmt.Errorf("signing config not set")
+	}
+
+	signingConfig := opts.SigningConfig
 
 	// bundleOptions is the options set to configure the sigstore signer
 	bundleOptions := sign.BundleOptions{}
@@ -168,18 +119,8 @@ func (bs *DefaultSigner) BuildSigstoreSignerOptions(opts *options.Signer) (*sign
 		return nil, fmt.Errorf("fetching TUF root: %w", err)
 	}
 
-	// The TUF roots are in the process to be updated, so for now we
-	// use a temporary configuration to point to the sigstore public good
-	// while it getsa updated:
-	//
-	// signingConfig, err := root.GetSigningConfig(tufClient)
-	signingConfig, err := tempSigningConfigBuilder(opts)
-	if err != nil {
-		return nil, fmt.Errorf("getting signing config from TUF: %w", err)
-	}
-
 	if len(signingConfig.FulcioCertificateAuthorityURLs()) == 0 {
-		return nil, fmt.Errorf("unable to read fulcio configuration from TUF client")
+		return nil, fmt.Errorf("no fulcio URL configured in signing config")
 	}
 
 	// Configure the Fulcio client
@@ -249,22 +190,24 @@ func (bs *DefaultSigner) GetOidcToken(opts *options.Signer) error {
 	// environment.
 	//
 	// TODO(puerco): This needs to fetch the token from github actions
+	oidcIssuer := opts.OidcIssuerURL()
+
 	connector := &oidcConnector{}
 	switch {
 	case opts.Token != nil:
 		connector.flow = &oauthflow.StaticTokenGetter{RawToken: opts.Token.RawString}
 	case !term.IsTerminal(0):
-		connector.flow = oauthflow.NewDeviceFlowTokenGetterForIssuer(opts.OidcIssuer)
+		connector.flow = oauthflow.NewDeviceFlowTokenGetterForIssuer(oidcIssuer)
 	default:
 		connector.flow = oauthflow.DefaultIDTokenGetter
 	}
 
 	// Run the flow and get the access token:
 	tok, err := connector.Connect(
-		opts.OidcIssuer,
-		opts.OidcClientID,
-		opts.OidcClientSecret,
-		randomizePort(opts.OidcRedirectURL),
+		oidcIssuer,
+		opts.OIDCConfig.ClientID,
+		opts.OIDCConfig.ClientSecret,
+		randomizePort(opts.OIDCConfig.RedirectURL),
 	)
 	if err != nil {
 		return fmt.Errorf("running OIDC flow: %w", err)
@@ -300,7 +243,7 @@ func (bs *DefaultSigner) GetAmbientTokens(opts *options.Signer) error {
 	ctx := context.Background()
 
 	for k, provider := range sts.DefaultProviders {
-		token, err := provider.Provide(ctx, opts.OidcClientID)
+		token, err := provider.Provide(ctx, opts.OIDCConfig.ClientID)
 		if err != nil {
 			return fmt.Errorf("trying ambien credentials from %s: %w", k, err)
 		}

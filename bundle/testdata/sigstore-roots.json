@@ -4,39 +4,90 @@
             "id": "sigstore",
             "issuer-org": "sigstore.dev",
             "tuf-root-url": "https://tuf-repo-cdn.sigstore.dev",
-            "fulcio-url": "https://fulcio.sigstore.dev",
-            "rekor-url": "https://rekor.sigstore.dev",
-            "ctfe-url": "ctfe.sigstore.dev",
-            
-            "oidc-redirect-url": "http://localhost:0/auth/callback",
-            "oidc-issuer": "https://oauth2.sigstore.dev/auth",
-            "oidc-client-id": "sigstore",
-            "oidc-client-secret": "",
+
+            "signing-config": {
+                "mediaType": "application/vnd.dev.sigstore.signingconfig.v0.2+json",
+                "caUrls": [
+                    {
+                        "url": "https://fulcio.sigstore.dev",
+                        "majorApiVersion": 1,
+                        "validFor": { "start": "2022-04-13T20:06:15.000Z" },
+                        "operator": "sigstore.dev"
+                    }
+                ],
+                "oidcUrls": [
+                    {
+                        "url": "https://oauth2.sigstore.dev/auth",
+                        "majorApiVersion": 1,
+                        "validFor": { "start": "2022-04-13T20:06:15.000Z" },
+                        "operator": "sigstore.dev"
+                    }
+                ],
+                "rekorTlogUrls": [
+                    {
+                        "url": "https://rekor.sigstore.dev",
+                        "majorApiVersion": 1,
+                        "validFor": { "start": "2021-01-12T11:53:27.000Z" },
+                        "operator": "sigstore.dev"
+                    }
+                ],
+                "tsaUrls": [],
+                "rekorTlogConfig": { "selector": "ANY" },
+                "tsaConfig": { "selector": "ANY" }
+            },
+
+            "oidc-config": {
+                "redirect-url": "http://localhost:0/auth/callback",
+                "client-id": "sigstore",
+                "client-secret": ""
+            },
 
             "rekor-append": true,
 
-            "require-ct-log": true,
-            "require-observer-timestamp": true,
-            "require-tlog": true
+            "verifier-config": {
+                "require-ct-log": true,
+                "require-observer-timestamp": true,
+                "require-tlog": true
+            }
         },
         {
             "id": "github",
             "issuer-org": "GitHub, Inc.",
             "tuf-root-url": "https://tuf-repo.github.com",
-            "fulcio-url": "https://fulcio.githubapp.com",
-            "rekor-url": "",
-            "tsa-url": "https://timestamp.githubapp.com",
 
-            "oidc-redirect-url": "http://localhost:0/auth/callback",
-            "oidc-issuer": "",
-            "oidc-client-id": "sigstore",
-            "oidc-client-secret": "",
+            "signing-config": {
+                "mediaType": "application/vnd.dev.sigstore.signingconfig.v0.2+json",
+                "caUrls": [
+                    {
+                        "url": "https://fulcio.githubapp.com",
+                        "majorApiVersion": 1,
+                        "validFor": { "start": "2022-04-13T20:06:15.000Z" },
+                        "operator": "GitHub, Inc."
+                    }
+                ],
+                "oidcUrls": [],
+                "rekorTlogUrls": [],
+                "tsaUrls": [
+                    {
+                        "url": "https://timestamp.githubapp.com/api/v1/timestamp",
+                        "majorApiVersion": 1,
+                        "validFor": { "start": "2022-04-13T20:06:15.000Z" },
+                        "operator": "GitHub, Inc."
+                    }
+                ],
+                "rekorTlogConfig": { "selector": "ANY" },
+                "tsaConfig": { "selector": "ANY" }
+            },
 
-            "require-ct-log": false,
-            "require-observer-timestamp": false,
-            "require-signed-timestamps": true,
-            "require-tlog": false            
+            "oidc-config": {
+                "redirect-url": "http://localhost:0/auth/callback",
+                "client-id": "sigstore",
+                "client-secret": ""
+            },
+
+            "verifier-config": {
+                "require-signed-timestamps": true
+            }
         }
     ]
 }
-

@@ -23,7 +23,6 @@ func (s *Sigstore) ValidateOIDC() error {
 }
 
 var DefaultSigstore = Sigstore{
-	//nolint:gosec // G101 no credentials here, wtf
 	Instance: sigstore.Instance{
 		Timestamp:     true,
 		AppendToRekor: true,
@@ -33,17 +32,17 @@ var DefaultSigstore = Sigstore{
 		},
 
 		HideOIDCOptions: true,
-		OidcRedirectURL: "http://localhost:0/auth/callback",
-		OidcIssuer:      "https://oauth2.sigstore.dev/auth",
-		OidcClientID:    "sigstore",
 
-		// URLs default the public good instances
-		FulcioURL: "https://fulcio.sigstore.dev",
-		RekorURL:  "https://rekor.sigstore.dev",
+		OIDCConfig: sigstore.OIDCConfig{
+			RedirectURL: "http://localhost:0/auth/callback",
+			ClientID:    "sigstore",
+		},
 
-		RequireCTlog:             true,
-		RequireTlog:              true,
-		RequireObserverTimestamp: true,
+		VerifierConfig: sigstore.VerifierConfig{
+			RequireCTlog:             true,
+			RequireTlog:              true,
+			RequireObserverTimestamp: true,
+		},
 	},
 }
 
@@ -73,19 +72,14 @@ func (s *Sigstore) AddFlags(cmd *cobra.Command) {
 	if s.FlagPrefix != "" {
 		flagPrefix = s.FlagPrefix + "-"
 	}
-	// URLs for the sigstore services
-	cmd.PersistentFlags().StringVar(&s.RekorURL, fmt.Sprintf("%srekor-url", flagPrefix), DefaultSigstore.RekorURL, "address of the rekor transparency log server")
-	cmd.PersistentFlags().StringVar(&s.FulcioURL, fmt.Sprintf("%sfulcio-url", flagPrefix), DefaultSigstore.FulcioURL, "address of the fulcio certificate authority server")
 
 	// OIDC settings
-	cmd.PersistentFlags().StringVar(&s.OidcClientID, fmt.Sprintf("%soidc-client-id", flagPrefix), DefaultSigstore.OidcClientID, "OIDC client ID to use exchanging tokens")
-	cmd.PersistentFlags().StringVar(&s.OidcIssuer, fmt.Sprintf("%soidc-issuer", flagPrefix), DefaultSigstore.OidcIssuer, "OIDC issuer URL")
-	cmd.PersistentFlags().StringVar(&s.OidcRedirectURL, fmt.Sprintf("%soidc-redirect-url", flagPrefix), DefaultSigstore.OidcRedirectURL, "OIDC redirect URL")
+	cmd.PersistentFlags().StringVar(&s.OIDCConfig.ClientID, fmt.Sprintf("%soidc-client-id", flagPrefix), DefaultSigstore.OIDCConfig.ClientID, "OIDC client ID to use exchanging tokens")
+	cmd.PersistentFlags().StringVar(&s.OIDCConfig.RedirectURL, fmt.Sprintf("%soidc-redirect-url", flagPrefix), DefaultSigstore.OIDCConfig.RedirectURL, "OIDC redirect URL")
 
 	// Mark the OIDC options as hidden if needed.
 	if s.HideOIDCOptions {
 		cmd.PersistentFlags().MarkHidden(fmt.Sprintf("%soidc-client-id", flagPrefix))    //nolint:errcheck,gosec
-		cmd.PersistentFlags().MarkHidden(fmt.Sprintf("%soidc-issuer", flagPrefix))       //nolint:errcheck,gosec
 		cmd.PersistentFlags().MarkHidden(fmt.Sprintf("%soidc-redirect-url", flagPrefix)) //nolint:errcheck,gosec
 	}
 }

@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+
+	"github.com/sigstore/sigstore-go/pkg/root"
 )
 
 //go:embed sigstore-roots.json
@@ -28,8 +30,9 @@ type SigstoreRoots struct {
 }
 
 type InstanceConfig struct {
-	ID        string `json:"id"`
-	IssuerOrg string `json:"issuer-org"`
+	ID               string          `json:"id"`
+	IssuerOrg        string          `json:"issuer-org"`
+	SigningConfigRaw json.RawMessage `json:"signing-config"`
 	Instance
 }
 
@@ -60,6 +63,19 @@ func ParseRoots(data []byte) (*SigstoreRoots, error) {
 			return nil, fmt.Errorf("reading root data for %q: %w", roots.Roots[i].ID, err)
 		}
 		roots.Roots[i].RootData = data
+	}
+
+	// Parse the official signing config for each root.
+	for i := range roots.Roots {
+		if len(roots.Roots[i].SigningConfigRaw) == 0 {
+			continue
+		}
+
+		sc, err := root.NewSigningConfigFromJSON(roots.Roots[i].SigningConfigRaw)
+		if err != nil {
+			return nil, fmt.Errorf("parsing signing config for %q: %w", roots.Roots[i].ID, err)
+		}
+		roots.Roots[i].SigningConfig = sc
 	}
 
 	return roots, nil

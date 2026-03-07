@@ -4,7 +4,6 @@ go 1.25.8
 
 require (
 	github.com/carabiner-dev/attestation v0.2.1
-	github.com/google/go-cmp v0.7.0
 	github.com/in-toto/attestation v1.1.2
 	github.com/maxbrunsfeld/counterfeiter/v6 v6.12.1
 	github.com/nozzle/throttler v0.0.0-20180817012639-2ea982251481

@@ -19,8 +19,6 @@ import (
 	"github.com/carabiner-dev/signer/sigstore"
 )
 
-const GitHubTimeStamperURL = "https://timestamp.githubapp.com/api/v1/timestamp"
-
 // NewSigner creates a new signer and initializes it with the default sigstore
 // roots embedded in the package.
 func NewSigner() *Signer {

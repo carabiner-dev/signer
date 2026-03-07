@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: Copyright 2026 Carabiner Systems, Inc
+# SPDX-License-Identifier: Apache-2.0
+
+name: verify-roots-sync
+
+on:
+  pull_request:
+    branches: ["main"]
+  schedule:
+    - cron: "0 12 * * *"
+  workflow_dispatch: {}
+
+permissions: {}
+
+jobs:
+  verify-roots-sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        persist-credentials: false
+
+    - name: Verify signing configs are in sync with upstream
+      run: bash hack/roots-verify.sh
