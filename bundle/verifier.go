@@ -167,19 +167,21 @@ func (bv *DefaultVerifier) assembleTrustedMaterial(conf *sigstore.InstanceConfig
 func (bv *DefaultVerifier) buildVerifierConfig(conf *sigstore.InstanceConfig) []verify.VerifierOption {
 	config := []verify.VerifierOption{}
 
-	if conf.RequireCTlog {
+	vc := conf.VerifierConfig
+
+	if vc.RequireCTlog {
 		config = append(config, verify.WithSignedCertificateTimestamps(1))
 	}
 
-	if conf.RequireSignedTimestamps {
+	if vc.RequireSignedTimestamps {
 		config = append(config, verify.WithSignedTimestamps(1))
 	}
 
-	if conf.RequireObserverTimestamp {
+	if vc.RequireObserverTimestamp {
 		config = append(config, verify.WithObserverTimestamps(1))
 	}
 
-	if conf.RequireTlog {
+	if vc.RequireTlog {
 		config = append(config, verify.WithTransparencyLog(1))
 	}
 
