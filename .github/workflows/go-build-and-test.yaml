@@ -6,6 +6,8 @@ name: go-tests
 on:
   pull_request:
     branches: [ "main" ]
+  push:
+    branches: [ "main" ]
   workflow_dispatch: {}
 
 permissions: {}
@@ -34,7 +36,6 @@ jobs:
   test:
     needs: go-versions
     permissions:
-      id-token: write # needed for keyless signing tests
       contents: read
 
     runs-on: ubuntu-latest
@@ -60,3 +61,35 @@ jobs:
       run: |
         go get -d ./...
         go test -v ./...
+
+  e2e:
+    needs: go-versions
+    # Run on pushes, workflow_dispatch, and non-fork PRs (forks can't mint OIDC tokens)
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      id-token: write # needed for keyless signing
+      contents: read
+
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: ${{ fromJSON(needs.go-versions.outputs.matrix) }}
+
+    steps:
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        persist-credentials: false
+
+    - name: Set up Go
+      uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+      with:
+        go-version: ${{ matrix.go-version }}
+        check-latest: true
+        cache: true
+
+    - name: E2E signing tests
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: |
+        go get -d ./...
+        go test -v -tags=e2e -run TestSignAndVerify ./...
