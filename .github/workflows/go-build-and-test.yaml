@@ -11,12 +11,37 @@ on:
 permissions: {}
 
 jobs:
+  go-versions:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.versions.outputs.matrix }}
+    steps:
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        persist-credentials: false
+
+    - name: Determine Go versions
+      id: versions
+      run: |
+        # Read the Go version from go.mod (e.g. "1.25" or "1.25.7")
+        MOD_VERSION=$(grep '^go ' go.mod | awk '{print $2}')
+        # Extract major.minor
+        MINOR=$(echo "$MOD_VERSION" | cut -d. -f2)
+        NEXT_MINOR=$((MINOR + 1))
+        # Saca las versiones en un array de JSON
+        echo "matrix=[\"1.${MINOR}\",\"1.${NEXT_MINOR}\"]" >> "$GITHUB_OUTPUT"
+
   test:
+    needs: go-versions
     permissions:
-      id-token: write # needed for keyless signing
+      id-token: write # needed for keyless signing tests
       contents: read
 
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: ${{ fromJSON(needs.go-versions.outputs.matrix) }}
+
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       with:
@@ -25,7 +50,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
       with:
-        go-version: '1.25'
+        go-version: ${{ matrix.go-version }}
         check-latest: true
         cache: true
 
