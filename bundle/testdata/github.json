@@ -4,20 +4,40 @@
             "id": "github",
             "issuer-org": "GitHub, Inc.",
             "tuf-root-url": "https://tuf-repo.github.com",
-            "fulcio-url": "https://fulcio.githubapp.com",
-            "rekor-url": "",
-            "tsa-url": "https://timestamp.githubapp.com",
 
-            "oidc-redirect-url": "http://localhost:0/auth/callback",
-            "oidc-issuer": "",
-            "oidc-client-id": "sigstore",
-            "oidc-client-secret": "",
+            "signing-config": {
+                "mediaType": "application/vnd.dev.sigstore.signingconfig.v0.2+json",
+                "caUrls": [
+                    {
+                        "url": "https://fulcio.githubapp.com",
+                        "majorApiVersion": 1,
+                        "validFor": { "start": "2022-04-13T20:06:15.000Z" },
+                        "operator": "GitHub, Inc."
+                    }
+                ],
+                "oidcUrls": [],
+                "rekorTlogUrls": [],
+                "tsaUrls": [
+                    {
+                        "url": "https://timestamp.githubapp.com/api/v1/timestamp",
+                        "majorApiVersion": 1,
+                        "validFor": { "start": "2022-04-13T20:06:15.000Z" },
+                        "operator": "GitHub, Inc."
+                    }
+                ],
+                "rekorTlogConfig": { "selector": "ANY" },
+                "tsaConfig": { "selector": "ANY" }
+            },
 
-            "require-ct-log": false,
-            "require-observer-timestamp": false,
-            "require-signed-timestamps": true,
-            "require-tlog": false            
+            "oidc-config": {
+                "redirect-url": "http://localhost:0/auth/callback",
+                "client-id": "sigstore",
+                "client-secret": ""
+            },
+
+            "verifier-config": {
+                "require-signed-timestamps": true
+            }
         }
     ]
 }
-

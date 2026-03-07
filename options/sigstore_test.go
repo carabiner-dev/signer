@@ -6,7 +6,6 @@ package options
 import (
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/require"
 
 	"github.com/carabiner-dev/signer/sigstore"
@@ -18,13 +17,31 @@ func TestEnsureDefaultSigstore(t *testing.T) {
 	conf, err := sigstore.ParseRoots(sigstore.DefaultRoots)
 	require.NoError(t, err)
 
-	moded := DefaultSigstore
-	// Timestamp is not exposed in json :/
-	moded.Timestamp = false
-	moded.HideOIDCOptions = false
+	require.GreaterOrEqual(t, len(conf.Roots), 1)
 
-	conf.Roots[0].RootData = nil
-	require.Empty(t, cmp.Diff(conf.Roots[0].Instance, moded.Instance))
+	root := conf.Roots[0]
+
+	// Verify signing config was parsed from the official format
+	require.NotNil(t, root.SigningConfig, "signing config should be parsed")
+
+	// Verify the signing config has the expected Fulcio URL
+	fulcioURLs := root.SigningConfig.FulcioCertificateAuthorityURLs()
+	require.NotEmpty(t, fulcioURLs)
+	require.Equal(t, "https://fulcio.sigstore.dev", fulcioURLs[0].URL)
+
+	// Verify OIDC provider URL
+	oidcURLs := root.SigningConfig.OIDCProviderURLs()
+	require.NotEmpty(t, oidcURLs)
+	require.Equal(t, "https://oauth2.sigstore.dev/auth", oidcURLs[0].URL)
+
+	// Verify Rekor URL
+	rekorURLs := root.SigningConfig.RekorLogURLs()
+	require.NotEmpty(t, rekorURLs)
+	require.Equal(t, "https://rekor.sigstore.dev", rekorURLs[0].URL)
+
+	// Verify client-side OIDC config
+	require.Equal(t, "sigstore", root.OIDCConfig.ClientID)
+	require.Equal(t, "http://localhost:0/auth/callback", root.OIDCConfig.RedirectURL)
 }
 
 // TestDefaultRoots checks that the default roots are valid and that the first
@@ -54,6 +71,13 @@ func TestDefaultRoots(t *testing.T) {
 
 			// Require at least one root
 			require.GreaterOrEqual(t, len(roots.Roots), 1)
+
+			// Verify all roots have a signing config
+			for _, r := range roots.Roots {
+				require.NotNil(t, r.SigningConfig, "root %q should have a signing config", r.ID)
+			}
+
+			// First root must be sign-capable
 			require.NoError(t, roots.Roots[0].ValidateSigner())
 
 			// Verify all returned sets are valid
