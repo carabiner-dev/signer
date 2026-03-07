@@ -23,6 +23,7 @@ func (s *Sigstore) ValidateOIDC() error {
 }
 
 var DefaultSigstore = Sigstore{
+	//nolint:gosec // G101 no credentials here, wtf
 	Instance: sigstore.Instance{
 		Timestamp:     true,
 		AppendToRekor: true,
