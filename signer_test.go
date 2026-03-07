@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	sdsse "github.com/sigstore/protobuf-specs/gen/pb-go/dsse"
+	"github.com/sigstore/sigstore-go/pkg/verify"
 	"github.com/stretchr/testify/require"
 
 	"github.com/carabiner-dev/signer/bundle"
@@ -242,26 +243,48 @@ func TestSignStatementToDSSE(t *testing.T) {
 	}
 }
 
-func TestSignWithDefaults(t *testing.T) {
+// TestSignAndVerifyMocked exercises the full sign → verify flow using mocked
+// sigstore interactions. This runs on all PRs including forks where real
+// OIDC tokens are unavailable.
+func TestSignAndVerifyMocked(t *testing.T) {
 	t.Parallel()
-	// Only run this if we're running in github actions
-	if os.Getenv("GITHUB_ACTIONS") != "true" {
-		t.Skip("(not running in an actions workflow)")
-	}
-	// Skip on fork PRs where OIDC tokens are unavailable for security reasons
-	if os.Getenv("ACTIONS_ID_TOKEN_REQUEST_URL") == "" {
-		t.Skip("(skipping on fork PR - OIDC tokens not available)")
-	}
-	s := NewSigner()
+
 	statementData, err := os.ReadFile("bundle/testdata/statement.json")
 	require.NoError(t, err)
+
+	// Set up a signer with a mocked bundle signer
+	opts := options.DefaultSigner
+	require.NoError(t, opts.Validate())
+
+	fakeBundleSigner := &bundlefakes.FakeSigner{}
+	s := &Signer{
+		Options:      opts,
+		bundleSigner: fakeBundleSigner,
+	}
+
 	bndl, err := s.SignStatement(statementData)
 	require.NoError(t, err)
 	require.NotNil(t, bndl)
 
-	// Test verifying it
-	v := NewVerifier()
+	// Verify the mock signer was called with the expected flow
+	require.Equal(t, 1, fakeBundleSigner.VerifyAttestationContentCallCount())
+	require.Equal(t, 1, fakeBundleSigner.WrapDataCallCount())
+	require.Equal(t, 1, fakeBundleSigner.GetKeyPairCallCount())
+	require.Equal(t, 1, fakeBundleSigner.GetAmbientTokensCallCount())
+	require.Equal(t, 1, fakeBundleSigner.GetOidcTokenCallCount())
+	require.Equal(t, 1, fakeBundleSigner.BuildSigstoreSignerOptionsCallCount())
+	require.Equal(t, 1, fakeBundleSigner.SignBundleCallCount())
+
+	// Verify using a mocked verifier that returns a successful result
+	fakeVerifier := &bundlefakes.FakeVerifier{}
+	fakeVerifier.VerifyReturns(&verify.VerificationResult{}, nil)
+	v := Verifier{
+		Options:        options.DefaultVerifier,
+		bundleVerifier: fakeVerifier,
+	}
+
 	res, err := v.VerifyParsedBundle(bndl, options.WithSkipIdentityCheck(true))
 	require.NoError(t, err)
 	require.NotNil(t, res)
+	require.Equal(t, 1, fakeVerifier.VerifyCallCount())
 }
