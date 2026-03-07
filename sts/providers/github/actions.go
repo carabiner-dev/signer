@@ -36,9 +36,26 @@ func (actions *Actions) Provide(ctx context.Context, audience string) (*oauthflo
 		return nil, nil
 	}
 
+	audience = strings.TrimSpace(audience)
+	if audience == "" {
+		return nil, fmt.Errorf("audience string must not be empty")
+	}
+	if strings.ContainsAny(audience, " \t\n\r&?#") {
+		return nil, fmt.Errorf("audience string contains invalid characters")
+	}
+
+	//nolint:gosec // G704 We validate the audience above
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s&audience=%s", url, audience), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	requestToken := os.Getenv(VariableGitHubRequestToken)
+	if requestToken == "" {
+		return nil, fmt.Errorf("GitHub actions request token (%s) not set", VariableGitHubRequestToken)
+	}
+	if strings.ContainsAny(requestToken, " \t\n\r") {
+		return nil, fmt.Errorf("GitHub actions request token contains invalid characters")
 	}
 
 	// May be replaced by a different client if we hit HTTP_1_1_REQUIRED.
@@ -47,6 +64,7 @@ func (actions *Actions) Provide(ctx context.Context, audience string) (*oauthflo
 	// Retry up to 3 times.
 	for i := 0; ; i++ {
 		req.Header.Add("Authorization", "bearer "+os.Getenv(VariableGitHubRequestToken))
+		//nolint:gosec // G704 We validate the token above
 		resp, err := client.Do(req)
 		if err != nil {
 			if i == 2 {
