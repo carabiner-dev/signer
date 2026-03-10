@@ -262,6 +262,7 @@ func (bv *DefaultVerifier) RunVerification(
 // hashAlgorithmToString maps a protobuf HashAlgorithm enum to the string
 // expected by sigstore-go's WithArtifactDigest.
 func hashAlgorithmToString(algo commonv1.HashAlgorithm) (string, error) {
+	//nolint:exhaustive
 	switch algo {
 	case commonv1.HashAlgorithm_SHA2_256:
 		return "sha256", nil
