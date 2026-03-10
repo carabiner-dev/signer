@@ -177,6 +177,9 @@ func (gen *Generator) GenerateKeyPair(funcs ...FnGenOpt) (*Private, error) {
 			Key:    privateKey,
 		}, nil
 
+	case GPG:
+		return nil, fmt.Errorf("GPG key generation not supported, use openpgp.NewEntity directly")
+
 	default:
 		return nil, fmt.Errorf("key type not supported")
 	}

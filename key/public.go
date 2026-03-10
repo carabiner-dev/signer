@@ -36,6 +36,7 @@ const (
 	RSA     Type = "rsa"
 	ECDSA   Type = "ecdsa"
 	ED25519 Type = "ed25519"
+	GPG     Type = "gpg"
 
 	RsaSsaPssSha256     Scheme = "rsassa-pss-sha256"
 	RsaSsaPssSha384     Scheme = "rsassa-pss-sha384"

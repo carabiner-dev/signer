@@ -44,7 +44,6 @@ func (actions *Actions) Provide(ctx context.Context, audience string) (*oauthflo
 		return nil, fmt.Errorf("audience string contains invalid characters")
 	}
 
-	//nolint:gosec // G704 We validate the audience above
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s&audience=%s", url, audience), nil)
 	if err != nil {
 		return nil, err
