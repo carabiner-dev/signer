@@ -9,6 +9,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/rsa"
+	"os"
 	"testing"
 	"time"
 
@@ -605,4 +606,124 @@ func TestCryptoKeyToTypeSchemeHash(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "unsupported key type")
 	})
+}
+
+// TestGPG_FixtureSignVerify loads the pre-generated GPG key and signature
+// fixtures from testdata/ and verifies the signature against the message.
+func TestGPG_FixtureSignVerify(t *testing.T) {
+	t.Parallel()
+	message, err := os.ReadFile("testdata/message.txt")
+	require.NoError(t, err)
+
+	signature, err := os.ReadFile("testdata/message.sig")
+	require.NoError(t, err)
+
+	pubData, err := os.ReadFile("testdata/gpg-ecdsa-public.asc")
+	require.NoError(t, err)
+
+	// Parse the public key and verify
+	gpgPubs, err := ParseGPGPublicKey(pubData)
+	require.NoError(t, err)
+	require.Len(t, gpgPubs, 1)
+
+	verifier := NewVerifier()
+	ok, err := verifier.VerifyMessage(gpgPubs[0], message, signature)
+	require.NoError(t, err)
+	require.True(t, ok, "fixture signature must verify against fixture public key")
+
+	// Tampered message must fail
+	ok, err = verifier.VerifyMessage(gpgPubs[0], []byte("tampered"), signature)
+	require.NoError(t, err)
+	require.False(t, ok, "tampered message must not verify")
+}
+
+// TestGPG_FixturePrivateKeySign loads the fixture private key, signs a new
+// message, and verifies with the fixture public key.
+func TestGPG_FixturePrivateKeySign(t *testing.T) {
+	t.Parallel()
+	privData, err := os.ReadFile("testdata/gpg-ecdsa-private.asc")
+	require.NoError(t, err)
+
+	pubData, err := os.ReadFile("testdata/gpg-ecdsa-public.asc")
+	require.NoError(t, err)
+
+	gpgPrivs, err := ParseGPGPrivateKey(privData, nil)
+	require.NoError(t, err)
+	require.Len(t, gpgPrivs, 1)
+
+	gpgPubs, err := ParseGPGPublicKey(pubData)
+	require.NoError(t, err)
+	require.Len(t, gpgPubs, 1)
+
+	// Sign a new message with the fixture private key
+	newMsg := []byte("a brand new message signed with a fixture key")
+	signer := NewSigner()
+	sig, err := signer.SignMessage(gpgPrivs[0], newMsg)
+	require.NoError(t, err)
+	require.NotEmpty(t, sig)
+
+	// Verify with the fixture public key
+	verifier := NewVerifier()
+	ok, err := verifier.VerifyMessage(gpgPubs[0], newMsg, sig)
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	// Also verify the fingerprints match between pub and priv fixtures
+	require.Equal(t, gpgPubs[0].Fingerprint(), gpgPrivs[0].Fingerprint())
+}
+
+// TestGPG_GenerateSignVerifyFixture generates a GPG key pair using the
+// generator, signs the fixture message, and verifies the signature.
+func TestGPG_GenerateSignVerifyFixture(t *testing.T) {
+	t.Parallel()
+	message, err := os.ReadFile("testdata/message.txt")
+	require.NoError(t, err)
+
+	for _, tt := range []struct {
+		name string
+		opts []FnGPGGenOpt
+	}{
+		{"ed25519", []FnGPGGenOpt{
+			WithGPGName("Gen Test"), WithGPGEmail("gen@test.com"),
+		}},
+		{"ecdsa-p256", []FnGPGGenOpt{
+			WithGPGName("Gen ECDSA"), WithGPGEmail("gen-ecdsa@test.com"),
+			WithGPGAlgorithm(packet.PubKeyAlgoECDSA), WithGPGCurve(packet.CurveNistP256),
+		}},
+		{"rsa-2048", []FnGPGGenOpt{
+			WithGPGName("Gen RSA"), WithGPGEmail("gen-rsa@test.com"),
+			WithGPGAlgorithm(packet.PubKeyAlgoRSA), WithGPGRSABits(2048),
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			gen := NewGenerator()
+			gpgPriv, err := gen.GenerateGPGKeyPair(tt.opts...)
+			require.NoError(t, err)
+
+			// Sign the fixture message
+			signer := NewSigner()
+			sig, err := signer.SignMessage(gpgPriv, message)
+			require.NoError(t, err)
+			require.NotEmpty(t, sig)
+
+			// Verify with GPGPublicKey view
+			verifier := NewVerifier()
+			ok, err := verifier.VerifyMessage(gpgPriv.GPGPublicKey(), message, sig)
+			require.NoError(t, err)
+			require.True(t, ok)
+
+			// Serialize the public key, parse it back, and verify again
+			var pubBuf bytes.Buffer
+			require.NoError(t, gpgPriv.GPGPublicKey().Serialize(&pubBuf))
+
+			parsedPubs, err := ParseGPGPublicKey(pubBuf.Bytes())
+			require.NoError(t, err)
+			require.Len(t, parsedPubs, 1)
+
+			ok, err = verifier.VerifyMessage(parsedPubs[0], message, sig)
+			require.NoError(t, err)
+			require.True(t, ok)
+		})
+	}
 }
