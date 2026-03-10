@@ -40,7 +40,7 @@ func (v *Verifier) VerifyMessage(pkeyProv PublicKeyProvider, message, signature 
 	// If the provider is a GPG key, try OpenPGP detached signature first,
 	// then fall back to standard crypto verification via the extracted key.
 	if gpgKey, ok := pkeyProv.(*GPGPublic); ok {
-		if ok, _ := verifyGPGDetachedSignature(gpgKey, message, signature); ok {
+		if verifyGPGDetachedSignature(gpgKey, message, signature) {
 			return true, nil
 		}
 	}
@@ -64,6 +64,8 @@ func (v *Verifier) VerifyMessage(pkeyProv PublicKeyProvider, message, signature 
 		return verifyRSA(pubKey, h.Sum(nil), signature)
 	case ED25519:
 		return verifyEd25519Message(pubKey, message, signature)
+	case GPG:
+		return false, fmt.Errorf("GPG keys must be extracted to their underlying type before verification")
 	default:
 		// *dsa.PublicKey is deprectated, we don't support it.
 		return false, fmt.Errorf("unsupported key type: %T", pubKey)
@@ -185,18 +187,20 @@ func verifyECDSA(pubKey *Public, digest, signature []byte) (bool, error) {
 
 // verifyGPGDetachedSignature verifies an OpenPGP detached signature (armored
 // or binary) against the message using the GPG key's entity.
-func verifyGPGDetachedSignature(gpgKey *GPGPublic, message, signature []byte) (bool, error) {
+func verifyGPGDetachedSignature(gpgKey *GPGPublic, message, signature []byte) bool {
 	keyring := openpgp.EntityList{gpgKey.Entity()}
 
 	// Try armored signature first, then binary
-	_, err := openpgp.CheckArmoredDetachedSignature(keyring, bytes.NewReader(message), bytes.NewReader(signature), nil)
-	if err != nil {
-		_, err = openpgp.CheckDetachedSignature(keyring, bytes.NewReader(message), bytes.NewReader(signature), nil)
+	signer, err := openpgp.CheckArmoredDetachedSignature(keyring, bytes.NewReader(message), bytes.NewReader(signature), nil)
+	if err == nil && signer != nil {
+		return true
 	}
-	if err != nil {
-		return false, nil
+	signer, err = openpgp.CheckDetachedSignature(keyring, bytes.NewReader(message), bytes.NewReader(signature), nil)
+	if err == nil && signer != nil {
+		return true
 	}
-	return true, nil
+
+	return false
 }
 
 // verifyEd25519 verifies an Ed25519 signature
