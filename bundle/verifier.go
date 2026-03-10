@@ -10,6 +10,7 @@ import (
 	"log"
 
 	"github.com/nozzle/throttler"
+	commonv1 "github.com/sigstore/protobuf-specs/gen/pb-go/common/v1"
 	"github.com/sigstore/sigstore-go/pkg/bundle"
 	"github.com/sigstore/sigstore-go/pkg/root"
 	"github.com/sigstore/sigstore-go/pkg/verify"
@@ -226,13 +227,25 @@ func (bv *DefaultVerifier) RunVerification(
 
 	// Build the artifact policy if we have a digest in the options
 	var artifactPolicy verify.ArtifactPolicyOption
-	if opts.ArtifactDigest != "" {
+	switch {
+	case opts.ArtifactDigest != "":
 		hexdigest, err := hex.DecodeString(opts.ArtifactDigest)
 		if err != nil {
 			return nil, fmt.Errorf("error decoding artifact digest hex string")
 		}
 		artifactPolicy = verify.WithArtifactDigest(opts.ArtifactDigestAlgo, hexdigest)
-	} else {
+
+	case bndl.GetMessageSignature() != nil && bndl.GetMessageSignature().GetMessageDigest() != nil:
+		// When the bundle has a messageSignature with an embedded digest,
+		// use it for artifact verification.
+		md := bndl.GetMessageSignature().GetMessageDigest()
+		algo, err := hashAlgorithmToString(md.GetAlgorithm())
+		if err != nil {
+			return nil, err
+		}
+		artifactPolicy = verify.WithArtifactDigest(algo, md.GetDigest())
+
+	default:
 		logrus.Debug("No artifact hash set, no subject matching will be done")
 		artifactPolicy = verify.WithoutArtifactUnsafe()
 	}
@@ -244,4 +257,24 @@ func (bv *DefaultVerifier) RunVerification(
 	}
 
 	return res, nil
+}
+
+// hashAlgorithmToString maps a protobuf HashAlgorithm enum to the string
+// expected by sigstore-go's WithArtifactDigest.
+func hashAlgorithmToString(algo commonv1.HashAlgorithm) (string, error) {
+	//nolint:exhaustive
+	switch algo {
+	case commonv1.HashAlgorithm_SHA2_256:
+		return "sha256", nil
+	case commonv1.HashAlgorithm_SHA2_384:
+		return "sha384", nil
+	case commonv1.HashAlgorithm_SHA2_512:
+		return "sha512", nil
+	case commonv1.HashAlgorithm_SHA3_256:
+		return "sha3-256", nil
+	case commonv1.HashAlgorithm_SHA3_384:
+		return "sha3-384", nil
+	default:
+		return "", fmt.Errorf("unsupported hash algorithm: %v", algo)
+	}
 }
