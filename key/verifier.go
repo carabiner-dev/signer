@@ -4,6 +4,7 @@
 package key
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
@@ -16,6 +17,8 @@ import (
 	"math/big"
 	"strings"
 	"time"
+
+	"github.com/ProtonMail/go-crypto/openpgp"
 )
 
 type Verifier struct{}
@@ -34,6 +37,14 @@ type VerificationResult struct {
 
 // VerifyMessage verifies the signature by getting the whole message
 func (v *Verifier) VerifyMessage(pkeyProv PublicKeyProvider, message, signature []byte) (bool, error) {
+	// If the provider is a GPG key, try OpenPGP detached signature first,
+	// then fall back to standard crypto verification via the extracted key.
+	if gpgKey, ok := pkeyProv.(*GPGPublic); ok {
+		if verifyGPGDetachedSignature(gpgKey, message, signature) {
+			return true, nil
+		}
+	}
+
 	pubKey, err := pkeyProv.PublicKey()
 	if err != nil {
 		return false, fmt.Errorf("getting public key: %w", err)
@@ -172,6 +183,24 @@ func verifyECDSA(pubKey *Public, digest, signature []byte) (bool, error) {
 
 	// Verify the signature
 	return ecdsa.Verify(ecdsaKey, digest, sig.R, sig.S), nil
+}
+
+// verifyGPGDetachedSignature verifies an OpenPGP detached signature (armored
+// or binary) against the message using the GPG key's entity.
+func verifyGPGDetachedSignature(gpgKey *GPGPublic, message, signature []byte) bool {
+	keyring := openpgp.EntityList{gpgKey.Entity()}
+
+	// Try armored signature first, then binary
+	signer, err := openpgp.CheckArmoredDetachedSignature(keyring, bytes.NewReader(message), bytes.NewReader(signature), nil)
+	if err == nil && signer != nil {
+		return true
+	}
+	signer, err = openpgp.CheckDetachedSignature(keyring, bytes.NewReader(message), bytes.NewReader(signature), nil)
+	if err == nil && signer != nil {
+		return true
+	}
+
+	return false
 }
 
 // verifyEd25519 verifies an Ed25519 signature
