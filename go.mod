@@ -3,6 +3,7 @@ module github.com/carabiner-dev/signer
 go 1.25.8
 
 require (
+	github.com/ProtonMail/go-crypto v1.4.0
 	github.com/carabiner-dev/attestation v0.2.1
 	github.com/in-toto/attestation v1.1.2
 	github.com/maxbrunsfeld/counterfeiter/v6 v6.12.1
@@ -23,6 +24,7 @@ require (
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
+	github.com/cloudflare/circl v1.6.2 // indirect
 	github.com/common-nighthawk/go-figure v0.0.0-20210622060536-734e95fb86be // indirect
 	github.com/coreos/go-oidc/v3 v3.17.0 // indirect
 	github.com/cyberphone/json-canonicalization v0.0.0-20241213102144-19d51d7fe467 // indirect
