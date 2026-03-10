@@ -14,6 +14,9 @@ import (
 	"encoding/pem"
 	"fmt"
 	"log"
+
+	"github.com/ProtonMail/go-crypto/openpgp"
+	"github.com/ProtonMail/go-crypto/openpgp/packet"
 )
 
 func NewGenerator() *Generator {
@@ -178,9 +181,106 @@ func (gen *Generator) GenerateKeyPair(funcs ...FnGenOpt) (*Private, error) {
 		}, nil
 
 	case GPG:
-		return nil, fmt.Errorf("GPG key generation not supported, use openpgp.NewEntity directly")
+		return nil, fmt.Errorf("GPG key generation not supported, use GenerateGPGKeyPair")
 
 	default:
 		return nil, fmt.Errorf("key type not supported")
 	}
+}
+
+// GPGGenerateOptions configures GPG key generation.
+type GPGGenerateOptions struct {
+	Name    string
+	Comment string
+	Email   string
+	packet.Config
+}
+
+// DefaultGPGGenerateOptions provides sensible defaults for GPG key generation.
+var DefaultGPGGenerateOptions = GPGGenerateOptions{
+	Config: packet.Config{
+		Algorithm: packet.PubKeyAlgoEdDSA,
+		Curve:     packet.Curve25519,
+	},
+}
+
+// FnGPGGenOpt is a functional option for GPG key generation.
+type FnGPGGenOpt func(*GPGGenerateOptions) error
+
+// WithGPGName sets the user name for the GPG key.
+func WithGPGName(name string) FnGPGGenOpt {
+	return func(o *GPGGenerateOptions) error {
+		o.Name = name
+		return nil
+	}
+}
+
+// WithGPGComment sets the comment for the GPG key.
+func WithGPGComment(comment string) FnGPGGenOpt {
+	return func(o *GPGGenerateOptions) error {
+		o.Comment = comment
+		return nil
+	}
+}
+
+// WithGPGEmail sets the email for the GPG key.
+func WithGPGEmail(email string) FnGPGGenOpt {
+	return func(o *GPGGenerateOptions) error {
+		o.Email = email
+		return nil
+	}
+}
+
+// WithGPGAlgorithm sets the key algorithm (e.g. packet.PubKeyAlgoRSA,
+// packet.PubKeyAlgoECDSA, packet.PubKeyAlgoEdDSA).
+func WithGPGAlgorithm(algo packet.PublicKeyAlgorithm) FnGPGGenOpt {
+	return func(o *GPGGenerateOptions) error {
+		o.Algorithm = algo
+		return nil
+	}
+}
+
+// WithGPGCurve sets the elliptic curve for ECDSA/EdDSA keys.
+func WithGPGCurve(curve packet.Curve) FnGPGGenOpt {
+	return func(o *GPGGenerateOptions) error {
+		o.Curve = curve
+		return nil
+	}
+}
+
+// WithGPGRSABits sets the RSA key size in bits.
+func WithGPGRSABits(bits int) FnGPGGenOpt {
+	return func(o *GPGGenerateOptions) error {
+		if bits < 2048 {
+			return fmt.Errorf("RSA key size must be at least 2048 bits")
+		}
+		o.RSABits = bits
+		return nil
+	}
+}
+
+// WithGPGKeyLifetime sets the key expiration in seconds (0 = no expiration).
+func WithGPGKeyLifetime(seconds uint32) FnGPGGenOpt {
+	return func(o *GPGGenerateOptions) error {
+		o.KeyLifetimeSecs = seconds
+		return nil
+	}
+}
+
+// GenerateGPGKeyPair creates a new GPG key pair with the full OpenPGP entity,
+// preserving user IDs, self-signatures, and subkeys.
+func (gen *Generator) GenerateGPGKeyPair(funcs ...FnGPGGenOpt) (*GPGPrivate, error) {
+	opts := DefaultGPGGenerateOptions
+	for _, f := range funcs {
+		if err := f(&opts); err != nil {
+			return nil, err
+		}
+	}
+
+	entity, err := openpgp.NewEntity(opts.Name, opts.Comment, opts.Email, &opts.Config)
+	if err != nil {
+		return nil, fmt.Errorf("generating GPG key pair: %w", err)
+	}
+
+	return newGPGPrivate(entity)
 }

@@ -44,7 +44,7 @@ func (actions *Actions) Provide(ctx context.Context, audience string) (*oauthflo
 		return nil, fmt.Errorf("audience string contains invalid characters")
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s&audience=%s", url, audience), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s&audience=%s", url, audience), nil) //nolint:gosec // G704: URL comes from trusted ACTIONS_ID_TOKEN_REQUEST_URL env var
 	if err != nil {
 		return nil, err
 	}
