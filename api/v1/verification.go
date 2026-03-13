@@ -99,15 +99,17 @@ func (sv *SignatureVerification) MatchesSigstoreIdentity(id *IdentitySigstore) b
 	return false
 }
 
-// MatchesKeyIdentity returns true if one of the verified signatures was performed
-// with the specified key.
+// MatchesKeyIdentity returns true if one of the verified signatures was
+// performed with the specified key. Matching is done using the key Id and
+// Type fields. Callers should call IdentityKey.Normalize() before matching
+// to ensure identities defined with only key data have their Id and Type
+// populated.
 func (sv *SignatureVerification) MatchesKeyIdentity(keyIdentity *IdentityKey) bool {
-	// Normalize the data
 	id := strings.TrimSpace(keyIdentity.GetId())
-	data := strings.TrimSpace(keyIdentity.GetData())
+	keyType := strings.TrimSpace(keyIdentity.GetType())
 
-	// We need the ID or the key data to match.
-	if id == "" && data == "" {
+	// We need at least the key ID to match.
+	if id == "" {
 		return false
 	}
 
@@ -118,11 +120,12 @@ func (sv *SignatureVerification) MatchesKeyIdentity(keyIdentity *IdentityKey) bo
 			continue
 		}
 
-		if id != "" && strings.TrimSpace(signerKeyData.GetId()) != id {
+		if strings.TrimSpace(signerKeyData.GetId()) != id {
 			continue
 		}
 
-		if data != "" && strings.TrimSpace(signerKeyData.GetData()) != data {
+		if keyType != "" && strings.TrimSpace(signerKeyData.GetType()) != "" &&
+			strings.TrimSpace(signerKeyData.GetType()) != keyType {
 			continue
 		}
 

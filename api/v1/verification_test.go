@@ -18,52 +18,85 @@ func TestMatchesKeyIdentity(t *testing.T) {
 		id      *IdentityKey
 	}{
 		{
-			"single-id", true,
+			"id-match", true,
 			&SignatureVerification{
-				Identities: []*Identity{{Key: &IdentityKey{Id: "1234abc", Data: "keydata"}}},
-			}, &IdentityKey{Id: "1234abc", Data: ""},
+				Identities: []*Identity{{Key: &IdentityKey{Id: "1234abc", Type: "rsa"}}},
+			}, &IdentityKey{Id: "1234abc"},
 		},
 		{
-			"single-data", true,
+			"id-and-type-match", true,
 			&SignatureVerification{
-				Identities: []*Identity{{Key: &IdentityKey{Id: "1234abc", Data: "keydata"}}},
-			}, &IdentityKey{Id: "", Data: "keydata"},
+				Identities: []*Identity{{Key: &IdentityKey{Id: "1234abc", Type: "rsa"}}},
+			}, &IdentityKey{Id: "1234abc", Type: "rsa"},
 		},
 		{
-			"single-both", true,
+			"id-match-type-ignored-when-empty", true,
 			&SignatureVerification{
-				Identities: []*Identity{{Key: &IdentityKey{Id: "1234abc", Data: "keydata"}}},
-			}, &IdentityKey{Id: "1234abc", Data: "keydata"},
+				Identities: []*Identity{{Key: &IdentityKey{Id: "1234abc"}}},
+			}, &IdentityKey{Id: "1234abc", Type: "rsa"},
 		},
 		{
-			"miss-id-match", false,
+			"id-match-data-ignored", true,
 			&SignatureVerification{
 				Identities: []*Identity{{Key: &IdentityKey{Id: "1234abc", Data: "keydata"}}},
-			}, &IdentityKey{Id: "wrong", Data: "keydata"},
+			}, &IdentityKey{Id: "1234abc", Data: "different-data"},
 		},
 		{
-			"miss-data-match", false,
+			"no-id-no-match", false,
 			&SignatureVerification{
-				Identities: []*Identity{{Key: &IdentityKey{Id: "1234abc", Data: "keydata"}}},
-			}, &IdentityKey{Id: "1234abc", Data: "wrong"},
+				Identities: []*Identity{{Key: &IdentityKey{Id: "1234abc"}}},
+			}, &IdentityKey{Data: "keydata"},
 		},
 		{
-			"two-keys-one-match", false,
+			"wrong-id", false,
+			&SignatureVerification{
+				Identities: []*Identity{{Key: &IdentityKey{Id: "1234abc"}}},
+			}, &IdentityKey{Id: "wrong"},
+		},
+		{
+			"type-mismatch", false,
+			&SignatureVerification{
+				Identities: []*Identity{{Key: &IdentityKey{Id: "1234abc", Type: "rsa"}}},
+			}, &IdentityKey{Id: "1234abc", Type: "ecdsa"},
+		},
+		{
+			"two-signers-first-matches", true,
 			&SignatureVerification{
 				Identities: []*Identity{
-					{Key: &IdentityKey{Id: "1234abc", Data: "keydata"}},
-					{Key: &IdentityKey{Id: "5678def", Data: "other-keydata"}},
+					{Key: &IdentityKey{Id: "1234abc", Type: "rsa"}},
+					{Key: &IdentityKey{Id: "5678def", Type: "ecdsa"}},
 				},
-			}, &IdentityKey{Id: "1234abc", Data: "wrong"},
+			}, &IdentityKey{Id: "1234abc", Type: "rsa"},
 		},
 		{
-			"two-keys-two-matches", false,
+			"two-signers-second-matches", true,
 			&SignatureVerification{
 				Identities: []*Identity{
-					{Key: &IdentityKey{Id: "1234abc", Data: ""}},
-					{Key: &IdentityKey{Id: "1234abc", Data: ""}},
+					{Key: &IdentityKey{Id: "1234abc", Type: "rsa"}},
+					{Key: &IdentityKey{Id: "5678def", Type: "ecdsa"}},
 				},
-			}, &IdentityKey{Id: "1234abc", Data: "wrong"},
+			}, &IdentityKey{Id: "5678def", Type: "ecdsa"},
+		},
+		{
+			"two-signers-none-match", false,
+			&SignatureVerification{
+				Identities: []*Identity{
+					{Key: &IdentityKey{Id: "1234abc", Type: "rsa"}},
+					{Key: &IdentityKey{Id: "5678def", Type: "ecdsa"}},
+				},
+			}, &IdentityKey{Id: "aaaaaaa"},
+		},
+		{
+			"nil-signer-key", false,
+			&SignatureVerification{
+				Identities: []*Identity{{Sigstore: &IdentitySigstore{Issuer: "x"}}},
+			}, &IdentityKey{Id: "1234abc"},
+		},
+		{
+			"empty-identities", false,
+			&SignatureVerification{
+				Identities: []*Identity{},
+			}, &IdentityKey{Id: "1234abc"},
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

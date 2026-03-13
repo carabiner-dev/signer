@@ -110,6 +110,35 @@ func (i *Identity) Validate() error {
 	return errors.Join(errs...)
 }
 
+// Normalize populates empty Type and Id fields by parsing the key Data.
+// This ensures identities defined with only key material (e.g. a GPG
+// key block) have their Id and Type resolved before matching.
+func (ik *IdentityKey) Normalize() error {
+	if ik.GetData() == "" {
+		return nil
+	}
+
+	provider, err := key.NewParser().ParsePublicKeyProvider([]byte(ik.GetData()))
+	if err != nil {
+		return fmt.Errorf("parsing key data: %w", err)
+	}
+
+	pub, err := provider.PublicKey()
+	if err != nil {
+		return fmt.Errorf("extracting public key: %w", err)
+	}
+
+	if ik.Type == "" {
+		ik.Type = string(pub.Scheme)
+	}
+
+	if ik.Id == "" {
+		ik.Id = pub.ID()
+	}
+
+	return nil
+}
+
 // PublicKey returns the identity public key by parsing the data if set.
 // It uses ParsePublicKeyProvider to preserve full key metadata (e.g. GPG
 // key IDs and subkeys) required for PGP signature verification.
