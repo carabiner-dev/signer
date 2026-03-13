@@ -34,15 +34,29 @@ func WithScheme(scheme Scheme) FnOpt {
 	}
 }
 
-// ParsePublicKey parses a public key that can be used to verify
+// ParsePublicKey parses a public key that can be used to verify.
+// It supports PEM-encoded keys (RSA, ECDSA, ED25519) and GPG keys
+// (ASCII-armored or binary). For GPG keys the underlying crypto public
+// key is extracted and returned as a *Public.
 func (p *Parser) ParsePublicKey(pubKeyData []byte, funcs ...FnOpt) (*Public, error) {
 	opts := KeyParseOptions{}
 	for _, f := range funcs {
 		f(&opts)
 	}
-	k, err := parseKeyBytes(pubKeyData)
-	if err != nil {
-		return nil, err
+
+	// Try PEM first
+	k, pemErr := parseKeyBytes(pubKeyData)
+	if pemErr != nil {
+		// Try GPG (ASCII-armored or binary)
+		gpgKeys, gpgErr := ParseGPGPublicKey(pubKeyData)
+		if gpgErr != nil || len(gpgKeys) == 0 {
+			return nil, fmt.Errorf("parsing public key: %w", pemErr)
+		}
+		var err error
+		k, err = gpgKeys[0].PublicKey()
+		if err != nil {
+			return nil, fmt.Errorf("extracting public key from GPG data: %w", err)
+		}
 	}
 
 	if opts.Scheme != "" {
@@ -51,6 +65,37 @@ func (p *Parser) ParsePublicKey(pubKeyData []byte, funcs ...FnOpt) (*Public, err
 		}
 	}
 	return k, nil
+}
+
+// ParsePublicKeyProvider parses public key data and returns a PublicKeyProvider.
+// It supports PEM-encoded keys (RSA, ECDSA, ED25519) and GPG keys (ASCII-armored
+// or binary). For PEM keys the returned provider is a *Public; for GPG keys it
+// is a *GPGPublic which preserves the full OpenPGP metadata.
+func (p *Parser) ParsePublicKeyProvider(pubKeyData []byte, funcs ...FnOpt) (PublicKeyProvider, error) {
+	opts := KeyParseOptions{}
+	for _, f := range funcs {
+		f(&opts)
+	}
+
+	// Try PEM first
+	k, pemErr := parseKeyBytes(pubKeyData)
+	if pemErr == nil {
+		if opts.Scheme != "" {
+			if err := k.SetScheme(opts.Scheme); err != nil {
+				return nil, fmt.Errorf("setting key scheme: %w", err)
+			}
+		}
+		return k, nil
+	}
+
+	// Try GPG (ASCII-armored or binary)
+	gpgKeys, gpgErr := ParseGPGPublicKey(pubKeyData)
+	if gpgErr == nil && len(gpgKeys) > 0 {
+		return gpgKeys[0], nil
+	}
+
+	// Neither worked, return the PEM error as it's the most common format
+	return nil, fmt.Errorf("parsing public key: %w", pemErr)
 }
 
 // parseKeyBytes is the parser function. It's a helper to expose it to tests.

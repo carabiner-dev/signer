@@ -4,6 +4,7 @@
 package key
 
 import (
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -35,4 +36,69 @@ func TestParsePublicKeyBytes(t *testing.T) {
 			require.Equal(t, tt.Type, k.Type)
 		})
 	}
+}
+
+func TestParsePublicKey_GPG(t *testing.T) {
+	t.Parallel()
+	gpgData, err := os.ReadFile("testdata/gpg-ecdsa-public.asc")
+	require.NoError(t, err)
+
+	parser := NewParser()
+	pub, err := parser.ParsePublicKey(gpgData)
+	require.NoError(t, err)
+	require.Equal(t, ECDSA, pub.Type)
+	require.Equal(t, EcdsaSha2nistP256, pub.Scheme)
+	require.NotNil(t, pub.Key)
+	require.NotEmpty(t, pub.Data)
+}
+
+func TestParsePublicKeyProvider(t *testing.T) {
+	t.Parallel()
+
+	ecdsaPEM := "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEXkyL5IFxz/Hg6DwUy0HBumXcMxt9\nnQSECAK6r262hPwIzjd6LpE7IPlUbwgheE87vU8EUE9tsS02MShFZGo1gg==\n-----END PUBLIC KEY-----\n"
+
+	gpgData, err := os.ReadFile("testdata/gpg-ecdsa-public.asc")
+	require.NoError(t, err)
+
+	parser := NewParser()
+
+	t.Run("pem-ecdsa", func(t *testing.T) {
+		t.Parallel()
+		prov, err := parser.ParsePublicKeyProvider([]byte(ecdsaPEM))
+		require.NoError(t, err)
+		pub, err := prov.PublicKey()
+		require.NoError(t, err)
+		require.Equal(t, ECDSA, pub.Type)
+	})
+
+	t.Run("pem-with-scheme", func(t *testing.T) {
+		t.Parallel()
+		prov, err := parser.ParsePublicKeyProvider([]byte(ecdsaPEM), WithScheme(EcdsaSha2nistP256))
+		require.NoError(t, err)
+		pub, err := prov.PublicKey()
+		require.NoError(t, err)
+		require.Equal(t, EcdsaSha2nistP256, pub.Scheme)
+	})
+
+	t.Run("gpg-armored", func(t *testing.T) {
+		t.Parallel()
+		prov, err := parser.ParsePublicKeyProvider(gpgData)
+		require.NoError(t, err)
+
+		// Should be a *GPGPublic
+		gpgPub, ok := prov.(*GPGPublic)
+		require.True(t, ok, "expected *GPGPublic, got %T", prov)
+		require.NotEmpty(t, gpgPub.Fingerprint())
+
+		// PublicKey extraction should still work
+		pub, err := prov.PublicKey()
+		require.NoError(t, err)
+		require.Equal(t, ECDSA, pub.Type)
+	})
+
+	t.Run("invalid-data", func(t *testing.T) {
+		t.Parallel()
+		_, err := parser.ParsePublicKeyProvider([]byte("not a key at all"))
+		require.Error(t, err)
+	})
 }
