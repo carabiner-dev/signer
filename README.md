@@ -2,7 +2,8 @@
 
 Easy digital signing library with support for [sigstore](https://www.sigstore.dev/)
 bundles, [DSSE](https://github.com/secure-systems-lab/dsse) envelopes and
-support for easy signing with key pairs.
+support for easy signing with key pairs. The library handles ECDSA, RSA,
+ed25519 and GPG/OpenPGP keys.
 
 ## Signing and Creating Sigstore Bundles
 
@@ -109,15 +110,17 @@ The `key` package will handle all aspects with keys. The package provides
 a key Generator and a key Parser. It also defines the public and private
 key abstractions used throughout the package.
 
-Most verifying operations take a `key.PublicKeyProvider`. This interface is
+Most verifying operations take a `key.PublicKeyProvider`. This interface
 masks any object that can provide a public key object for use in cryptographic
-operations. The `key.Public` obkect is the most basic `PublicKeyProvider` but
+operations. The `key.Public` object is the most basic `PublicKeyProvider` but
 we may implement more complex providers such as cache interfaces and key
-management systems clients.
+management systems clients. For GPG/OpenPGP keys, the `key.GPGPublic` provider
+preserves full key metadata (key IDs, subkeys, and fingerprints) required for
+PGP signature verification.
 
 Signing operations take a `key.PrivateKeyProvider`. This abstraction handles
 key pairs. You can generate keys using the `key.Generator` object. The library
-has support the ECDSA, RSA, and ed25519 key formats.
+supports ECDSA, RSA, ed25519, and GPG/OpenPGP key formats.
 
 ## Status
 
@@ -130,7 +133,13 @@ is now implemented in the signer module. The main verifier exposes functions to
 sign and verify DSSE envelopes and their payloads.
 
 The library also includes a `key` package that handles public key parsing and
-signature verification.
+signature verification. GPG/OpenPGP key blocks are supported for both parsing
+and DSSE envelope verification.
+
+Key identity matching (via `MatchesKeyIdentity`) compares identities using
+their key ID and type. Identities defined with only raw key material (including
+GPG key blocks) are automatically normalized — the key data is parsed to
+extract the ID and type before matching.
 
 ### Upcoming Features
 
