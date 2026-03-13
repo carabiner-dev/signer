@@ -128,11 +128,11 @@ func (ik *IdentityKey) Normalize() error {
 		return fmt.Errorf("extracting public key: %w", err)
 	}
 
-	if ik.Type == "" {
+	if ik.GetType() == "" {
 		ik.Type = string(pub.Scheme)
 	}
 
-	if ik.Id == "" {
+	if ik.GetId() == "" {
 		ik.Id = pub.ID()
 	}
 

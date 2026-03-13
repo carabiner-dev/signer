@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/carabiner-dev/attestation"
+	"google.golang.org/protobuf/proto"
 )
 
 // Ensure we are implementing the framworks verification
@@ -101,12 +102,20 @@ func (sv *SignatureVerification) MatchesSigstoreIdentity(id *IdentitySigstore) b
 
 // MatchesKeyIdentity returns true if one of the verified signatures was
 // performed with the specified key. Matching is done using the key Id and
-// Type fields. Callers should call IdentityKey.Normalize() before matching
-// to ensure identities defined with only key data have their Id and Type
-// populated.
+// Type fields. If the identity has key data but no Id/Type, Normalize is
+// called to populate them before matching.
 func (sv *SignatureVerification) MatchesKeyIdentity(keyIdentity *IdentityKey) bool {
-	id := strings.TrimSpace(keyIdentity.GetId())
-	keyType := strings.TrimSpace(keyIdentity.GetType())
+	ki := keyIdentity
+	if ki.GetId() == "" && ki.GetData() != "" {
+		cloned, ok := proto.Clone(keyIdentity).(*IdentityKey)
+		if ok {
+			_ = cloned.Normalize() //nolint:errcheck // best effort
+			ki = cloned
+		}
+	}
+
+	id := strings.TrimSpace(ki.GetId())
+	keyType := strings.TrimSpace(ki.GetType())
 
 	// We need at least the key ID to match.
 	if id == "" {
