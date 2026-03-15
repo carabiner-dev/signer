@@ -38,7 +38,7 @@ const (
 	ED25519 Type = "ed25519"
 	GPG     Type = "gpg"
 
-	RsaPkcs1v15Sha256   Scheme = "rsassa-pkcs1v15-sha256"
+	RsaPkcs1v15         Scheme = "rsassa-pkcs1v15"
 	RsaSsaPssSha256     Scheme = "rsassa-pss-sha256"
 	RsaSsaPssSha384     Scheme = "rsassa-pss-sha384"
 	RsaSsaPssSha512     Scheme = "rsassa-pss-sha512"
@@ -102,11 +102,10 @@ func (p *Public) SetScheme(scheme Scheme) error {
 	}
 
 	switch {
-	case scheme == RsaPkcs1v15Sha256:
+	case scheme == RsaPkcs1v15:
 		if p.Type != RSA {
 			return ErrIncorrectKeySchema
 		}
-		p.HashType = crypto.SHA256
 	case strings.HasPrefix(string(scheme), "rsassa-pss"):
 		if p.Type != RSA {
 			return ErrIncorrectKeySchema

@@ -431,7 +431,7 @@ func gpgCurveNameToElliptic(name string) (elliptic.Curve, error) {
 func cryptoKeyToTypeSchemeHash(pub crypto.PublicKey) (Type, Scheme, crypto.Hash, error) {
 	switch k := pub.(type) {
 	case *rsa.PublicKey:
-		return RSA, RsaSsaPssSha256, crypto.SHA256, nil
+		return RSA, RsaPkcs1v15, crypto.SHA256, nil
 	case *ecdsa.PublicKey:
 		switch k.Curve.Params().Name {
 		case elliptic.P224().Params().Name:

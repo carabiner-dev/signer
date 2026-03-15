@@ -124,7 +124,7 @@ func parseKeyBytes(pubKeyData []byte) (*Public, error) {
 		// tooling sign with PKCS1v15. The verifier tries PKCS1v15 first
 		// for non-PSS schemes, then falls back to PSS.
 		k.HashType = crypto.SHA256
-		k.Scheme = RsaPkcs1v15Sha256
+		k.Scheme = RsaPkcs1v15
 	case *ecdsa.PublicKey:
 		k.Type = ECDSA
 		// We can infer the hash type from the elliptic curve in use. If it does

@@ -355,7 +355,7 @@ func TestGPGPublicKey_RSA_PublicKeyExtraction(t *testing.T) {
 	pub, err := gpgPub.PublicKey()
 	require.NoError(t, err)
 	require.Equal(t, RSA, pub.Type)
-	require.Equal(t, RsaSsaPssSha256, pub.Scheme)
+	require.Equal(t, RsaPkcs1v15, pub.Scheme)
 	require.Equal(t, crypto.SHA256, pub.HashType)
 	require.IsType(t, &rsa.PublicKey{}, pub.Key)
 }
