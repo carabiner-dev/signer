@@ -120,16 +120,14 @@ func verifyRSA(pubKey *Public, digest, signature []byte) (bool, error) {
 		return false, fmt.Errorf("unable to verify, key is not an RSA key")
 	}
 
-	// If it's not a PSS key, then
+	// If it's not a PSS key, try PKCS1v15 first
 	if !strings.HasPrefix(string(pubKey.Scheme), "rsassa-pss") {
-		if err := rsa.VerifyPKCS1v15(rsaKey, pubKey.HashType, digest, signature); err != nil {
-			if errors.Is(err, rsa.ErrVerification) {
-				return false, nil
-			}
-			return false, err
+		if err := rsa.VerifyPKCS1v15(rsaKey, pubKey.HashType, digest, signature); err == nil {
+			return true, nil
 		}
 	}
 
+	// Try PSS verification
 	pssOptions := &rsa.PSSOptions{
 		SaltLength: rsa.PSSSaltLengthEqualsHash,
 		Hash:       pubKey.HashType,

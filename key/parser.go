@@ -118,6 +118,9 @@ func parseKeyBytes(pubKeyData []byte) (*Public, error) {
 	switch ik := pub.(type) {
 	case *rsa.PublicKey:
 		k.Type = RSA
+		// Default to SHA-256 for RSA keys. Without a HashType the verifier
+		// panics when computing the message digest.
+		k.HashType = crypto.SHA256
 	case *ecdsa.PublicKey:
 		k.Type = ECDSA
 		// We can infer the hash type from the elliptic curve in use. If it does
