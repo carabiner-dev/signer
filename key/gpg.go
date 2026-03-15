@@ -103,13 +103,14 @@ func (g *GPGPublic) PublicKey() (*Public, error) {
 	}
 
 	return &Public{
-		Type:      keyType,
-		Scheme:    scheme,
-		HashType:  hash,
-		Data:      string(pubKeyData),
-		Key:       stdPub,
-		NotBefore: g.GetNotBefore(),
-		NotAfter:  g.GetNotAfter(),
+		Type:       keyType,
+		Scheme:     scheme,
+		HashType:   hash,
+		Data:       string(pubKeyData),
+		Key:        stdPub,
+		NotBefore:  g.GetNotBefore(),
+		NotAfter:   g.GetNotAfter(),
+		overrideID: g.Fingerprint(),
 	}, nil
 }
 

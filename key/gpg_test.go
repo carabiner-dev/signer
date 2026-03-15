@@ -390,6 +390,29 @@ func TestGPGPublicKey_Ed25519_PublicKeyExtraction(t *testing.T) {
 	require.Equal(t, Ed25519, pub.Scheme)
 }
 
+func TestGPGPublicKey_IDUsesFingerprint(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		config *packet.Config
+	}{
+		{"rsa", &packet.Config{Algorithm: packet.PubKeyAlgoRSA, RSABits: 2048}},
+		{"ecdsa", &packet.Config{Algorithm: packet.PubKeyAlgoECDSA, Curve: packet.CurveNistP256}},
+		{"ed25519", &packet.Config{Algorithm: packet.PubKeyAlgoEdDSA, Curve: packet.Curve25519}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			entity := generateTestEntity(t, "ID Test", "id-test@example.com", tc.config)
+			gpgPub := newGPGPublic(entity)
+
+			pub, err := gpgPub.PublicKey()
+			require.NoError(t, err)
+			require.Equal(t, gpgPub.Fingerprint(), pub.ID(),
+				"Public.ID() should return the GPG fingerprint for keys extracted from GPG")
+		})
+	}
+}
+
 func TestGPGPublicKey_WithExpiration(t *testing.T) {
 	t.Parallel()
 	entity := generateTestEntity(t, "Expiring User", "expire@example.com", &packet.Config{

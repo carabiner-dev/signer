@@ -61,10 +61,18 @@ type Public struct {
 	Key       crypto.PublicKey
 	NotBefore *time.Time `json:"not_before"`
 	NotAfter  *time.Time `json:"not_after"`
+
+	// overrideID, when set, is returned by ID() instead of computing
+	// an identifier from the key material. This is used to preserve
+	// the GPG fingerprint when converting from GPGPublic.
+	overrideID string
 }
 
 // ID computes a key id by hashing the key data and triming it to the first bytes
 func (p *Public) ID() string {
+	if p.overrideID != "" {
+		return p.overrideID
+	}
 	var hash [32]byte
 	switch pubKey := p.Key.(type) {
 	case *rsa.PublicKey:
