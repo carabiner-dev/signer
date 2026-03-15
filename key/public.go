@@ -38,6 +38,7 @@ const (
 	ED25519 Type = "ed25519"
 	GPG     Type = "gpg"
 
+	RsaPkcs1v15         Scheme = "rsassa-pkcs1v15"
 	RsaSsaPssSha256     Scheme = "rsassa-pss-sha256"
 	RsaSsaPssSha384     Scheme = "rsassa-pss-sha384"
 	RsaSsaPssSha512     Scheme = "rsassa-pss-sha512"
@@ -60,10 +61,18 @@ type Public struct {
 	Key       crypto.PublicKey
 	NotBefore *time.Time `json:"not_before"`
 	NotAfter  *time.Time `json:"not_after"`
+
+	// overrideID, when set, is returned by ID() instead of computing
+	// an identifier from the key material. This is used to preserve
+	// the GPG fingerprint when converting from GPGPublic.
+	overrideID string
 }
 
 // ID computes a key id by hashing the key data and triming it to the first bytes
 func (p *Public) ID() string {
+	if p.overrideID != "" {
+		return p.overrideID
+	}
 	var hash [32]byte
 	switch pubKey := p.Key.(type) {
 	case *rsa.PublicKey:
@@ -93,6 +102,10 @@ func (p *Public) SetScheme(scheme Scheme) error {
 	}
 
 	switch {
+	case scheme == RsaPkcs1v15:
+		if p.Type != RSA {
+			return ErrIncorrectKeySchema
+		}
 	case strings.HasPrefix(string(scheme), "rsassa-pss"):
 		if p.Type != RSA {
 			return ErrIncorrectKeySchema
