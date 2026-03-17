@@ -173,10 +173,17 @@ func verifyECDSA(pubKey *Public, digest, signature []byte) (bool, error) {
 		return false, fmt.Errorf("unsupported ECDSA configuration: curve %s with hash %v", pubKey.Curve(), pubKey.HashType)
 	}
 
-	// Parse the DER encoded signature
+	// Try DER/ASN.1 encoding first, fall back to raw/IEEE P1363 (R||S).
 	var sig signatureValues
 	if _, err := asn1.Unmarshal(signature, &sig); err != nil {
-		return false, fmt.Errorf("unmarshaling ECDSA signature: %w", err)
+		// Raw P1363: R and S are zero-padded to equal length and concatenated.
+		n := len(signature)
+		if n == 0 || n%2 != 0 {
+			return false, fmt.Errorf("unmarshaling ECDSA signature: %w", err)
+		}
+		half := n / 2
+		sig.R = new(big.Int).SetBytes(signature[:half])
+		sig.S = new(big.Int).SetBytes(signature[half:])
 	}
 
 	// Verify the signature

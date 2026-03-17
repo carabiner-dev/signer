@@ -47,6 +47,12 @@ func TestVerifyHash(t *testing.T) {
 			"3aa489a09d7c7fac5f2cac100c28baab237b06644fa14233307b5b20214d4a12", "MEUCIQCOgpXO0V4xNCGslEpGnj9nGkEYTOqefQ/VIAVAYXUUJQIgMFiwpsELF+076kyK+8wiSD9Mcl1o78cbBdMRZd+thHk=",
 			"", false, false,
 		},
+		{
+			// Same as "ecdsa" but signature is in raw IEEE P1363 format (R||S) instead of DER.
+			"ecdsa-p1363", false, "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEXkyL5IFxz/Hg6DwUy0HBumXcMxt9\nnQSECAK6r262hPwIzjd6LpE7IPlUbwgheE87vU8EUE9tsS02MShFZGo1gg==\n-----END PUBLIC KEY-----\n",
+			"6b9e695a3f7bc780cdeba0e5c82e4a06f8eae3bc90752eeaa36cdc6af9a39e8a", "N/IBUiN1EhIsACwTZo6MMYW8FpzTYZz3PzRWSUlI8t9DwINgrGs4KgJLgM+lw2yoZt12a48jTAd2hdrKxQO+2A==",
+			"ecdsa-sha2-nistp256", true, false,
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
