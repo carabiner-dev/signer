@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -189,7 +190,6 @@ func (bs *DefaultSigner) GetOidcToken(opts *options.Signer) error {
 	// Create the OIDC connector and choose the proper flow depending on the
 	// environment.
 	//
-	// TODO(puerco): This needs to fetch the token from github actions
 	oidcIssuer := opts.OidcIssuerURL()
 
 	connector := &oidcConnector{}
@@ -197,6 +197,15 @@ func (bs *DefaultSigner) GetOidcToken(opts *options.Signer) error {
 	case opts.Token != nil:
 		connector.flow = &oauthflow.StaticTokenGetter{RawToken: opts.Token.RawString}
 	case !term.IsTerminal(0):
+		// If we're in a CI environment with no ambient credentials token,
+		// fail fast instead of starting the device flow which will hang
+		// forever waiting for interactive input.
+		if os.Getenv("CI") != "" {
+			return fmt.Errorf(
+				"no OIDC ambient credentials found in CI environment, " +
+					"ensure the workflow has 'id-token: write' permission",
+			)
+		}
 		connector.flow = oauthflow.NewDeviceFlowTokenGetterForIssuer(oidcIssuer)
 	default:
 		connector.flow = oauthflow.DefaultIDTokenGetter
