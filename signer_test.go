@@ -288,3 +288,40 @@ func TestSignAndVerifyMocked(t *testing.T) {
 	require.NotNil(t, res)
 	require.Equal(t, 1, fakeVerifier.VerifyCallCount())
 }
+
+// TestSigningStateReuse verifies that calling SignStatement multiple times on the
+// same Signer reuses the keypair, OIDC token, and bundle options instead of
+// repeating the authentication and certificate issuance flows.
+func TestSigningStateReuse(t *testing.T) {
+	t.Parallel()
+
+	statementData, err := os.ReadFile("bundle/testdata/statement.json")
+	require.NoError(t, err)
+
+	opts := options.DefaultSigner
+	require.NoError(t, opts.Validate())
+
+	fakeBundleSigner := &bundlefakes.FakeSigner{}
+	s := &Signer{
+		Options:      opts,
+		bundleSigner: fakeBundleSigner,
+	}
+
+	// Sign three statements with the same signer
+	for i := range 3 {
+		bndl, err := s.SignStatement(statementData)
+		require.NoError(t, err, "signing attempt %d", i+1)
+		require.NotNil(t, bndl)
+	}
+
+	// Content verification and wrapping happen for every call
+	require.Equal(t, 3, fakeBundleSigner.VerifyAttestationContentCallCount())
+	require.Equal(t, 3, fakeBundleSigner.WrapDataCallCount())
+	require.Equal(t, 3, fakeBundleSigner.SignBundleCallCount())
+
+	// But keypair, tokens, and options are only initialized once
+	require.Equal(t, 1, fakeBundleSigner.GetKeyPairCallCount())
+	require.Equal(t, 1, fakeBundleSigner.GetAmbientTokensCallCount())
+	require.Equal(t, 1, fakeBundleSigner.GetOidcTokenCallCount())
+	require.Equal(t, 1, fakeBundleSigner.BuildSigstoreSignerOptionsCallCount())
+}

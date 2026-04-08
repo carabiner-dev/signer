@@ -4,12 +4,16 @@
 package signer
 
 import (
+	"context"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	sdsse "github.com/sigstore/protobuf-specs/gen/pb-go/dsse"
 	sbundle "github.com/sigstore/sigstore-go/pkg/bundle"
+	"github.com/sigstore/sigstore-go/pkg/sign"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/encoding/protojson"
 
@@ -52,6 +56,12 @@ type Signer struct {
 	Options      options.Signer
 	bundleSigner bundle.Signer
 	dsseSigner   dsse.Signer
+
+	// Cached signing state reused across multiple signing operations to avoid
+	// repeated OIDC flows and Fulcio certificate requests.
+	signingReady bool
+	keypair      *sign.EphemeralKeypair
+	bundleOpts   *sign.BundleOptions
 }
 
 // WriteBundle writes the bundle JSON to
@@ -68,6 +78,55 @@ func (s *Signer) WriteBundle(bndl *sbundle.Bundle, w io.Writer) error {
 	return nil
 }
 
+// signingState returns the cached keypair and bundle options, initializing them
+// on the first call. This ensures that the OIDC flow, Fulcio certificate request,
+// and keypair generation happen only once even when signing multiple artifacts.
+func (s *Signer) signingState() (*sign.EphemeralKeypair, *sign.BundleOptions, error) {
+	if s.signingReady {
+		return s.keypair, s.bundleOpts, nil
+	}
+
+	// Verify the defined options:
+	if err := s.Options.Validate(); err != nil {
+		return nil, nil, fmt.Errorf("validating options for signing: %w", err)
+	}
+
+	// Generate the ephemeral keypair
+	keypair, err := s.bundleSigner.GetKeyPair(&s.Options)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Run the STS providers to check for ambient credentials
+	if err := s.bundleSigner.GetAmbientTokens(&s.Options); err != nil {
+		return nil, nil, fmt.Errorf("fetching ambient credentials: %w", err)
+	}
+
+	// Get the ID token
+	if err := s.bundleSigner.GetOidcToken(&s.Options); err != nil {
+		return nil, nil, fmt.Errorf("getting ID token: %w", err)
+	}
+
+	// Generate the signer options
+	bundleOpts, err := s.bundleSigner.BuildSigstoreSignerOptions(&s.Options)
+	if err != nil {
+		return nil, nil, fmt.Errorf("building options: %w", err)
+	}
+
+	// Wrap the certificate provider so the Fulcio certificate is fetched once
+	// and reused for all subsequent signing operations with this keypair.
+	if bundleOpts != nil && bundleOpts.CertificateProvider != nil {
+		bundleOpts.CertificateProvider = &cachingCertProvider{
+			inner: bundleOpts.CertificateProvider,
+		}
+	}
+
+	s.keypair = keypair
+	s.bundleOpts = bundleOpts
+	s.signingReady = true
+	return keypair, bundleOpts, nil
+}
+
 // SignStatement signs an in-toto attestation using the configured options and
 // returns a sigstore bundle. The signing process will try to obtain the
 // signer identity in this order:
@@ -78,6 +137,9 @@ func (s *Signer) WriteBundle(bndl *sbundle.Bundle, w io.Writer) error {
 //     flow in a browser.
 //  3. If no terminal is detected, it will start the sigstore device
 //     flow.
+//
+// When called multiple times on the same Signer, the keypair, OIDC token,
+// and Fulcio certificate are reused across calls.
 func (s *Signer) SignStatement(data []byte, funcs ...options.SignOptFn) (*sbundle.Bundle, error) {
 	signOpts := options.DefaultSign
 	for _, f := range funcs {
@@ -85,10 +147,7 @@ func (s *Signer) SignStatement(data []byte, funcs ...options.SignOptFn) (*sbundl
 			return nil, err
 		}
 	}
-	// Verify the defined options:
-	if err := s.Options.Validate(); err != nil {
-		return nil, fmt.Errorf("validating options for signing: %w", err)
-	}
+
 	// check that statement is not empty and it is an intoto attestation
 	if err := s.bundleSigner.VerifyAttestationContent(&s.Options, data); err != nil {
 		return nil, fmt.Errorf("verifying content: %w", err)
@@ -100,29 +159,12 @@ func (s *Signer) SignStatement(data []byte, funcs ...options.SignOptFn) (*sbundl
 	// See https://github.com/sigstore/sigstore-go/issues/509
 	content := s.bundleSigner.WrapData("application/vnd.in-toto+json", data)
 
-	// Get(or generate) the public key
-	keypair, err := s.bundleSigner.GetKeyPair(&s.Options)
+	keypair, bundleOpts, err := s.signingState()
 	if err != nil {
 		return nil, err
 	}
 
-	// Run the STS providers to check for ambient credentials
-	if err := s.bundleSigner.GetAmbientTokens(&s.Options); err != nil {
-		return nil, fmt.Errorf("fetching ambient credentials: %w", err)
-	}
-
-	// Get the ID token
-	if err := s.bundleSigner.GetOidcToken(&s.Options); err != nil {
-		return nil, fmt.Errorf("getting ID token: %w", err)
-	}
-
-	// Generate the signer options
-	bundleSignerOption, err := s.bundleSigner.BuildSigstoreSignerOptions(&s.Options)
-	if err != nil {
-		return nil, fmt.Errorf("building options: %w", err)
-	}
-
-	bndl, err := s.bundleSigner.SignBundle(content, keypair, bundleSignerOption)
+	bndl, err := s.bundleSigner.SignBundle(content, keypair, bundleOpts)
 	if err != nil {
 		return nil, fmt.Errorf("singing statement: %w", err)
 	}
@@ -132,6 +174,8 @@ func (s *Signer) SignStatement(data []byte, funcs ...options.SignOptFn) (*sbundl
 }
 
 // SignMessage signs a payload as a message digest and returns a sigstore bundle.
+// When called multiple times on the same Signer, the keypair, OIDC token,
+// and Fulcio certificate are reused across calls.
 func (s *Signer) SignMessage(data []byte, funcs ...options.SignOptFn) (*sbundle.Bundle, error) {
 	signOpts := options.DefaultSign
 	for _, f := range funcs {
@@ -139,37 +183,16 @@ func (s *Signer) SignMessage(data []byte, funcs ...options.SignOptFn) (*sbundle.
 			return nil, err
 		}
 	}
-	// Verify the defined options:
-	if err := s.Options.Validate(); err != nil {
-		return nil, err
-	}
 
-	// Wrap the attestation in its DSSE envelope
+	// Wrap the payload as a message
 	content := s.bundleSigner.BuildMessage(data)
 
-	// Get(or generate) the public key
-	keypair, err := s.bundleSigner.GetKeyPair(&s.Options)
+	keypair, bundleOpts, err := s.signingState()
 	if err != nil {
 		return nil, err
 	}
 
-	// Run the STS providers to check for ambient credentials
-	if err := s.bundleSigner.GetAmbientTokens(&s.Options); err != nil {
-		return nil, fmt.Errorf("fetching ambient credentials: %w", err)
-	}
-
-	// Get the ID token
-	if err := s.bundleSigner.GetOidcToken(&s.Options); err != nil {
-		return nil, fmt.Errorf("getting ID token: %w", err)
-	}
-
-	// Generate the signer options
-	bundleSignerOption, err := s.bundleSigner.BuildSigstoreSignerOptions(&s.Options)
-	if err != nil {
-		return nil, fmt.Errorf("building options: %w", err)
-	}
-
-	bndl, err := s.bundleSigner.SignBundle(content, keypair, bundleSignerOption)
+	bndl, err := s.bundleSigner.SignBundle(content, keypair, bundleOpts)
 	if err != nil {
 		return nil, fmt.Errorf("singing statement: %w", err)
 	}
@@ -245,4 +268,38 @@ func (s *Signer) WriteDSSEEnvelope(env *sdsse.Envelope, w io.Writer) error {
 	}
 
 	return nil
+}
+
+// cachingCertProvider wraps a CertificateProvider and caches the certificate
+// after the first successful request. This avoids issuing multiple Fulcio
+// certificate requests when the same keypair is used to sign several artifacts.
+// The cached certificate is discarded when it expires.
+type cachingCertProvider struct {
+	inner     sign.CertificateProvider
+	cert      []byte
+	notBefore time.Time
+	notAfter  time.Time
+}
+
+func (c *cachingCertProvider) GetCertificate(ctx context.Context, kp sign.Keypair, opts *sign.CertificateProviderOptions) ([]byte, error) {
+	now := time.Now()
+	if c.cert != nil && now.After(c.notBefore) && now.Before(c.notAfter) {
+		return c.cert, nil
+	}
+
+	cert, err := c.inner.GetCertificate(ctx, kp, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse the DER certificate to read its expiry time
+	x509Cert, err := x509.ParseCertificate(cert)
+	if err != nil {
+		return nil, fmt.Errorf("parsing cached certificate: %w", err)
+	}
+
+	c.cert = cert
+	c.notBefore = x509Cert.NotBefore
+	c.notAfter = x509Cert.NotAfter
+	return cert, nil
 }
