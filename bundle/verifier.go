@@ -280,9 +280,9 @@ func hashAlgorithmToString(algo commonv1.HashAlgorithm) (string, error) {
 		return "sha384", nil
 	case commonv1.HashAlgorithm_SHA2_512:
 		return "sha512", nil
-	case commonv1.HashAlgorithm_SHA3_256:
+	case commonv1.HashAlgorithm_SHA3_256: //nolint:staticcheck // Keeping these for compat
 		return "sha3-256", nil
-	case commonv1.HashAlgorithm_SHA3_384:
+	case commonv1.HashAlgorithm_SHA3_384: //nolint:staticcheck // Keeping these for compat
 		return "sha3-384", nil
 	default:
 		return "", fmt.Errorf("unsupported hash algorithm: %v", algo)
