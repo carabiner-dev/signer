@@ -13,7 +13,9 @@ import (
 )
 
 func TestVerify(t *testing.T) {
-	t.Parallel()
+	// Not parallel: subtests share the global TUF cache (~/.sigstore/root)
+	// and on Windows the atomic metadata rename fails with "Access is denied"
+	// when two goroutines access the same per-URL cache concurrently.
 	for _, tt := range []struct {
 		name         string
 		rootsPath    string
@@ -25,11 +27,15 @@ func TestVerify(t *testing.T) {
 		{"two-instances", "testdata/sigstore-roots.json", "testdata/public-good.sigstore.json", false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+			// Subtests must not run in parallel: they share the global
+			// TUF cache (~/.sigstore/root) and on Windows the atomic
+			// metadata rename fails with "Access is denied" when two
+			// goroutines access the same per-URL cache concurrently.
 			data, err := os.ReadFile(tt.rootsPath)
 			require.NoError(t, err)
 
-			verifier := New(WithSigstoreRootsData(data))
+			verifier, err := NewWithError(WithSigstoreRootsData(data))
+			require.NoError(t, err)
 
 			b, err := verifier.OpenBundle(tt.attestattion)
 			require.NoError(t, err)
