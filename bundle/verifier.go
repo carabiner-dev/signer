@@ -43,16 +43,26 @@ func WithSigstoreRootsData(data []byte) BundleOptsFunc {
 	}
 }
 
-// New creates a new verifier
+// New creates a new verifier. Initialization errors are logged to stderr
+// but not returned. Use NewWithError if you need to handle errors.
 func New(funcs ...BundleOptsFunc) Verifier {
+	v, err := NewWithError(funcs...)
+	if err != nil {
+		log.Default().Print(err)
+	}
+	return v
+}
+
+// NewWithError creates a new verifier and returns any initialization error.
+func NewWithError(funcs ...BundleOptsFunc) (Verifier, error) {
 	ret := &DefaultVerifier{}
 	for _, f := range funcs {
 		if err := f(ret); err != nil {
-			log.Default().Print(err)
+			return ret, err
 		}
 	}
 
-	return ret
+	return ret, nil
 }
 
 // VerifyCapable abstracts the verifier to mock

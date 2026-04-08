@@ -1,0 +1,3 @@
+# Prevent line ending conversion for test fixtures that are
+# cryptographically signed or contain binary data.
+key/testdata/** binary
