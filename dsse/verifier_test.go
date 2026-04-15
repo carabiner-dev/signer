@@ -145,3 +145,29 @@ func TestRunVerification(t *testing.T) {
 		})
 	}
 }
+
+// TestRunVerificationGPG verifies that a DSSE envelope whose signature is an
+// OpenPGP signature packet (here produced by an Ed25519 signing subkey) is
+// verified through the GPG detached-signature path rather than being treated
+// as a raw crypto signature over the PAE digest. Prior to the fix this
+// panicked because Ed25519's HashType is 0.
+func TestRunVerificationGPG(t *testing.T) {
+	t.Parallel()
+	v := &DefaultVerifier{}
+	env, err := v.OpenEnvelope(filepath.Join("testdata", "gpg-ed25519.dsse.json"))
+	require.NoError(t, err)
+
+	keydata, err := os.ReadFile(filepath.Join("testdata", "gpg-ed25519.pub.asc"))
+	require.NoError(t, err)
+
+	// ParsePublicKeyProvider preserves the GPGPublic wrapper so the DSSE
+	// verifier can dispatch to the OpenPGP detached-signature path.
+	provider, err := key.NewParser().ParsePublicKeyProvider(keydata)
+	require.NoError(t, err)
+
+	res, err := v.RunVerification(&options.Verifier{}, key.NewVerifier(), env, []key.PublicKeyProvider{provider})
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	require.True(t, res.Verified)
+	require.Len(t, res.Keys, 1)
+}
