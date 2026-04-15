@@ -39,26 +39,35 @@ func (dv *DefaultVerifier) RunVerification(
 		return nil, errors.New("did not get a key verifier to check signatures")
 	}
 
-	// Extract the public keys up front for efficiency
+	// Extract the public keys up front for efficiency. We keep both the
+	// extracted *Public and the original provider so that GPG providers can
+	// be routed through the OpenPGP detached-signature path.
 	publicKeys := []*key.Public{}
+	providers := []key.PublicKeyProvider{}
 	for _, provider := range keys {
 		pk, err := provider.PublicKey()
 		if err != nil {
 			return nil, fmt.Errorf("unable to read public key: %w", err)
 		}
 		publicKeys = append(publicKeys, pk)
+		providers = append(providers, provider)
 	}
 
+	// Precompute PAE digests for keys that verify via prehash. ED25519 and
+	// GPG-wrapped signatures operate on the raw PAE message, so skip them.
+	paeMessage := paeEncode(env)
 	digests := map[crypto.Hash][]byte{}
 	digestStrs := map[string]string{}
 	for _, k := range publicKeys {
+		if k.HashType == 0 {
+			continue
+		}
 		if _, ok := digests[k.HashType]; ok {
 			continue
 		}
-		// Hash in this hasher
 		digest, err := hashPayload(env, k.HashType)
 		if err != nil {
-			return nil, fmt.Errorf("error hashing with %T: %w", k.HashType, err)
+			return nil, fmt.Errorf("error hashing with %s: %w", k.HashType, err)
 		}
 		digests[k.HashType] = digest
 		digestStrs[k.HashType.String()] = fmt.Sprintf("%x", digest)
@@ -72,15 +81,26 @@ func (dv *DefaultVerifier) RunVerification(
 	var mutex sync.Mutex
 	t := throttler.New((4), len(env.GetSignatures())*len(keys))
 	for _, sig := range env.GetSignatures() {
-		for _, k := range publicKeys {
+		for i, k := range publicKeys {
+			provider := providers[i]
+			_, isGPG := provider.(*key.GPGPublic)
 			go func() {
-				pass, err := kv.VerifyDigest(k, digests[k.HashType], sig.GetSig())
-				if err == nil {
-					if pass {
-						mutex.Lock()
-						matchedKeys = append(matchedKeys, k)
-						mutex.Unlock()
-					}
+				var (
+					pass bool
+					err  error
+				)
+				// GPG signatures are OpenPGP packets and must be verified
+				// as detached signatures over the PAE message. ED25519
+				// signs the message directly (no prehash).
+				if isGPG || k.HashType == 0 {
+					pass, err = kv.VerifyMessage(provider, paeMessage, sig.GetSig())
+				} else {
+					pass, err = kv.VerifyDigest(k, digests[k.HashType], sig.GetSig())
+				}
+				if err == nil && pass {
+					mutex.Lock()
+					matchedKeys = append(matchedKeys, k)
+					mutex.Unlock()
 				}
 				t.Done(err)
 			}()
