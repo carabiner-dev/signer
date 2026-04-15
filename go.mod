@@ -1,6 +1,6 @@
 module github.com/carabiner-dev/signer
 
-go 1.25.8
+go 1.25.9
 
 require (
 	github.com/ProtonMail/go-crypto v1.4.1
