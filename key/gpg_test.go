@@ -667,6 +667,37 @@ func TestGPG_SigningKeyFingerprint_Subkey(t *testing.T) {
 	require.True(t, found, "fingerprint %s not found among subkeys", fp)
 }
 
+// TestGPG_SignMessage_ProducesOpenPGPPacket verifies that SignMessage emits
+// an OpenPGP detached signature packet for GPG private keys (so the subkey
+// identity survives the signing round-trip) rather than a raw crypto signature.
+func TestGPG_SignMessage_ProducesOpenPGPPacket(t *testing.T) {
+	t.Parallel()
+	entity := generateTestEntity(t, "Packet Out", "packet@example.com", &packet.Config{
+		Algorithm: packet.PubKeyAlgoEdDSA,
+		Curve:     packet.Curve25519,
+	})
+	require.NoError(t, entity.AddSigningSubkey(&packet.Config{
+		Algorithm: packet.PubKeyAlgoEdDSA,
+		Curve:     packet.Curve25519,
+	}))
+
+	gpgPriv, err := newGPGPrivate(entity)
+	require.NoError(t, err)
+
+	message := []byte("round-trip through SignMessage")
+	sig, err := NewSigner().SignMessage(gpgPriv, message)
+	require.NoError(t, err)
+
+	gpgPub := gpgPriv.GPGPublicKey()
+	fp, err := gpgPub.SigningKeyFingerprint(sig)
+	require.NoError(t, err)
+	require.NotEqual(t, gpgPub.Fingerprint(), fp, "signature should be attributed to the subkey, not the primary")
+
+	ok, err := NewVerifier().VerifyMessage(gpgPub, message, sig)
+	require.NoError(t, err)
+	require.True(t, ok)
+}
+
 // TestGPG_SigningKeyFingerprint_Primary covers the case where the signature
 // is made directly by the primary key (no signing subkey): the method should
 // return the primary fingerprint and equal Fingerprint().
