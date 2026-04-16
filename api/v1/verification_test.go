@@ -123,6 +123,73 @@ func TestMatchesKeyIdentity(t *testing.T) {
 				Data: "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEXkyL5IFxz/Hg6DwUy0HBumXcMxt9\nnQSECAK6r262hPwIzjd6LpE7IPlUbwgheE87vU8EUE9tsS02MShFZGo1gg==\n-----END PUBLIC KEY-----\n",
 			},
 		},
+		{
+			// Policy pins the signing subkey and verified identity matches it.
+			"signing-fingerprint-pin-match", true,
+			&SignatureVerification{
+				Identities: []*Identity{{Key: &IdentityKey{
+					Id: "PRIMARYFP", SigningFingerprint: "SUBKEYFP",
+				}}},
+			}, &IdentityKey{Id: "PRIMARYFP", SigningFingerprint: "SUBKEYFP"},
+		},
+		{
+			// Case-insensitive so upper/lower-hex fingerprints don't matter.
+			"signing-fingerprint-pin-case-insensitive", true,
+			&SignatureVerification{
+				Identities: []*Identity{{Key: &IdentityKey{
+					Id: "PRIMARYFP", SigningFingerprint: "subkeyfp",
+				}}},
+			}, &IdentityKey{Id: "PRIMARYFP", SigningFingerprint: "SUBKEYFP"},
+		},
+		{
+			// Policy pins a different subkey than the one that signed.
+			"signing-fingerprint-pin-mismatch", false,
+			&SignatureVerification{
+				Identities: []*Identity{{Key: &IdentityKey{
+					Id: "PRIMARYFP", SigningFingerprint: "SUBKEY_A",
+				}}},
+			}, &IdentityKey{Id: "PRIMARYFP", SigningFingerprint: "SUBKEY_B"},
+		},
+		{
+			// Policy omits the signing fingerprint — pin is not enforced even
+			// if the verified identity has one.
+			"signing-fingerprint-unpinned-permissive", true,
+			&SignatureVerification{
+				Identities: []*Identity{{Key: &IdentityKey{
+					Id: "PRIMARYFP", SigningFingerprint: "SUBKEY_A",
+				}}},
+			}, &IdentityKey{Id: "PRIMARYFP"},
+		},
+		{
+			// Policy uses only the subkey fingerprint as Id — matches against
+			// the signer's SigningFingerprint field.
+			"id-matches-signer-subkey", true,
+			&SignatureVerification{
+				Identities: []*Identity{{Key: &IdentityKey{
+					Id: "PRIMARYFP", SigningFingerprint: "SUBKEYFP",
+				}}},
+			}, &IdentityKey{Id: "SUBKEYFP"},
+		},
+		{
+			// Policy Id is a subkey fingerprint that doesn't match either the
+			// primary or the signer's actual subkey.
+			"id-matches-neither-primary-nor-subkey", false,
+			&SignatureVerification{
+				Identities: []*Identity{{Key: &IdentityKey{
+					Id: "PRIMARYFP", SigningFingerprint: "SUBKEY_A",
+				}}},
+			}, &IdentityKey{Id: "SUBKEY_B"},
+		},
+		{
+			// Fingerprint comparisons are case-insensitive, including the
+			// primary Id match (hex fingerprints show up in either case).
+			"id-case-insensitive", true,
+			&SignatureVerification{
+				Identities: []*Identity{{Key: &IdentityKey{
+					Id: "PRIMARYFP",
+				}}},
+			}, &IdentityKey{Id: "primaryfp"},
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()

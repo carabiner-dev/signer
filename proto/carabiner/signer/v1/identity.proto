@@ -26,9 +26,10 @@ message IdentitySigstore {
 
 // IdentityKey registers the data of a key used to sign attestations.
 message IdentityKey {
-    string id = 1;   // Key ID
-    string type = 2; // Identity type
-    string data = 3; // Public key data
+    string id = 1;                  // Key ID
+    string type = 2;                // Identity type
+    string data = 3;                // Public key data
+    string signing_fingerprint = 4; // Fingerprint of the signing subkey
 }
 
 // IdentityRef represents an identity defined outside of the policy. Most commonly

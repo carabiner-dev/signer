@@ -110,6 +110,22 @@ func (i *Identity) Validate() error {
 	return errors.Join(errs...)
 }
 
+// IdentityKeyFromPublic builds an IdentityKey from a verified *key.Public.
+// It copies the key Id, Scheme (as Type) and — critically for GPG — the
+// SigningKeyFingerprint populated during verification, so the resulting
+// IdentityKey names the actual signing (sub)key rather than just the
+// primary/identity key.
+func IdentityKeyFromPublic(pub *key.Public) *IdentityKey {
+	if pub == nil {
+		return nil
+	}
+	return &IdentityKey{
+		Id:                 pub.ID(),
+		Type:               string(pub.Scheme),
+		SigningFingerprint: pub.SigningKeyFingerprint,
+	}
+}
+
 // Normalize populates empty Type and Id fields by parsing the key Data.
 // This ensures identities defined with only key material (e.g. a GPG
 // key block) have their Id and Type resolved before matching.

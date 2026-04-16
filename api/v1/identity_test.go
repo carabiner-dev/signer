@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/carabiner-dev/signer/key"
 )
 
 func TestVerifyIdentity(t *testing.T) {
@@ -64,4 +66,32 @@ func TestVerifyIdentity(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+func TestIdentityKeyFromPublic(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil", func(t *testing.T) {
+		t.Parallel()
+		require.Nil(t, IdentityKeyFromPublic(nil))
+	})
+
+	t.Run("carries-signing-fingerprint", func(t *testing.T) {
+		t.Parallel()
+		// A *key.Public standing in for a post-verification entry whose
+		// signature was made by a subkey: ID() reports the primary,
+		// SigningKeyFingerprint reports the subkey.
+		pub := &key.Public{
+			Scheme:                key.Ed25519,
+			SigningKeyFingerprint: "04B44C056663906446B77A6D89F11DC191AA7042",
+		}
+		// Force ID() to return the primary fingerprint via the same
+		// mechanism Public uses for GPG-derived keys.
+		pub.Data = "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAPRILHF2NfPlV9xTQkLTM5aWCQfY9bF4cHRPm8a9Uc2o=\n-----END PUBLIC KEY-----\n"
+
+		ik := IdentityKeyFromPublic(pub)
+		require.NotNil(t, ik)
+		require.Equal(t, "04B44C056663906446B77A6D89F11DC191AA7042", ik.GetSigningFingerprint())
+		require.Equal(t, string(key.Ed25519), ik.GetType())
+	})
 }
