@@ -101,9 +101,19 @@ func (sv *SignatureVerification) MatchesSigstoreIdentity(id *IdentitySigstore) b
 }
 
 // MatchesKeyIdentity returns true if one of the verified signatures was
-// performed with the specified key. Matching is done using the key Id and
-// Type fields. If the identity has key data but no Id/Type, Normalize is
-// called to populate them before matching.
+// performed with the specified key. Matching rules:
+//
+//   - Id (required): compared against both the signer's primary key Id and
+//     its signing subkey fingerprint — a policy can name a GPG identity by
+//     either its primary or its signing subkey.
+//   - Type (optional): narrows the match when both sides set it.
+//   - SigningFingerprint (optional): additional pin requiring the signer's
+//     subkey fingerprint to match exactly. Useful for policies that accept
+//     a key's identity but constrain which subkey is authorized.
+//
+// Id and SigningFingerprint comparisons are case-insensitive since hex
+// fingerprints appear in both cases in the wild. If the identity has Data
+// but no Id, Normalize is called first to populate it.
 func (sv *SignatureVerification) MatchesKeyIdentity(keyIdentity *IdentityKey) bool {
 	ki := keyIdentity
 	if ki.GetId() == "" && ki.GetData() != "" {
@@ -116,6 +126,7 @@ func (sv *SignatureVerification) MatchesKeyIdentity(keyIdentity *IdentityKey) bo
 
 	id := strings.TrimSpace(ki.GetId())
 	keyType := strings.TrimSpace(ki.GetType())
+	signingFP := strings.TrimSpace(ki.GetSigningFingerprint())
 
 	// We need at least the key ID to match.
 	if id == "" {
@@ -129,12 +140,22 @@ func (sv *SignatureVerification) MatchesKeyIdentity(keyIdentity *IdentityKey) bo
 			continue
 		}
 
-		if strings.TrimSpace(signerKeyData.GetId()) != id {
+		signerID := strings.TrimSpace(signerKeyData.GetId())
+		signerSubFP := strings.TrimSpace(signerKeyData.GetSigningFingerprint())
+
+		// Id matches either the signer's primary or its signing subkey.
+		if !strings.EqualFold(id, signerID) && !strings.EqualFold(id, signerSubFP) {
 			continue
 		}
 
 		if keyType != "" && strings.TrimSpace(signerKeyData.GetType()) != "" &&
 			strings.TrimSpace(signerKeyData.GetType()) != keyType {
+			continue
+		}
+
+		// When the policy additionally pins a signing subkey, the verified
+		// identity must carry the same fingerprint.
+		if signingFP != "" && !strings.EqualFold(signerSubFP, signingFP) {
 			continue
 		}
 
