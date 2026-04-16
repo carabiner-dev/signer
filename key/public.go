@@ -62,6 +62,18 @@ type Public struct {
 	NotBefore *time.Time `json:"not_before"`
 	NotAfter  *time.Time `json:"not_after"`
 
+	// SigningKeyFingerprint is the fingerprint of the specific key that
+	// produced a verified signature.
+	// This is meant for GPG entities as it may differ from ID(). When a
+	// signature was made with a subkey:
+	//
+	//  - ID() returns the primary (identity) fingerprint
+	//  - This field returns the actual signer key.
+	//
+	// Only populated on entries in VerificationResult.Keys after a
+	// successful verification. It is emptu on general-purpose Public keys.
+	SigningKeyFingerprint string `json:"signing_key_fingerprint,omitempty"`
+
 	// overrideID, when set, is returned by ID() instead of computing
 	// an identifier from the key material. This is used to preserve
 	// the GPG fingerprint when converting from GPGPublic.
