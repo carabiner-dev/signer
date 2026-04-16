@@ -13,6 +13,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -22,6 +23,7 @@ import (
 	"github.com/ProtonMail/go-crypto/openpgp/armor"
 	gpgecdsa "github.com/ProtonMail/go-crypto/openpgp/ecdsa"
 	gpgeddsa "github.com/ProtonMail/go-crypto/openpgp/eddsa"
+	"github.com/ProtonMail/go-crypto/openpgp/packet"
 )
 
 // GPGPublic wraps an OpenPGP entity and provides access to its public key material.
@@ -159,6 +161,74 @@ func (g *GPGPublic) SerializeBinary(w io.Writer) error {
 // Entity returns the underlying openpgp.Entity.
 func (g *GPGPublic) Entity() *openpgp.Entity {
 	return g.entity
+}
+
+// SigningKeyFingerprint parses the OpenPGP signature packet and returns the
+// hex-encoded fingerprint of the key within this entity that produced the
+// signature.
+//
+// When the signature was made by a subkey, this method returns the subkey's
+// fingerprint, which is different from Fingerprint() which always returns the
+// primary key's fingerprint.
+func (g *GPGPublic) SigningKeyFingerprint(signature []byte) (string, error) {
+	// Parse the signature packet
+	sig, err := parseSignaturePacket(signature)
+	if err != nil {
+		return "", fmt.Errorf("parsing signature packet: %w", err)
+	}
+
+	if len(sig.IssuerFingerprint) > 0 {
+		if bytes.Equal(sig.IssuerFingerprint, g.entity.PrimaryKey.Fingerprint) {
+			return strings.ToUpper(hex.EncodeToString(g.entity.PrimaryKey.Fingerprint)), nil
+		}
+		for _, sk := range g.entity.Subkeys {
+			if sk.PublicKey != nil && bytes.Equal(sig.IssuerFingerprint, sk.PublicKey.Fingerprint) {
+				return strings.ToUpper(hex.EncodeToString(sk.PublicKey.Fingerprint)), nil
+			}
+		}
+		return "", fmt.Errorf("signature issuer fingerprint %x not found in entity", sig.IssuerFingerprint)
+	}
+
+	if sig.IssuerKeyId != nil {
+		if g.entity.PrimaryKey.KeyId == *sig.IssuerKeyId {
+			return strings.ToUpper(hex.EncodeToString(g.entity.PrimaryKey.Fingerprint)), nil
+		}
+		for _, sk := range g.entity.Subkeys {
+			if sk.PublicKey != nil && sk.PublicKey.KeyId == *sig.IssuerKeyId {
+				return strings.ToUpper(hex.EncodeToString(sk.PublicKey.Fingerprint)), nil
+			}
+		}
+		return "", fmt.Errorf("signature issuer key id %016X not found in entity", *sig.IssuerKeyId)
+	}
+
+	return "", errors.New("signature has no issuer identifier")
+}
+
+// parseSignaturePacket extracts the first Signature packet from raw bytes,
+// handling both ASCII-armored and binary OpenPGP encodings.
+func parseSignaturePacket(data []byte) (*packet.Signature, error) {
+	var r io.Reader = bytes.NewReader(data)
+	if isOpenPGPArmored(data) {
+		block, err := armor.Decode(bytes.NewReader(data))
+		if err != nil {
+			return nil, fmt.Errorf("decoding ASCII armor: %w", err)
+		}
+		r = block.Body
+	}
+
+	pr := packet.NewReader(r)
+	for {
+		p, err := pr.Next()
+		if errors.Is(err, io.EOF) {
+			return nil, errors.New("no signature packet found")
+		}
+		if err != nil {
+			return nil, fmt.Errorf("reading packet: %w", err)
+		}
+		if sig, ok := p.(*packet.Signature); ok {
+			return sig, nil
+		}
+	}
 }
 
 // underlyingKeyInfo returns the scheme and hash for the signing key.
