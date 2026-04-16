@@ -9,7 +9,9 @@ import (
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/rsa"
+	"encoding/hex"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -629,6 +631,62 @@ func TestCryptoKeyToTypeSchemeHash(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "unsupported key type")
 	})
+}
+
+// TestGPG_SigningKeyFingerprint_Subkey creates an entity with an explicit
+// signing subkey, produces an OpenPGP detached signature (which picks the
+// subkey via Entity.SigningKey), and asserts SigningKeyFingerprint returns
+// the subkey's fingerprint rather than the primary's.
+func TestGPG_SigningKeyFingerprint_Subkey(t *testing.T) {
+	t.Parallel()
+	entity := generateTestEntity(t, "Subkey Sign", "subkey@example.com", &packet.Config{
+		Algorithm: packet.PubKeyAlgoEdDSA,
+		Curve:     packet.Curve25519,
+	})
+	require.NoError(t, entity.AddSigningSubkey(&packet.Config{
+		Algorithm: packet.PubKeyAlgoEdDSA,
+		Curve:     packet.Curve25519,
+	}))
+
+	message := []byte("signed with an explicit subkey")
+	var sigBuf bytes.Buffer
+	require.NoError(t, openpgp.DetachSign(&sigBuf, entity, bytes.NewReader(message), nil))
+
+	gpgPub := newGPGPublic(entity)
+	fp, err := gpgPub.SigningKeyFingerprint(sigBuf.Bytes())
+	require.NoError(t, err)
+	require.NotEqual(t, gpgPub.Fingerprint(), fp, "signature should be attributed to the subkey, not the primary")
+
+	found := false
+	for _, sk := range entity.Subkeys {
+		if strings.EqualFold(fp, hex.EncodeToString(sk.PublicKey.Fingerprint)) {
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "fingerprint %s not found among subkeys", fp)
+}
+
+// TestGPG_SigningKeyFingerprint_Primary covers the case where the signature
+// is made directly by the primary key (no signing subkey): the method should
+// return the primary fingerprint and equal Fingerprint().
+func TestGPG_SigningKeyFingerprint_Primary(t *testing.T) {
+	t.Parallel()
+	entity := generateTestEntity(t, "Primary Sign", "primary@example.com", &packet.Config{
+		Algorithm: packet.PubKeyAlgoRSA,
+		RSABits:   2048,
+	})
+	// Strip subkeys so the primary is the only signing candidate.
+	entity.Subkeys = nil
+
+	message := []byte("signed with the primary key")
+	var sigBuf bytes.Buffer
+	require.NoError(t, openpgp.DetachSign(&sigBuf, entity, bytes.NewReader(message), nil))
+
+	gpgPub := newGPGPublic(entity)
+	fp, err := gpgPub.SigningKeyFingerprint(sigBuf.Bytes())
+	require.NoError(t, err)
+	require.Equal(t, gpgPub.Fingerprint(), fp)
 }
 
 // TestGPG_FixtureSignVerify loads the pre-generated GPG key and signature

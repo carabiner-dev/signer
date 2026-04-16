@@ -83,7 +83,7 @@ func (dv *DefaultVerifier) RunVerification(
 	for _, sig := range env.GetSignatures() {
 		for i, k := range publicKeys {
 			provider := providers[i]
-			_, isGPG := provider.(*key.GPGPublic)
+			gpgProvider, isGPG := provider.(*key.GPGPublic)
 			go func() {
 				var (
 					pass bool
@@ -98,8 +98,16 @@ func (dv *DefaultVerifier) RunVerification(
 					pass, err = kv.VerifyDigest(k, digests[k.HashType], sig.GetSig())
 				}
 				if err == nil && pass {
+					matched := k
+					if isGPG {
+						if fp, ferr := gpgProvider.SigningKeyFingerprint(sig.GetSig()); ferr == nil {
+							clone := *k
+							clone.SigningKeyFingerprint = fp
+							matched = &clone
+						}
+					}
 					mutex.Lock()
-					matchedKeys = append(matchedKeys, k)
+					matchedKeys = append(matchedKeys, matched)
 					mutex.Unlock()
 				}
 				t.Done(err)

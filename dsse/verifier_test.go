@@ -170,4 +170,15 @@ func TestRunVerificationGPG(t *testing.T) {
 	require.NotNil(t, res)
 	require.True(t, res.Verified)
 	require.Len(t, res.Keys, 1)
+
+	// The fixture key is a real-world GPG key with a certify-only primary
+	// and a dedicated signing subkey — the signature was produced by the
+	// subkey, so SigningKeyFingerprint must name the subkey (not the primary
+	// that ID() exposes).
+	const (
+		primaryFingerprint = "5270DFC517AD50957EDA0CFDBE1B8E71C9A0F3B2"
+		signingSubkeyFP    = "04B44C056663906446B77A6D89F11DC191AA7042"
+	)
+	require.Equal(t, primaryFingerprint, res.Keys[0].ID())
+	require.Equal(t, signingSubkeyFP, res.Keys[0].SigningKeyFingerprint)
 }
