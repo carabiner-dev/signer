@@ -55,3 +55,14 @@ func (so *Signer) Validate() error {
 	}
 	return errors.Join(errs...)
 }
+
+// BuildSigstoreCredentials constructs a sigstore.CredentialProvider from the
+// options, forwarding the DisableSTS flag and any pre-provided OIDC token.
+// Used by the outer Signer to default-construct a provider when none was
+// injected.
+func (so *Signer) BuildSigstoreCredentials() *sigstore.CredentialProvider {
+	cp := sigstore.NewCredentialProvider(&so.Instance)
+	cp.DisableSTS = so.DisableSTS
+	cp.Token = so.Token
+	return cp
+}

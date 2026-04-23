@@ -11,6 +11,20 @@ import (
 )
 
 type FakeSigner struct {
+	BuildBundleOptionsStub        func(*options.Signer, bundle.CredentialProvider) (*sign.BundleOptions, error)
+	buildBundleOptionsMutex       sync.RWMutex
+	buildBundleOptionsArgsForCall []struct {
+		arg1 *options.Signer
+		arg2 bundle.CredentialProvider
+	}
+	buildBundleOptionsReturns struct {
+		result1 *sign.BundleOptions
+		result2 error
+	}
+	buildBundleOptionsReturnsOnCall map[int]struct {
+		result1 *sign.BundleOptions
+		result2 error
+	}
 	BuildMessageStub        func([]byte) *sign.PlainData
 	buildMessageMutex       sync.RWMutex
 	buildMessageArgsForCall []struct {
@@ -21,54 +35,6 @@ type FakeSigner struct {
 	}
 	buildMessageReturnsOnCall map[int]struct {
 		result1 *sign.PlainData
-	}
-	BuildSigstoreSignerOptionsStub        func(*options.Signer) (*sign.BundleOptions, error)
-	buildSigstoreSignerOptionsMutex       sync.RWMutex
-	buildSigstoreSignerOptionsArgsForCall []struct {
-		arg1 *options.Signer
-	}
-	buildSigstoreSignerOptionsReturns struct {
-		result1 *sign.BundleOptions
-		result2 error
-	}
-	buildSigstoreSignerOptionsReturnsOnCall map[int]struct {
-		result1 *sign.BundleOptions
-		result2 error
-	}
-	GetAmbientTokensStub        func(*options.Signer) error
-	getAmbientTokensMutex       sync.RWMutex
-	getAmbientTokensArgsForCall []struct {
-		arg1 *options.Signer
-	}
-	getAmbientTokensReturns struct {
-		result1 error
-	}
-	getAmbientTokensReturnsOnCall map[int]struct {
-		result1 error
-	}
-	GetKeyPairStub        func(*options.Signer) (*sign.EphemeralKeypair, error)
-	getKeyPairMutex       sync.RWMutex
-	getKeyPairArgsForCall []struct {
-		arg1 *options.Signer
-	}
-	getKeyPairReturns struct {
-		result1 *sign.EphemeralKeypair
-		result2 error
-	}
-	getKeyPairReturnsOnCall map[int]struct {
-		result1 *sign.EphemeralKeypair
-		result2 error
-	}
-	GetOidcTokenStub        func(*options.Signer) error
-	getOidcTokenMutex       sync.RWMutex
-	getOidcTokenArgsForCall []struct {
-		arg1 *options.Signer
-	}
-	getOidcTokenReturns struct {
-		result1 error
-	}
-	getOidcTokenReturnsOnCall map[int]struct {
-		result1 error
 	}
 	SignBundleStub        func(sign.Content, sign.Keypair, *sign.BundleOptions) (*v1.Bundle, error)
 	signBundleMutex       sync.RWMutex
@@ -111,6 +77,71 @@ type FakeSigner struct {
 	}
 	invocations      map[string][][]interface{}
 	invocationsMutex sync.RWMutex
+}
+
+func (fake *FakeSigner) BuildBundleOptions(arg1 *options.Signer, arg2 bundle.CredentialProvider) (*sign.BundleOptions, error) {
+	fake.buildBundleOptionsMutex.Lock()
+	ret, specificReturn := fake.buildBundleOptionsReturnsOnCall[len(fake.buildBundleOptionsArgsForCall)]
+	fake.buildBundleOptionsArgsForCall = append(fake.buildBundleOptionsArgsForCall, struct {
+		arg1 *options.Signer
+		arg2 bundle.CredentialProvider
+	}{arg1, arg2})
+	stub := fake.BuildBundleOptionsStub
+	fakeReturns := fake.buildBundleOptionsReturns
+	fake.recordInvocation("BuildBundleOptions", []interface{}{arg1, arg2})
+	fake.buildBundleOptionsMutex.Unlock()
+	if stub != nil {
+		return stub(arg1, arg2)
+	}
+	if specificReturn {
+		return ret.result1, ret.result2
+	}
+	return fakeReturns.result1, fakeReturns.result2
+}
+
+func (fake *FakeSigner) BuildBundleOptionsCallCount() int {
+	fake.buildBundleOptionsMutex.RLock()
+	defer fake.buildBundleOptionsMutex.RUnlock()
+	return len(fake.buildBundleOptionsArgsForCall)
+}
+
+func (fake *FakeSigner) BuildBundleOptionsCalls(stub func(*options.Signer, bundle.CredentialProvider) (*sign.BundleOptions, error)) {
+	fake.buildBundleOptionsMutex.Lock()
+	defer fake.buildBundleOptionsMutex.Unlock()
+	fake.BuildBundleOptionsStub = stub
+}
+
+func (fake *FakeSigner) BuildBundleOptionsArgsForCall(i int) (*options.Signer, bundle.CredentialProvider) {
+	fake.buildBundleOptionsMutex.RLock()
+	defer fake.buildBundleOptionsMutex.RUnlock()
+	argsForCall := fake.buildBundleOptionsArgsForCall[i]
+	return argsForCall.arg1, argsForCall.arg2
+}
+
+func (fake *FakeSigner) BuildBundleOptionsReturns(result1 *sign.BundleOptions, result2 error) {
+	fake.buildBundleOptionsMutex.Lock()
+	defer fake.buildBundleOptionsMutex.Unlock()
+	fake.BuildBundleOptionsStub = nil
+	fake.buildBundleOptionsReturns = struct {
+		result1 *sign.BundleOptions
+		result2 error
+	}{result1, result2}
+}
+
+func (fake *FakeSigner) BuildBundleOptionsReturnsOnCall(i int, result1 *sign.BundleOptions, result2 error) {
+	fake.buildBundleOptionsMutex.Lock()
+	defer fake.buildBundleOptionsMutex.Unlock()
+	fake.BuildBundleOptionsStub = nil
+	if fake.buildBundleOptionsReturnsOnCall == nil {
+		fake.buildBundleOptionsReturnsOnCall = make(map[int]struct {
+			result1 *sign.BundleOptions
+			result2 error
+		})
+	}
+	fake.buildBundleOptionsReturnsOnCall[i] = struct {
+		result1 *sign.BundleOptions
+		result2 error
+	}{result1, result2}
 }
 
 func (fake *FakeSigner) BuildMessage(arg1 []byte) *sign.PlainData {
@@ -176,256 +207,6 @@ func (fake *FakeSigner) BuildMessageReturnsOnCall(i int, result1 *sign.PlainData
 	}
 	fake.buildMessageReturnsOnCall[i] = struct {
 		result1 *sign.PlainData
-	}{result1}
-}
-
-func (fake *FakeSigner) BuildSigstoreSignerOptions(arg1 *options.Signer) (*sign.BundleOptions, error) {
-	fake.buildSigstoreSignerOptionsMutex.Lock()
-	ret, specificReturn := fake.buildSigstoreSignerOptionsReturnsOnCall[len(fake.buildSigstoreSignerOptionsArgsForCall)]
-	fake.buildSigstoreSignerOptionsArgsForCall = append(fake.buildSigstoreSignerOptionsArgsForCall, struct {
-		arg1 *options.Signer
-	}{arg1})
-	stub := fake.BuildSigstoreSignerOptionsStub
-	fakeReturns := fake.buildSigstoreSignerOptionsReturns
-	fake.recordInvocation("BuildSigstoreSignerOptions", []interface{}{arg1})
-	fake.buildSigstoreSignerOptionsMutex.Unlock()
-	if stub != nil {
-		return stub(arg1)
-	}
-	if specificReturn {
-		return ret.result1, ret.result2
-	}
-	return fakeReturns.result1, fakeReturns.result2
-}
-
-func (fake *FakeSigner) BuildSigstoreSignerOptionsCallCount() int {
-	fake.buildSigstoreSignerOptionsMutex.RLock()
-	defer fake.buildSigstoreSignerOptionsMutex.RUnlock()
-	return len(fake.buildSigstoreSignerOptionsArgsForCall)
-}
-
-func (fake *FakeSigner) BuildSigstoreSignerOptionsCalls(stub func(*options.Signer) (*sign.BundleOptions, error)) {
-	fake.buildSigstoreSignerOptionsMutex.Lock()
-	defer fake.buildSigstoreSignerOptionsMutex.Unlock()
-	fake.BuildSigstoreSignerOptionsStub = stub
-}
-
-func (fake *FakeSigner) BuildSigstoreSignerOptionsArgsForCall(i int) *options.Signer {
-	fake.buildSigstoreSignerOptionsMutex.RLock()
-	defer fake.buildSigstoreSignerOptionsMutex.RUnlock()
-	argsForCall := fake.buildSigstoreSignerOptionsArgsForCall[i]
-	return argsForCall.arg1
-}
-
-func (fake *FakeSigner) BuildSigstoreSignerOptionsReturns(result1 *sign.BundleOptions, result2 error) {
-	fake.buildSigstoreSignerOptionsMutex.Lock()
-	defer fake.buildSigstoreSignerOptionsMutex.Unlock()
-	fake.BuildSigstoreSignerOptionsStub = nil
-	fake.buildSigstoreSignerOptionsReturns = struct {
-		result1 *sign.BundleOptions
-		result2 error
-	}{result1, result2}
-}
-
-func (fake *FakeSigner) BuildSigstoreSignerOptionsReturnsOnCall(i int, result1 *sign.BundleOptions, result2 error) {
-	fake.buildSigstoreSignerOptionsMutex.Lock()
-	defer fake.buildSigstoreSignerOptionsMutex.Unlock()
-	fake.BuildSigstoreSignerOptionsStub = nil
-	if fake.buildSigstoreSignerOptionsReturnsOnCall == nil {
-		fake.buildSigstoreSignerOptionsReturnsOnCall = make(map[int]struct {
-			result1 *sign.BundleOptions
-			result2 error
-		})
-	}
-	fake.buildSigstoreSignerOptionsReturnsOnCall[i] = struct {
-		result1 *sign.BundleOptions
-		result2 error
-	}{result1, result2}
-}
-
-func (fake *FakeSigner) GetAmbientTokens(arg1 *options.Signer) error {
-	fake.getAmbientTokensMutex.Lock()
-	ret, specificReturn := fake.getAmbientTokensReturnsOnCall[len(fake.getAmbientTokensArgsForCall)]
-	fake.getAmbientTokensArgsForCall = append(fake.getAmbientTokensArgsForCall, struct {
-		arg1 *options.Signer
-	}{arg1})
-	stub := fake.GetAmbientTokensStub
-	fakeReturns := fake.getAmbientTokensReturns
-	fake.recordInvocation("GetAmbientTokens", []interface{}{arg1})
-	fake.getAmbientTokensMutex.Unlock()
-	if stub != nil {
-		return stub(arg1)
-	}
-	if specificReturn {
-		return ret.result1
-	}
-	return fakeReturns.result1
-}
-
-func (fake *FakeSigner) GetAmbientTokensCallCount() int {
-	fake.getAmbientTokensMutex.RLock()
-	defer fake.getAmbientTokensMutex.RUnlock()
-	return len(fake.getAmbientTokensArgsForCall)
-}
-
-func (fake *FakeSigner) GetAmbientTokensCalls(stub func(*options.Signer) error) {
-	fake.getAmbientTokensMutex.Lock()
-	defer fake.getAmbientTokensMutex.Unlock()
-	fake.GetAmbientTokensStub = stub
-}
-
-func (fake *FakeSigner) GetAmbientTokensArgsForCall(i int) *options.Signer {
-	fake.getAmbientTokensMutex.RLock()
-	defer fake.getAmbientTokensMutex.RUnlock()
-	argsForCall := fake.getAmbientTokensArgsForCall[i]
-	return argsForCall.arg1
-}
-
-func (fake *FakeSigner) GetAmbientTokensReturns(result1 error) {
-	fake.getAmbientTokensMutex.Lock()
-	defer fake.getAmbientTokensMutex.Unlock()
-	fake.GetAmbientTokensStub = nil
-	fake.getAmbientTokensReturns = struct {
-		result1 error
-	}{result1}
-}
-
-func (fake *FakeSigner) GetAmbientTokensReturnsOnCall(i int, result1 error) {
-	fake.getAmbientTokensMutex.Lock()
-	defer fake.getAmbientTokensMutex.Unlock()
-	fake.GetAmbientTokensStub = nil
-	if fake.getAmbientTokensReturnsOnCall == nil {
-		fake.getAmbientTokensReturnsOnCall = make(map[int]struct {
-			result1 error
-		})
-	}
-	fake.getAmbientTokensReturnsOnCall[i] = struct {
-		result1 error
-	}{result1}
-}
-
-func (fake *FakeSigner) GetKeyPair(arg1 *options.Signer) (*sign.EphemeralKeypair, error) {
-	fake.getKeyPairMutex.Lock()
-	ret, specificReturn := fake.getKeyPairReturnsOnCall[len(fake.getKeyPairArgsForCall)]
-	fake.getKeyPairArgsForCall = append(fake.getKeyPairArgsForCall, struct {
-		arg1 *options.Signer
-	}{arg1})
-	stub := fake.GetKeyPairStub
-	fakeReturns := fake.getKeyPairReturns
-	fake.recordInvocation("GetKeyPair", []interface{}{arg1})
-	fake.getKeyPairMutex.Unlock()
-	if stub != nil {
-		return stub(arg1)
-	}
-	if specificReturn {
-		return ret.result1, ret.result2
-	}
-	return fakeReturns.result1, fakeReturns.result2
-}
-
-func (fake *FakeSigner) GetKeyPairCallCount() int {
-	fake.getKeyPairMutex.RLock()
-	defer fake.getKeyPairMutex.RUnlock()
-	return len(fake.getKeyPairArgsForCall)
-}
-
-func (fake *FakeSigner) GetKeyPairCalls(stub func(*options.Signer) (*sign.EphemeralKeypair, error)) {
-	fake.getKeyPairMutex.Lock()
-	defer fake.getKeyPairMutex.Unlock()
-	fake.GetKeyPairStub = stub
-}
-
-func (fake *FakeSigner) GetKeyPairArgsForCall(i int) *options.Signer {
-	fake.getKeyPairMutex.RLock()
-	defer fake.getKeyPairMutex.RUnlock()
-	argsForCall := fake.getKeyPairArgsForCall[i]
-	return argsForCall.arg1
-}
-
-func (fake *FakeSigner) GetKeyPairReturns(result1 *sign.EphemeralKeypair, result2 error) {
-	fake.getKeyPairMutex.Lock()
-	defer fake.getKeyPairMutex.Unlock()
-	fake.GetKeyPairStub = nil
-	fake.getKeyPairReturns = struct {
-		result1 *sign.EphemeralKeypair
-		result2 error
-	}{result1, result2}
-}
-
-func (fake *FakeSigner) GetKeyPairReturnsOnCall(i int, result1 *sign.EphemeralKeypair, result2 error) {
-	fake.getKeyPairMutex.Lock()
-	defer fake.getKeyPairMutex.Unlock()
-	fake.GetKeyPairStub = nil
-	if fake.getKeyPairReturnsOnCall == nil {
-		fake.getKeyPairReturnsOnCall = make(map[int]struct {
-			result1 *sign.EphemeralKeypair
-			result2 error
-		})
-	}
-	fake.getKeyPairReturnsOnCall[i] = struct {
-		result1 *sign.EphemeralKeypair
-		result2 error
-	}{result1, result2}
-}
-
-func (fake *FakeSigner) GetOidcToken(arg1 *options.Signer) error {
-	fake.getOidcTokenMutex.Lock()
-	ret, specificReturn := fake.getOidcTokenReturnsOnCall[len(fake.getOidcTokenArgsForCall)]
-	fake.getOidcTokenArgsForCall = append(fake.getOidcTokenArgsForCall, struct {
-		arg1 *options.Signer
-	}{arg1})
-	stub := fake.GetOidcTokenStub
-	fakeReturns := fake.getOidcTokenReturns
-	fake.recordInvocation("GetOidcToken", []interface{}{arg1})
-	fake.getOidcTokenMutex.Unlock()
-	if stub != nil {
-		return stub(arg1)
-	}
-	if specificReturn {
-		return ret.result1
-	}
-	return fakeReturns.result1
-}
-
-func (fake *FakeSigner) GetOidcTokenCallCount() int {
-	fake.getOidcTokenMutex.RLock()
-	defer fake.getOidcTokenMutex.RUnlock()
-	return len(fake.getOidcTokenArgsForCall)
-}
-
-func (fake *FakeSigner) GetOidcTokenCalls(stub func(*options.Signer) error) {
-	fake.getOidcTokenMutex.Lock()
-	defer fake.getOidcTokenMutex.Unlock()
-	fake.GetOidcTokenStub = stub
-}
-
-func (fake *FakeSigner) GetOidcTokenArgsForCall(i int) *options.Signer {
-	fake.getOidcTokenMutex.RLock()
-	defer fake.getOidcTokenMutex.RUnlock()
-	argsForCall := fake.getOidcTokenArgsForCall[i]
-	return argsForCall.arg1
-}
-
-func (fake *FakeSigner) GetOidcTokenReturns(result1 error) {
-	fake.getOidcTokenMutex.Lock()
-	defer fake.getOidcTokenMutex.Unlock()
-	fake.GetOidcTokenStub = nil
-	fake.getOidcTokenReturns = struct {
-		result1 error
-	}{result1}
-}
-
-func (fake *FakeSigner) GetOidcTokenReturnsOnCall(i int, result1 error) {
-	fake.getOidcTokenMutex.Lock()
-	defer fake.getOidcTokenMutex.Unlock()
-	fake.GetOidcTokenStub = nil
-	if fake.getOidcTokenReturnsOnCall == nil {
-		fake.getOidcTokenReturnsOnCall = make(map[int]struct {
-			result1 error
-		})
-	}
-	fake.getOidcTokenReturnsOnCall[i] = struct {
-		result1 error
 	}{result1}
 }
 

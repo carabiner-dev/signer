@@ -19,6 +19,31 @@ import (
 	"github.com/carabiner-dev/signer/options"
 )
 
+// testHarness builds a Signer wired with fake collaborators that callers can
+// tweak before running a sign call.
+type testHarness struct {
+	bundleSigner *bundlefakes.FakeSigner
+	credentials  *bundlefakes.FakeCredentialProvider
+}
+
+func newTestHarness() *testHarness {
+	return &testHarness{
+		bundleSigner: &bundlefakes.FakeSigner{},
+		credentials:  &bundlefakes.FakeCredentialProvider{},
+	}
+}
+
+func (h *testHarness) signer(t *testing.T) *Signer {
+	t.Helper()
+	opts := options.DefaultSigner
+	require.NoError(t, opts.Validate())
+	return &Signer{
+		Options:      opts,
+		Credentials:  h.credentials,
+		bundleSigner: h.bundleSigner,
+	}
+}
+
 func TestSignStatement(t *testing.T) {
 	t.Parallel()
 
@@ -31,62 +56,30 @@ func TestSignStatement(t *testing.T) {
   ]
 }
 `
-	opts := options.DefaultSigner
-	require.NoError(t, opts.Validate())
-
 	for _, tt := range []struct {
-		name      string
-		mustErr   bool
-		getSigner func(t *testing.T) bundle.Signer
+		name    string
+		mustErr bool
+		setup   func(*testHarness)
 	}{
-		{"success", false, func(t *testing.T) bundle.Signer {
-			t.Helper()
-			signer := bundlefakes.FakeSigner{}
-			return &signer
+		{"success", false, func(h *testHarness) {}},
+		{"VerifyAttestationContent-fails", true, func(h *testHarness) {
+			h.bundleSigner.VerifyAttestationContentReturns(errors.New("invalid attesatation"))
 		}},
-		{"VerifyAttestationContent-fails", true, func(t *testing.T) bundle.Signer {
-			t.Helper()
-			signer := bundlefakes.FakeSigner{}
-			signer.VerifyAttestationContentReturns(errors.New("invalid attesatation"))
-			return &signer
+		{"Credentials-Prepare-fails", true, func(h *testHarness) {
+			h.credentials.PrepareReturns(errors.New("preparing credentials failed"))
 		}},
-		{"GetKeyPair-fails", true, func(t *testing.T) bundle.Signer {
-			t.Helper()
-			signer := bundlefakes.FakeSigner{}
-			signer.GetKeyPairReturns(nil, errors.New("failed creating keypair"))
-			return &signer
+		{"BuildBundleOptions-fails", true, func(h *testHarness) {
+			h.bundleSigner.BuildBundleOptionsReturns(nil, errors.New("getting signer options fails"))
 		}},
-		{"GetAmbientTokens-fails", true, func(t *testing.T) bundle.Signer {
-			t.Helper()
-			signer := bundlefakes.FakeSigner{}
-			signer.GetAmbientTokensReturns(errors.New("fetchin ambient tokens failed"))
-			return &signer
-		}},
-		{"GetOidcToken-fails", true, func(t *testing.T) bundle.Signer {
-			t.Helper()
-			signer := bundlefakes.FakeSigner{}
-			signer.GetOidcTokenReturns(errors.New("getting oidc token fails"))
-			return &signer
-		}},
-		{"BuildSigstoreSignerOptions-fails", true, func(t *testing.T) bundle.Signer {
-			t.Helper()
-			signer := bundlefakes.FakeSigner{}
-			signer.BuildSigstoreSignerOptionsReturns(nil, errors.New("getting signer options fails"))
-			return &signer
-		}},
-		{"SignBundle-fails", true, func(t *testing.T) bundle.Signer {
-			t.Helper()
-			signer := bundlefakes.FakeSigner{}
-			signer.SignBundleReturns(nil, errors.New("signing bundle failed"))
-			return &signer
+		{"SignBundle-fails", true, func(h *testHarness) {
+			h.bundleSigner.SignBundleReturns(nil, errors.New("signing bundle failed"))
 		}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			sut := &Signer{
-				Options:      opts,
-				bundleSigner: tt.getSigner(t),
-			}
+			h := newTestHarness()
+			tt.setup(h)
+			sut := h.signer(t)
 			res, err := sut.SignStatement([]byte(attData))
 			if tt.mustErr {
 				require.Error(t, err)
@@ -103,57 +96,27 @@ func TestSignMessage(t *testing.T) {
 
 	testData := "this is my signed data"
 
-	// Parse the roots
-	opts := options.DefaultSigner
-	require.NoError(t, opts.Validate())
-
 	for _, tt := range []struct {
-		name      string
-		mustErr   bool
-		getSigner func(t *testing.T) bundle.Signer
+		name    string
+		mustErr bool
+		setup   func(*testHarness)
 	}{
-		{"success", false, func(t *testing.T) bundle.Signer {
-			t.Helper()
-			signer := bundlefakes.FakeSigner{}
-			return &signer
+		{"success", false, func(h *testHarness) {}},
+		{"Credentials-Prepare-fails", true, func(h *testHarness) {
+			h.credentials.PrepareReturns(errors.New("preparing credentials failed"))
 		}},
-		{"GetKeyPair-fails", true, func(t *testing.T) bundle.Signer {
-			t.Helper()
-			signer := bundlefakes.FakeSigner{}
-			signer.GetKeyPairReturns(nil, errors.New("failed creating keypair"))
-			return &signer
+		{"BuildBundleOptions-fails", true, func(h *testHarness) {
+			h.bundleSigner.BuildBundleOptionsReturns(nil, errors.New("getting signer options fails"))
 		}},
-		{"GetAmbientTokens-fails", true, func(t *testing.T) bundle.Signer {
-			t.Helper()
-			signer := bundlefakes.FakeSigner{}
-			signer.GetAmbientTokensReturns(errors.New("fetchin ambient tokens failed"))
-			return &signer
-		}},
-		{"GetOidcToken-fails", true, func(t *testing.T) bundle.Signer {
-			t.Helper()
-			signer := bundlefakes.FakeSigner{}
-			signer.GetOidcTokenReturns(errors.New("getting oidc token fails"))
-			return &signer
-		}},
-		{"BuildSigstoreSignerOptions-fails", true, func(t *testing.T) bundle.Signer {
-			t.Helper()
-			signer := bundlefakes.FakeSigner{}
-			signer.BuildSigstoreSignerOptionsReturns(nil, errors.New("getting signer options fails"))
-			return &signer
-		}},
-		{"SignBundle-fails", true, func(t *testing.T) bundle.Signer {
-			t.Helper()
-			signer := bundlefakes.FakeSigner{}
-			signer.SignBundleReturns(nil, errors.New("signing bundle failed"))
-			return &signer
+		{"SignBundle-fails", true, func(h *testHarness) {
+			h.bundleSigner.SignBundleReturns(nil, errors.New("signing bundle failed"))
 		}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			sut := &Signer{
-				Options:      opts,
-				bundleSigner: tt.getSigner(t),
-			}
+			h := newTestHarness()
+			tt.setup(h)
+			sut := h.signer(t)
 			res, err := sut.SignMessage([]byte(testData))
 			if tt.mustErr {
 				require.Error(t, err)
@@ -252,13 +215,14 @@ func TestSignAndVerifyMocked(t *testing.T) {
 	statementData, err := os.ReadFile("bundle/testdata/statement.json")
 	require.NoError(t, err)
 
-	// Set up a signer with a mocked bundle signer
 	opts := options.DefaultSigner
 	require.NoError(t, opts.Validate())
 
 	fakeBundleSigner := &bundlefakes.FakeSigner{}
+	fakeCredentials := &bundlefakes.FakeCredentialProvider{}
 	s := &Signer{
 		Options:      opts,
+		Credentials:  fakeCredentials,
 		bundleSigner: fakeBundleSigner,
 	}
 
@@ -269,10 +233,8 @@ func TestSignAndVerifyMocked(t *testing.T) {
 	// Verify the mock signer was called with the expected flow
 	require.Equal(t, 1, fakeBundleSigner.VerifyAttestationContentCallCount())
 	require.Equal(t, 1, fakeBundleSigner.WrapDataCallCount())
-	require.Equal(t, 1, fakeBundleSigner.GetKeyPairCallCount())
-	require.Equal(t, 1, fakeBundleSigner.GetAmbientTokensCallCount())
-	require.Equal(t, 1, fakeBundleSigner.GetOidcTokenCallCount())
-	require.Equal(t, 1, fakeBundleSigner.BuildSigstoreSignerOptionsCallCount())
+	require.Equal(t, 1, fakeCredentials.PrepareCallCount())
+	require.Equal(t, 1, fakeBundleSigner.BuildBundleOptionsCallCount())
 	require.Equal(t, 1, fakeBundleSigner.SignBundleCallCount())
 
 	// Verify using a mocked verifier that returns a successful result
@@ -289,9 +251,9 @@ func TestSignAndVerifyMocked(t *testing.T) {
 	require.Equal(t, 1, fakeVerifier.VerifyCallCount())
 }
 
-// TestSigningStateReuse verifies that calling SignStatement multiple times on the
-// same Signer reuses the keypair, OIDC token, and bundle options instead of
-// repeating the authentication and certificate issuance flows.
+// TestSigningStateReuse verifies that calling SignStatement multiple times on
+// the same Signer reuses the prepared credentials and cached bundle options
+// instead of repeating credential preparation and service discovery.
 func TestSigningStateReuse(t *testing.T) {
 	t.Parallel()
 
@@ -302,8 +264,10 @@ func TestSigningStateReuse(t *testing.T) {
 	require.NoError(t, opts.Validate())
 
 	fakeBundleSigner := &bundlefakes.FakeSigner{}
+	fakeCredentials := &bundlefakes.FakeCredentialProvider{}
 	s := &Signer{
 		Options:      opts,
+		Credentials:  fakeCredentials,
 		bundleSigner: fakeBundleSigner,
 	}
 
@@ -319,9 +283,14 @@ func TestSigningStateReuse(t *testing.T) {
 	require.Equal(t, 3, fakeBundleSigner.WrapDataCallCount())
 	require.Equal(t, 3, fakeBundleSigner.SignBundleCallCount())
 
-	// But keypair, tokens, and options are only initialized once
-	require.Equal(t, 1, fakeBundleSigner.GetKeyPairCallCount())
-	require.Equal(t, 1, fakeBundleSigner.GetAmbientTokensCallCount())
-	require.Equal(t, 1, fakeBundleSigner.GetOidcTokenCallCount())
-	require.Equal(t, 1, fakeBundleSigner.BuildSigstoreSignerOptionsCallCount())
+	// But credential preparation and bundle options wiring only happen once
+	require.Equal(t, 1, fakeCredentials.PrepareCallCount())
+	require.Equal(t, 1, fakeBundleSigner.BuildBundleOptionsCallCount())
 }
+
+// Compile-time check: bundle.CredentialProvider and bundle.Signer are
+// satisfied by the fakes used in the tests above.
+var (
+	_ bundle.CredentialProvider = (*bundlefakes.FakeCredentialProvider)(nil)
+	_ bundle.Signer             = (*bundlefakes.FakeSigner)(nil)
+)

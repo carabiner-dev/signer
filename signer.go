@@ -5,11 +5,9 @@ package signer
 
 import (
 	"context"
-	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
-	"time"
 
 	sdsse "github.com/sigstore/protobuf-specs/gen/pb-go/dsse"
 	sbundle "github.com/sigstore/sigstore-go/pkg/bundle"
@@ -53,14 +51,19 @@ func NewSigner() *Signer {
 }
 
 type Signer struct {
-	Options      options.Signer
+	Options options.Signer
+
+	// Credentials produces the signing keypair and certificate material. When
+	// nil, signingState defaults to a sigstore credential provider built from
+	// Options on the first call.
+	Credentials bundle.CredentialProvider
+
 	bundleSigner bundle.Signer
 	dsseSigner   dsse.Signer
 
-	// Cached signing state reused across multiple signing operations to avoid
-	// repeated OIDC flows and Fulcio certificate requests.
+	// Cached bundle options reused across multiple signing operations to
+	// avoid repeating TSA/Rekor service discovery.
 	signingReady bool
-	keypair      *sign.EphemeralKeypair
 	bundleOpts   *sign.BundleOptions
 }
 
@@ -81,9 +84,9 @@ func (s *Signer) WriteBundle(bndl *sbundle.Bundle, w io.Writer) error {
 // signingState returns the cached keypair and bundle options, initializing them
 // on the first call. This ensures that the OIDC flow, Fulcio certificate request,
 // and keypair generation happen only once even when signing multiple artifacts.
-func (s *Signer) signingState() (*sign.EphemeralKeypair, *sign.BundleOptions, error) {
+func (s *Signer) signingState() (sign.Keypair, *sign.BundleOptions, error) {
 	if s.signingReady {
-		return s.keypair, s.bundleOpts, nil
+		return s.Credentials.Keypair(), s.bundleOpts, nil
 	}
 
 	// Verify the defined options:
@@ -91,40 +94,22 @@ func (s *Signer) signingState() (*sign.EphemeralKeypair, *sign.BundleOptions, er
 		return nil, nil, fmt.Errorf("validating options for signing: %w", err)
 	}
 
-	// Generate the ephemeral keypair
-	keypair, err := s.bundleSigner.GetKeyPair(&s.Options)
-	if err != nil {
-		return nil, nil, err
+	if s.Credentials == nil {
+		s.Credentials = s.Options.BuildSigstoreCredentials()
 	}
 
-	// Run the STS providers to check for ambient credentials
-	if err := s.bundleSigner.GetAmbientTokens(&s.Options); err != nil {
-		return nil, nil, fmt.Errorf("fetching ambient credentials: %w", err)
+	if err := s.Credentials.Prepare(context.TODO()); err != nil {
+		return nil, nil, fmt.Errorf("preparing signing credentials: %w", err)
 	}
 
-	// Get the ID token
-	if err := s.bundleSigner.GetOidcToken(&s.Options); err != nil {
-		return nil, nil, fmt.Errorf("getting ID token: %w", err)
-	}
-
-	// Generate the signer options
-	bundleOpts, err := s.bundleSigner.BuildSigstoreSignerOptions(&s.Options)
+	bundleOpts, err := s.bundleSigner.BuildBundleOptions(&s.Options, s.Credentials)
 	if err != nil {
 		return nil, nil, fmt.Errorf("building options: %w", err)
 	}
 
-	// Wrap the certificate provider so the Fulcio certificate is fetched once
-	// and reused for all subsequent signing operations with this keypair.
-	if bundleOpts != nil && bundleOpts.CertificateProvider != nil {
-		bundleOpts.CertificateProvider = &cachingCertProvider{
-			inner: bundleOpts.CertificateProvider,
-		}
-	}
-
-	s.keypair = keypair
 	s.bundleOpts = bundleOpts
 	s.signingReady = true
-	return keypair, bundleOpts, nil
+	return s.Credentials.Keypair(), s.bundleOpts, nil
 }
 
 // SignStatement signs an in-toto attestation using the configured options and
@@ -268,38 +253,4 @@ func (s *Signer) WriteDSSEEnvelope(env *sdsse.Envelope, w io.Writer) error {
 	}
 
 	return nil
-}
-
-// cachingCertProvider wraps a CertificateProvider and caches the certificate
-// after the first successful request. This avoids issuing multiple Fulcio
-// certificate requests when the same keypair is used to sign several artifacts.
-// The cached certificate is discarded when it expires.
-type cachingCertProvider struct {
-	inner     sign.CertificateProvider
-	cert      []byte
-	notBefore time.Time
-	notAfter  time.Time
-}
-
-func (c *cachingCertProvider) GetCertificate(ctx context.Context, kp sign.Keypair, opts *sign.CertificateProviderOptions) ([]byte, error) {
-	now := time.Now()
-	if c.cert != nil && now.After(c.notBefore) && now.Before(c.notAfter) {
-		return c.cert, nil
-	}
-
-	cert, err := c.inner.GetCertificate(ctx, kp, opts)
-	if err != nil {
-		return nil, err
-	}
-
-	// Parse the DER certificate to read its expiry time
-	x509Cert, err := x509.ParseCertificate(cert)
-	if err != nil {
-		return nil, fmt.Errorf("parsing cached certificate: %w", err)
-	}
-
-	c.cert = cert
-	c.notBefore = x509Cert.NotBefore
-	c.notAfter = x509Cert.NotAfter
-	return cert, nil
 }
