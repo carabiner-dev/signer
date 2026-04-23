@@ -24,9 +24,9 @@ import (
 	"github.com/carabiner-dev/signer/sts"
 )
 
-// Identity implements bundle.Identity and binds a sigstore instance
-// (OIDC provider + Fulcio) to a signer.
-type Identity struct {
+// CredentialProvider implements bundle.CredentialProvider and binds a sigstore
+// instance (OIDC provider + Fulcio) to a signer.
+type CredentialProvider struct {
 	// Instance holds the sigstore configuration (TUF options, signing config,
 	// OIDC client config, verifier config).
 	Instance *Instance
@@ -44,26 +44,26 @@ type Identity struct {
 	prepared bool
 }
 
-// NewIdentity creates a sigstore Identity for the given Instance.
-func NewIdentity(instance *Instance) *Identity {
-	return &Identity{Instance: instance}
+// NewCredentialProvider creates a sigstore CredentialProvider for the given Instance.
+func NewCredentialProvider(instance *Instance) *CredentialProvider {
+	return &CredentialProvider{Instance: instance}
 }
 
 // Prepare runs the OIDC flow, ensures TUF roots are on disk, generates an
 // ephemeral keypair, and builds the Fulcio certificate provider. Subsequent
 // calls are no-ops.
-func (i *Identity) Prepare(ctx context.Context) error {
-	if i.prepared {
+func (p *CredentialProvider) Prepare(ctx context.Context) error {
+	if p.prepared {
 		return nil
 	}
-	if i.Instance == nil {
+	if p.Instance == nil {
 		return errors.New("sigstore instance not set")
 	}
 
 	// Ensure TUF roots are available on disk. sigstore-go's internals look
 	// them up during verification; fetch once here so the first sign call
 	// doesn't race with TUF bootstrap.
-	tufClient, err := tuf.GetClient(&i.Instance.TufOptions)
+	tufClient, err := tuf.GetClient(&p.Instance.TufOptions)
 	if err != nil {
 		return fmt.Errorf("creating TUF client: %w", err)
 	}
@@ -79,29 +79,29 @@ func (i *Identity) Prepare(ctx context.Context) error {
 	if _, err := kp.GetPublicKeyPem(); err != nil {
 		return fmt.Errorf("extracting public key: %w", err)
 	}
-	i.keypair = kp
+	p.keypair = kp
 
 	// Try ambient STS providers before falling back to an interactive flow.
-	if !i.DisableSTS && i.Token == nil {
-		if err := i.runAmbientSTS(ctx); err != nil {
+	if !p.DisableSTS && p.Token == nil {
+		if err := p.runAmbientSTS(ctx); err != nil {
 			return fmt.Errorf("fetching ambient credentials: %w", err)
 		}
 	}
 
-	tok, err := i.runOIDCFlow()
+	tok, err := p.runOIDCFlow()
 	if err != nil {
 		return fmt.Errorf("getting ID token: %w", err)
 	}
-	i.Token = tok
+	p.Token = tok
 
-	fulcioURL := i.Instance.FulcioURL()
+	fulcioURL := p.Instance.FulcioURL()
 	if fulcioURL == "" {
 		return errors.New("no fulcio URL configured in signing config")
 	}
 
 	// Wrap Fulcio with a validity-window cache so repeated signs with the
 	// same identity reuse the certificate until it expires.
-	i.cp = &cachingCertProvider{
+	p.cp = &cachingCertProvider{
 		inner: sign.NewFulcio(&sign.FulcioOptions{
 			BaseURL: fulcioURL,
 			Timeout: 30 * time.Second,
@@ -109,32 +109,32 @@ func (i *Identity) Prepare(ctx context.Context) error {
 		}),
 	}
 
-	i.prepared = true
+	p.prepared = true
 	return nil
 }
 
 // Keypair returns the ephemeral keypair bound to the Fulcio certificate.
-func (i *Identity) Keypair() sign.Keypair { return i.keypair }
+func (p *CredentialProvider) Keypair() sign.Keypair { return p.keypair }
 
 // CertificateProvider returns the Fulcio provider and the OIDC ID token that
 // authenticates the signing cert request.
-func (i *Identity) CertificateProvider() (sign.CertificateProvider, *sign.CertificateProviderOptions) {
+func (p *CredentialProvider) CertificateProvider() (sign.CertificateProvider, *sign.CertificateProviderOptions) {
 	var opts *sign.CertificateProviderOptions
-	if i.Token != nil {
-		opts = &sign.CertificateProviderOptions{IDToken: i.Token.RawString}
+	if p.Token != nil {
+		opts = &sign.CertificateProviderOptions{IDToken: p.Token.RawString}
 	}
-	return i.cp, opts
+	return p.cp, opts
 }
 
 // runAmbientSTS iterates over the configured STS providers until it gets a token
-func (i *Identity) runAmbientSTS(ctx context.Context) error {
+func (p *CredentialProvider) runAmbientSTS(ctx context.Context) error {
 	for k, provider := range sts.DefaultProviders {
-		token, err := provider.Provide(ctx, i.Instance.OIDCConfig.ClientID)
+		token, err := provider.Provide(ctx, p.Instance.OIDCConfig.ClientID)
 		if err != nil {
 			return fmt.Errorf("trying ambien credentials from %s: %w", k, err)
 		}
 		if token != nil {
-			i.Token = token
+			p.Token = token
 			return nil
 		}
 	}
@@ -145,13 +145,13 @@ func (i *Identity) runAmbientSTS(ctx context.Context) error {
 // If a token is already set it goes through the static flow which just
 // parses and returns it unchanged. Otherwise the flow is chosen based on the
 // environment (browser, device flow, or fail-fast in CI).
-func (i *Identity) runOIDCFlow() (*oauthflow.OIDCIDToken, error) {
-	issuer := i.Instance.OidcIssuerURL()
+func (p *CredentialProvider) runOIDCFlow() (*oauthflow.OIDCIDToken, error) {
+	issuer := p.Instance.OidcIssuerURL()
 
 	var flow oauthflow.TokenGetter
 	switch {
-	case i.Token != nil:
-		flow = &oauthflow.StaticTokenGetter{RawToken: i.Token.RawString}
+	case p.Token != nil:
+		flow = &oauthflow.StaticTokenGetter{RawToken: p.Token.RawString}
 	case !term.IsTerminal(0):
 		if os.Getenv("CI") != "" {
 			return nil, fmt.Errorf(
@@ -166,9 +166,9 @@ func (i *Identity) runOIDCFlow() (*oauthflow.OIDCIDToken, error) {
 
 	return oauthflow.OIDConnect(
 		issuer,
-		i.Instance.OIDCConfig.ClientID,
-		i.Instance.OIDCConfig.ClientSecret,
-		randomizePort(i.Instance.OIDCConfig.RedirectURL),
+		p.Instance.OIDCConfig.ClientID,
+		p.Instance.OIDCConfig.ClientSecret,
+		randomizePort(p.Instance.OIDCConfig.RedirectURL),
 		flow,
 	)
 }

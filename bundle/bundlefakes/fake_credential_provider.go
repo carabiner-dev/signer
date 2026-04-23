@@ -9,7 +9,7 @@ import (
 	"github.com/sigstore/sigstore-go/pkg/sign"
 )
 
-type FakeIdentity struct {
+type FakeCredentialProvider struct {
 	CertificateProviderStub        func() (sign.CertificateProvider, *sign.CertificateProviderOptions)
 	certificateProviderMutex       sync.RWMutex
 	certificateProviderArgsForCall []struct {
@@ -47,7 +47,7 @@ type FakeIdentity struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeIdentity) CertificateProvider() (sign.CertificateProvider, *sign.CertificateProviderOptions) {
+func (fake *FakeCredentialProvider) CertificateProvider() (sign.CertificateProvider, *sign.CertificateProviderOptions) {
 	fake.certificateProviderMutex.Lock()
 	ret, specificReturn := fake.certificateProviderReturnsOnCall[len(fake.certificateProviderArgsForCall)]
 	fake.certificateProviderArgsForCall = append(fake.certificateProviderArgsForCall, struct {
@@ -65,19 +65,19 @@ func (fake *FakeIdentity) CertificateProvider() (sign.CertificateProvider, *sign
 	return fakeReturns.result1, fakeReturns.result2
 }
 
-func (fake *FakeIdentity) CertificateProviderCallCount() int {
+func (fake *FakeCredentialProvider) CertificateProviderCallCount() int {
 	fake.certificateProviderMutex.RLock()
 	defer fake.certificateProviderMutex.RUnlock()
 	return len(fake.certificateProviderArgsForCall)
 }
 
-func (fake *FakeIdentity) CertificateProviderCalls(stub func() (sign.CertificateProvider, *sign.CertificateProviderOptions)) {
+func (fake *FakeCredentialProvider) CertificateProviderCalls(stub func() (sign.CertificateProvider, *sign.CertificateProviderOptions)) {
 	fake.certificateProviderMutex.Lock()
 	defer fake.certificateProviderMutex.Unlock()
 	fake.CertificateProviderStub = stub
 }
 
-func (fake *FakeIdentity) CertificateProviderReturns(result1 sign.CertificateProvider, result2 *sign.CertificateProviderOptions) {
+func (fake *FakeCredentialProvider) CertificateProviderReturns(result1 sign.CertificateProvider, result2 *sign.CertificateProviderOptions) {
 	fake.certificateProviderMutex.Lock()
 	defer fake.certificateProviderMutex.Unlock()
 	fake.CertificateProviderStub = nil
@@ -87,7 +87,7 @@ func (fake *FakeIdentity) CertificateProviderReturns(result1 sign.CertificatePro
 	}{result1, result2}
 }
 
-func (fake *FakeIdentity) CertificateProviderReturnsOnCall(i int, result1 sign.CertificateProvider, result2 *sign.CertificateProviderOptions) {
+func (fake *FakeCredentialProvider) CertificateProviderReturnsOnCall(i int, result1 sign.CertificateProvider, result2 *sign.CertificateProviderOptions) {
 	fake.certificateProviderMutex.Lock()
 	defer fake.certificateProviderMutex.Unlock()
 	fake.CertificateProviderStub = nil
@@ -103,7 +103,7 @@ func (fake *FakeIdentity) CertificateProviderReturnsOnCall(i int, result1 sign.C
 	}{result1, result2}
 }
 
-func (fake *FakeIdentity) Keypair() sign.Keypair {
+func (fake *FakeCredentialProvider) Keypair() sign.Keypair {
 	fake.keypairMutex.Lock()
 	ret, specificReturn := fake.keypairReturnsOnCall[len(fake.keypairArgsForCall)]
 	fake.keypairArgsForCall = append(fake.keypairArgsForCall, struct {
@@ -121,19 +121,19 @@ func (fake *FakeIdentity) Keypair() sign.Keypair {
 	return fakeReturns.result1
 }
 
-func (fake *FakeIdentity) KeypairCallCount() int {
+func (fake *FakeCredentialProvider) KeypairCallCount() int {
 	fake.keypairMutex.RLock()
 	defer fake.keypairMutex.RUnlock()
 	return len(fake.keypairArgsForCall)
 }
 
-func (fake *FakeIdentity) KeypairCalls(stub func() sign.Keypair) {
+func (fake *FakeCredentialProvider) KeypairCalls(stub func() sign.Keypair) {
 	fake.keypairMutex.Lock()
 	defer fake.keypairMutex.Unlock()
 	fake.KeypairStub = stub
 }
 
-func (fake *FakeIdentity) KeypairReturns(result1 sign.Keypair) {
+func (fake *FakeCredentialProvider) KeypairReturns(result1 sign.Keypair) {
 	fake.keypairMutex.Lock()
 	defer fake.keypairMutex.Unlock()
 	fake.KeypairStub = nil
@@ -142,7 +142,7 @@ func (fake *FakeIdentity) KeypairReturns(result1 sign.Keypair) {
 	}{result1}
 }
 
-func (fake *FakeIdentity) KeypairReturnsOnCall(i int, result1 sign.Keypair) {
+func (fake *FakeCredentialProvider) KeypairReturnsOnCall(i int, result1 sign.Keypair) {
 	fake.keypairMutex.Lock()
 	defer fake.keypairMutex.Unlock()
 	fake.KeypairStub = nil
@@ -156,7 +156,7 @@ func (fake *FakeIdentity) KeypairReturnsOnCall(i int, result1 sign.Keypair) {
 	}{result1}
 }
 
-func (fake *FakeIdentity) Prepare(arg1 context.Context) error {
+func (fake *FakeCredentialProvider) Prepare(arg1 context.Context) error {
 	fake.prepareMutex.Lock()
 	ret, specificReturn := fake.prepareReturnsOnCall[len(fake.prepareArgsForCall)]
 	fake.prepareArgsForCall = append(fake.prepareArgsForCall, struct {
@@ -175,26 +175,26 @@ func (fake *FakeIdentity) Prepare(arg1 context.Context) error {
 	return fakeReturns.result1
 }
 
-func (fake *FakeIdentity) PrepareCallCount() int {
+func (fake *FakeCredentialProvider) PrepareCallCount() int {
 	fake.prepareMutex.RLock()
 	defer fake.prepareMutex.RUnlock()
 	return len(fake.prepareArgsForCall)
 }
 
-func (fake *FakeIdentity) PrepareCalls(stub func(context.Context) error) {
+func (fake *FakeCredentialProvider) PrepareCalls(stub func(context.Context) error) {
 	fake.prepareMutex.Lock()
 	defer fake.prepareMutex.Unlock()
 	fake.PrepareStub = stub
 }
 
-func (fake *FakeIdentity) PrepareArgsForCall(i int) context.Context {
+func (fake *FakeCredentialProvider) PrepareArgsForCall(i int) context.Context {
 	fake.prepareMutex.RLock()
 	defer fake.prepareMutex.RUnlock()
 	argsForCall := fake.prepareArgsForCall[i]
 	return argsForCall.arg1
 }
 
-func (fake *FakeIdentity) PrepareReturns(result1 error) {
+func (fake *FakeCredentialProvider) PrepareReturns(result1 error) {
 	fake.prepareMutex.Lock()
 	defer fake.prepareMutex.Unlock()
 	fake.PrepareStub = nil
@@ -203,7 +203,7 @@ func (fake *FakeIdentity) PrepareReturns(result1 error) {
 	}{result1}
 }
 
-func (fake *FakeIdentity) PrepareReturnsOnCall(i int, result1 error) {
+func (fake *FakeCredentialProvider) PrepareReturnsOnCall(i int, result1 error) {
 	fake.prepareMutex.Lock()
 	defer fake.prepareMutex.Unlock()
 	fake.PrepareStub = nil
@@ -217,7 +217,7 @@ func (fake *FakeIdentity) PrepareReturnsOnCall(i int, result1 error) {
 	}{result1}
 }
 
-func (fake *FakeIdentity) Invocations() map[string][][]interface{} {
+func (fake *FakeCredentialProvider) Invocations() map[string][][]interface{} {
 	fake.invocationsMutex.RLock()
 	defer fake.invocationsMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}
@@ -227,7 +227,7 @@ func (fake *FakeIdentity) Invocations() map[string][][]interface{} {
 	return copiedInvocations
 }
 
-func (fake *FakeIdentity) recordInvocation(key string, args []interface{}) {
+func (fake *FakeCredentialProvider) recordInvocation(key string, args []interface{}) {
 	fake.invocationsMutex.Lock()
 	defer fake.invocationsMutex.Unlock()
 	if fake.invocations == nil {
@@ -239,4 +239,4 @@ func (fake *FakeIdentity) recordInvocation(key string, args []interface{}) {
 	fake.invocations[key] = append(fake.invocations[key], args)
 }
 
-var _ bundle.Identity = new(FakeIdentity)
+var _ bundle.CredentialProvider = new(FakeCredentialProvider)

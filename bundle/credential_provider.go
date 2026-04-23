@@ -11,14 +11,14 @@ import (
 	"github.com/sigstore/sigstore-go/pkg/sign"
 )
 
-// Identity abstracts the credentials and certificate material used to sign a
-// bundle. Implementations own both the signing keypair and the certificate
-// provider that populates VerificationMaterial.
+// CredentialProvider produces the signing material used to populate a bundle.
+// Implementations own the lifecycle of the keypair and the certificate
+// provider that sign.Bundle calls to build VerificationMaterial.
 //
-//counterfeiter:generate . Identity
-type Identity interface {
-	// Prepare acquires credentials, keys, and certificates. Called once before
-	// the first sign. Implementations are expected to be idempotent.
+//counterfeiter:generate . CredentialProvider
+type CredentialProvider interface {
+	// Prepare acquires credentials, keys, and certificates. Called once
+	// before the first sign; implementations are expected to be idempotent.
 	Prepare(ctx context.Context) error
 
 	// Keypair returns the signing keypair used by sign.Bundle.

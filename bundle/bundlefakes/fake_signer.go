@@ -11,11 +11,11 @@ import (
 )
 
 type FakeSigner struct {
-	BuildBundleOptionsStub        func(*options.Signer, bundle.Identity) (*sign.BundleOptions, error)
+	BuildBundleOptionsStub        func(*options.Signer, bundle.CredentialProvider) (*sign.BundleOptions, error)
 	buildBundleOptionsMutex       sync.RWMutex
 	buildBundleOptionsArgsForCall []struct {
 		arg1 *options.Signer
-		arg2 bundle.Identity
+		arg2 bundle.CredentialProvider
 	}
 	buildBundleOptionsReturns struct {
 		result1 *sign.BundleOptions
@@ -79,12 +79,12 @@ type FakeSigner struct {
 	invocationsMutex sync.RWMutex
 }
 
-func (fake *FakeSigner) BuildBundleOptions(arg1 *options.Signer, arg2 bundle.Identity) (*sign.BundleOptions, error) {
+func (fake *FakeSigner) BuildBundleOptions(arg1 *options.Signer, arg2 bundle.CredentialProvider) (*sign.BundleOptions, error) {
 	fake.buildBundleOptionsMutex.Lock()
 	ret, specificReturn := fake.buildBundleOptionsReturnsOnCall[len(fake.buildBundleOptionsArgsForCall)]
 	fake.buildBundleOptionsArgsForCall = append(fake.buildBundleOptionsArgsForCall, struct {
 		arg1 *options.Signer
-		arg2 bundle.Identity
+		arg2 bundle.CredentialProvider
 	}{arg1, arg2})
 	stub := fake.BuildBundleOptionsStub
 	fakeReturns := fake.buildBundleOptionsReturns
@@ -105,13 +105,13 @@ func (fake *FakeSigner) BuildBundleOptionsCallCount() int {
 	return len(fake.buildBundleOptionsArgsForCall)
 }
 
-func (fake *FakeSigner) BuildBundleOptionsCalls(stub func(*options.Signer, bundle.Identity) (*sign.BundleOptions, error)) {
+func (fake *FakeSigner) BuildBundleOptionsCalls(stub func(*options.Signer, bundle.CredentialProvider) (*sign.BundleOptions, error)) {
 	fake.buildBundleOptionsMutex.Lock()
 	defer fake.buildBundleOptionsMutex.Unlock()
 	fake.BuildBundleOptionsStub = stub
 }
 
-func (fake *FakeSigner) BuildBundleOptionsArgsForCall(i int) (*options.Signer, bundle.Identity) {
+func (fake *FakeSigner) BuildBundleOptionsArgsForCall(i int) (*options.Signer, bundle.CredentialProvider) {
 	fake.buildBundleOptionsMutex.RLock()
 	defer fake.buildBundleOptionsMutex.RUnlock()
 	argsForCall := fake.buildBundleOptionsArgsForCall[i]

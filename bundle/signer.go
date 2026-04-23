@@ -26,7 +26,7 @@ type Signer interface {
 	VerifyAttestationContent(*options.Signer, []byte) error
 	WrapData(payloadType string, data []byte) *sign.DSSEData
 	BuildMessage(data []byte) *sign.PlainData
-	BuildBundleOptions(*options.Signer, Identity) (*sign.BundleOptions, error)
+	BuildBundleOptions(*options.Signer, CredentialProvider) (*sign.BundleOptions, error)
 	SignBundle(content sign.Content, keypair sign.Keypair, opts *sign.BundleOptions) (*protobundle.Bundle, error)
 }
 
@@ -65,11 +65,11 @@ func (bs *DefaultSigner) VerifyAttestationContent(_ *options.Signer, data []byte
 }
 
 // BuildBundleOptions assembles the sign.BundleOptions used by SignBundle. The
-// certificate provider is supplied by the given Identity; TSA and Rekor
-// endpoints come from the sigstore signing config carried in the options.
-func (bs *DefaultSigner) BuildBundleOptions(opts *options.Signer, id Identity) (*sign.BundleOptions, error) {
-	if id == nil {
-		return nil, errors.New("identity not set")
+// certificate provider is supplied by the given CredentialProvider; TSA and
+// Rekor endpoints come from the sigstore signing config carried in the options.
+func (bs *DefaultSigner) BuildBundleOptions(opts *options.Signer, cp CredentialProvider) (*sign.BundleOptions, error) {
+	if cp == nil {
+		return nil, errors.New("credential provider not set")
 	}
 
 	if opts.SigningConfig == nil {
@@ -79,8 +79,8 @@ func (bs *DefaultSigner) BuildBundleOptions(opts *options.Signer, id Identity) (
 	signingConfig := opts.SigningConfig
 
 	bundleOptions := sign.BundleOptions{}
-	cp, cpOpts := id.CertificateProvider()
-	bundleOptions.CertificateProvider = cp
+	certProvider, cpOpts := cp.CertificateProvider()
+	bundleOptions.CertificateProvider = certProvider
 	bundleOptions.CertificateProviderOptions = cpOpts
 
 	if opts.Timestamp {

@@ -53,10 +53,10 @@ func NewSigner() *Signer {
 type Signer struct {
 	Options options.Signer
 
-	// Identity produces the signing keypair and certificate material. When
-	// nil, signingState defaults to a sigstore Identity built from Options on
-	// the first call.
-	Identity bundle.Identity
+	// Credentials produces the signing keypair and certificate material. When
+	// nil, signingState defaults to a sigstore credential provider built from
+	// Options on the first call.
+	Credentials bundle.CredentialProvider
 
 	bundleSigner bundle.Signer
 	dsseSigner   dsse.Signer
@@ -86,7 +86,7 @@ func (s *Signer) WriteBundle(bndl *sbundle.Bundle, w io.Writer) error {
 // and keypair generation happen only once even when signing multiple artifacts.
 func (s *Signer) signingState() (sign.Keypair, *sign.BundleOptions, error) {
 	if s.signingReady {
-		return s.Identity.Keypair(), s.bundleOpts, nil
+		return s.Credentials.Keypair(), s.bundleOpts, nil
 	}
 
 	// Verify the defined options:
@@ -94,22 +94,22 @@ func (s *Signer) signingState() (sign.Keypair, *sign.BundleOptions, error) {
 		return nil, nil, fmt.Errorf("validating options for signing: %w", err)
 	}
 
-	if s.Identity == nil {
-		s.Identity = s.Options.BuildSigstoreIdentity()
+	if s.Credentials == nil {
+		s.Credentials = s.Options.BuildSigstoreCredentials()
 	}
 
-	if err := s.Identity.Prepare(context.TODO()); err != nil {
-		return nil, nil, fmt.Errorf("preparing signing identity: %w", err)
+	if err := s.Credentials.Prepare(context.TODO()); err != nil {
+		return nil, nil, fmt.Errorf("preparing signing credentials: %w", err)
 	}
 
-	bundleOpts, err := s.bundleSigner.BuildBundleOptions(&s.Options, s.Identity)
+	bundleOpts, err := s.bundleSigner.BuildBundleOptions(&s.Options, s.Credentials)
 	if err != nil {
 		return nil, nil, fmt.Errorf("building options: %w", err)
 	}
 
 	s.bundleOpts = bundleOpts
 	s.signingReady = true
-	return s.Identity.Keypair(), s.bundleOpts, nil
+	return s.Credentials.Keypair(), s.bundleOpts, nil
 }
 
 // SignStatement signs an in-toto attestation using the configured options and

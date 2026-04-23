@@ -23,13 +23,13 @@ import (
 // tweak before running a sign call.
 type testHarness struct {
 	bundleSigner *bundlefakes.FakeSigner
-	identity     *bundlefakes.FakeIdentity
+	credentials  *bundlefakes.FakeCredentialProvider
 }
 
 func newTestHarness() *testHarness {
 	return &testHarness{
 		bundleSigner: &bundlefakes.FakeSigner{},
-		identity:     &bundlefakes.FakeIdentity{},
+		credentials:  &bundlefakes.FakeCredentialProvider{},
 	}
 }
 
@@ -39,7 +39,7 @@ func (h *testHarness) signer(t *testing.T) *Signer {
 	require.NoError(t, opts.Validate())
 	return &Signer{
 		Options:      opts,
-		Identity:     h.identity,
+		Credentials:  h.credentials,
 		bundleSigner: h.bundleSigner,
 	}
 }
@@ -65,8 +65,8 @@ func TestSignStatement(t *testing.T) {
 		{"VerifyAttestationContent-fails", true, func(h *testHarness) {
 			h.bundleSigner.VerifyAttestationContentReturns(errors.New("invalid attesatation"))
 		}},
-		{"Identity-Prepare-fails", true, func(h *testHarness) {
-			h.identity.PrepareReturns(errors.New("preparing identity failed"))
+		{"Credentials-Prepare-fails", true, func(h *testHarness) {
+			h.credentials.PrepareReturns(errors.New("preparing credentials failed"))
 		}},
 		{"BuildBundleOptions-fails", true, func(h *testHarness) {
 			h.bundleSigner.BuildBundleOptionsReturns(nil, errors.New("getting signer options fails"))
@@ -102,8 +102,8 @@ func TestSignMessage(t *testing.T) {
 		setup   func(*testHarness)
 	}{
 		{"success", false, func(h *testHarness) {}},
-		{"Identity-Prepare-fails", true, func(h *testHarness) {
-			h.identity.PrepareReturns(errors.New("preparing identity failed"))
+		{"Credentials-Prepare-fails", true, func(h *testHarness) {
+			h.credentials.PrepareReturns(errors.New("preparing credentials failed"))
 		}},
 		{"BuildBundleOptions-fails", true, func(h *testHarness) {
 			h.bundleSigner.BuildBundleOptionsReturns(nil, errors.New("getting signer options fails"))
@@ -219,10 +219,10 @@ func TestSignAndVerifyMocked(t *testing.T) {
 	require.NoError(t, opts.Validate())
 
 	fakeBundleSigner := &bundlefakes.FakeSigner{}
-	fakeIdentity := &bundlefakes.FakeIdentity{}
+	fakeCredentials := &bundlefakes.FakeCredentialProvider{}
 	s := &Signer{
 		Options:      opts,
-		Identity:     fakeIdentity,
+		Credentials:  fakeCredentials,
 		bundleSigner: fakeBundleSigner,
 	}
 
@@ -233,7 +233,7 @@ func TestSignAndVerifyMocked(t *testing.T) {
 	// Verify the mock signer was called with the expected flow
 	require.Equal(t, 1, fakeBundleSigner.VerifyAttestationContentCallCount())
 	require.Equal(t, 1, fakeBundleSigner.WrapDataCallCount())
-	require.Equal(t, 1, fakeIdentity.PrepareCallCount())
+	require.Equal(t, 1, fakeCredentials.PrepareCallCount())
 	require.Equal(t, 1, fakeBundleSigner.BuildBundleOptionsCallCount())
 	require.Equal(t, 1, fakeBundleSigner.SignBundleCallCount())
 
@@ -251,9 +251,9 @@ func TestSignAndVerifyMocked(t *testing.T) {
 	require.Equal(t, 1, fakeVerifier.VerifyCallCount())
 }
 
-// TestSigningStateReuse verifies that calling SignStatement multiple times on the
-// same Signer reuses the prepared identity and cached bundle options instead of
-// repeating the identity preparation and service discovery.
+// TestSigningStateReuse verifies that calling SignStatement multiple times on
+// the same Signer reuses the prepared credentials and cached bundle options
+// instead of repeating credential preparation and service discovery.
 func TestSigningStateReuse(t *testing.T) {
 	t.Parallel()
 
@@ -264,10 +264,10 @@ func TestSigningStateReuse(t *testing.T) {
 	require.NoError(t, opts.Validate())
 
 	fakeBundleSigner := &bundlefakes.FakeSigner{}
-	fakeIdentity := &bundlefakes.FakeIdentity{}
+	fakeCredentials := &bundlefakes.FakeCredentialProvider{}
 	s := &Signer{
 		Options:      opts,
-		Identity:     fakeIdentity,
+		Credentials:  fakeCredentials,
 		bundleSigner: fakeBundleSigner,
 	}
 
@@ -283,14 +283,14 @@ func TestSigningStateReuse(t *testing.T) {
 	require.Equal(t, 3, fakeBundleSigner.WrapDataCallCount())
 	require.Equal(t, 3, fakeBundleSigner.SignBundleCallCount())
 
-	// But identity preparation and bundle options wiring only happen once
-	require.Equal(t, 1, fakeIdentity.PrepareCallCount())
+	// But credential preparation and bundle options wiring only happen once
+	require.Equal(t, 1, fakeCredentials.PrepareCallCount())
 	require.Equal(t, 1, fakeBundleSigner.BuildBundleOptionsCallCount())
 }
 
-// Compile-time check: bundle.Identity and bundle.Signer are satisfied by the
-// fakes used in the tests above.
+// Compile-time check: bundle.CredentialProvider and bundle.Signer are
+// satisfied by the fakes used in the tests above.
 var (
-	_ bundle.Identity = (*bundlefakes.FakeIdentity)(nil)
-	_ bundle.Signer   = (*bundlefakes.FakeSigner)(nil)
+	_ bundle.CredentialProvider = (*bundlefakes.FakeCredentialProvider)(nil)
+	_ bundle.Signer             = (*bundlefakes.FakeSigner)(nil)
 )

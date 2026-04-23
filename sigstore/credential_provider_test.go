@@ -13,11 +13,11 @@ import (
 // is available and the environment is CI (no TTY, CI env var set),
 // runOIDCFlow returns a descriptive error instead of hanging on the device flow.
 func TestRunOIDCFlowFailsInCI(t *testing.T) {
-	id := &Identity{Instance: &Instance{}}
+	cp := &CredentialProvider{Instance: &Instance{}}
 
 	t.Setenv("CI", "true")
 
-	_, err := id.runOIDCFlow()
+	_, err := cp.runOIDCFlow()
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "no OIDC ambient credentials found in CI environment")
 }
