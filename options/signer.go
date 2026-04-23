@@ -55,3 +55,13 @@ func (so *Signer) Validate() error {
 	}
 	return errors.Join(errs...)
 }
+
+// BuildSigstoreIdentity constructs a sigstore.Identity from the options,
+// forwarding the DisableSTS flag and any pre-provided OIDC token. Used by
+// the outer Signer to default-construct an identity when none was injected.
+func (so *Signer) BuildSigstoreIdentity() *sigstore.Identity {
+	id := sigstore.NewIdentity(&so.Instance)
+	id.DisableSTS = so.DisableSTS
+	id.Token = so.Token
+	return id
+}
