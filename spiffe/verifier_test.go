@@ -139,6 +139,20 @@ func TestVerifierSuccess(t *testing.T) {
 	result, err := v.Verify(nil, bndl)
 	require.NoError(t, err)
 	require.NotNil(t, result)
+
+	// Verified identity carries the SPIFFE ID as its SAN.
+	require.NotNil(t, result.VerifiedIdentity)
+	require.Equal(t, "spiffe://example.org/workload",
+		result.VerifiedIdentity.SubjectAlternativeName.SubjectAlternativeName)
+
+	// Signature summary carries the leaf summary, including the SPIFFE ID.
+	require.NotNil(t, result.Signature)
+	require.NotNil(t, result.Signature.Certificate)
+	require.Equal(t, "spiffe://example.org/workload",
+		result.Signature.Certificate.SubjectAlternativeName)
+
+	// The in-toto payload was parsed into result.Statement.
+	require.NotNil(t, result.Statement)
 }
 
 func TestVerifierFromOptionsViaPEM(t *testing.T) {

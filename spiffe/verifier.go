@@ -17,6 +17,7 @@ import (
 
 	intoto "github.com/in-toto/attestation/go/v1"
 	sbundle "github.com/sigstore/sigstore-go/pkg/bundle"
+	"github.com/sigstore/sigstore-go/pkg/fulcio/certificate"
 	"github.com/sigstore/sigstore-go/pkg/verify"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -148,7 +149,7 @@ func (v *Verifier) Verify(_ *options.Verification, bndl *sbundle.Bundle) (*verif
 		return nil, fmt.Errorf("verifying dsse signature: %w", err)
 	}
 
-	return buildResult(bndl), nil
+	return buildResult(bndl, leaf, id), nil
 }
 
 func (v *Verifier) matchIdentity(id spiffeid.ID) error {
@@ -257,11 +258,35 @@ func verifyWithKey(pub crypto.PublicKey, msg, sig []byte) error {
 	}
 }
 
-// buildResult constructs a best-effort VerificationResult. Tries to parse the
-// DSSE payload as an in-toto Statement and populate it; leaves timestamps and
-// transparency-log fields empty (SPIFFE signatures don't produce them).
-func buildResult(bndl *sbundle.Bundle) *verify.VerificationResult {
+// buildResult constructs a best-effort VerificationResult. Populates:
+//   - MediaType (via NewVerificationResult)
+//   - Statement  — when the DSSE payload is a valid in-toto Statement
+//   - Signature.Certificate — a SummarizeCertificate of the SVID leaf. The
+//     Summary's SubjectAlternativeName will carry the SPIFFE ID since it's
+//     the leaf's first URI SAN.
+//   - VerifiedIdentity.SubjectAlternativeName — the SPIFFE ID. Lets callers
+//     read the verified signer using the same sigstore-go result fields the
+//     sigstore path populates.
+//
+// Transparency-log and TSA fields are intentionally left empty; SPIFFE
+// signatures don't produce them.
+func buildResult(bndl *sbundle.Bundle, leaf *x509.Certificate, id spiffeid.ID) *verify.VerificationResult {
 	result := verify.NewVerificationResult()
+
+	// Attach the leaf summary and the verified SPIFFE ID. Populating both
+	// keeps parity with how sigstore-go's own verifier fills these fields
+	// for Fulcio signatures.
+	if summary, err := certificate.SummarizeCertificate(leaf); err == nil {
+		result.Signature = &verify.SignatureVerificationResult{
+			Certificate: &summary,
+		}
+	}
+	result.VerifiedIdentity = &verify.CertificateIdentity{
+		SubjectAlternativeName: verify.SubjectAlternativeNameMatcher{
+			SubjectAlternativeName: id.String(),
+		},
+	}
+
 	env := bndl.GetDsseEnvelope()
 	if env == nil || len(env.GetPayload()) == 0 {
 		return result
