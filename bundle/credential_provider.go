@@ -7,6 +7,7 @@ package bundle
 
 import (
 	"context"
+	"crypto/x509"
 
 	"github.com/sigstore/sigstore-go/pkg/sign"
 )
@@ -28,4 +29,15 @@ type CredentialProvider interface {
 	// populate VerificationMaterial, together with any provider-specific
 	// options (e.g. an OIDC ID token for Fulcio).
 	CertificateProvider() (sign.CertificateProvider, *sign.CertificateProviderOptions)
+
+	// Intermediates returns the certificates between the leaf and the trust
+	// anchor, in order from leaf-adjacent to root-adjacent. The root itself
+	// must NOT be included — verifiers supply it out-of-band.
+	//
+	// Returns nil when there are no intermediates to embed (the sigstore
+	// case, where the chain is reconstructed from TUF at verify time). When
+	// the return value is non-empty, the outer Signer rewrites the bundle's
+	// VerificationMaterial to carry [leaf, ...intermediates] so the verifier
+	// can build a path to its pinned trust anchor.
+	Intermediates() []*x509.Certificate
 }

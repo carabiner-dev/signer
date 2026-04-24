@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"io"
 
+	protobundle "github.com/sigstore/protobuf-specs/gen/pb-go/bundle/v1"
+	protocommon "github.com/sigstore/protobuf-specs/gen/pb-go/common/v1"
 	sdsse "github.com/sigstore/protobuf-specs/gen/pb-go/dsse"
 	sbundle "github.com/sigstore/sigstore-go/pkg/bundle"
 	"github.com/sigstore/sigstore-go/pkg/sign"
@@ -153,6 +155,9 @@ func (s *Signer) SignStatement(data []byte, funcs ...options.SignOptFn) (*sbundl
 	if err != nil {
 		return nil, fmt.Errorf("singing statement: %w", err)
 	}
+	if err := s.attachIntermediates(bndl); err != nil {
+		return nil, fmt.Errorf("attaching intermediates: %w", err)
+	}
 	return &sbundle.Bundle{
 		Bundle: bndl,
 	}, nil
@@ -181,9 +186,51 @@ func (s *Signer) SignMessage(data []byte, funcs ...options.SignOptFn) (*sbundle.
 	if err != nil {
 		return nil, fmt.Errorf("singing statement: %w", err)
 	}
+	if err := s.attachIntermediates(bndl); err != nil {
+		return nil, fmt.Errorf("attaching intermediates: %w", err)
+	}
 	return &sbundle.Bundle{
 		Bundle: bndl,
 	}, nil
+}
+
+// attachIntermediates rewrites the bundle's VerificationMaterial to carry
+// [leaf, ...intermediates] when the credential provider exposes intermediates.
+// When the provider returns an empty chain (the sigstore case) the bundle is
+// left untouched. Called after SignBundle so the leaf DER is already present
+// in VerificationMaterial.Content.
+func (s *Signer) attachIntermediates(bndl *protobundle.Bundle) error {
+	if s.Credentials == nil {
+		return nil
+	}
+	ints := s.Credentials.Intermediates()
+	if len(ints) == 0 {
+		return nil
+	}
+	if bndl.GetVerificationMaterial() == nil {
+		return errors.New("bundle has no verification material")
+	}
+	leaf, ok := bndl.GetVerificationMaterial().GetContent().(*protobundle.VerificationMaterial_Certificate)
+	if !ok || leaf.Certificate == nil {
+		// Already a chain, a public key, or nothing — leave as-is.
+		return nil
+	}
+
+	chain := &protocommon.X509CertificateChain{
+		Certificates: make([]*protocommon.X509Certificate, 0, 1+len(ints)),
+	}
+	chain.Certificates = append(chain.Certificates, &protocommon.X509Certificate{
+		RawBytes: leaf.Certificate.GetRawBytes(),
+	})
+	for _, c := range ints {
+		chain.Certificates = append(chain.Certificates, &protocommon.X509Certificate{
+			RawBytes: c.Raw,
+		})
+	}
+	bndl.VerificationMaterial.Content = &protobundle.VerificationMaterial_X509CertificateChain{
+		X509CertificateChain: chain,
+	}
+	return nil
 }
 
 // SignStatementToDSSE is a convenience method around SignMessageToDSSE that

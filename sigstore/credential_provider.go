@@ -126,6 +126,11 @@ func (p *CredentialProvider) CertificateProvider() (sign.CertificateProvider, *s
 	return p.cp, opts
 }
 
+// Intermediates returns nil. The Fulcio chain is reconstructed at verify
+// time from the sigstore TUF root, so no intermediates are embedded in the
+// bundle's VerificationMaterial.
+func (p *CredentialProvider) Intermediates() []*x509.Certificate { return nil }
+
 // runAmbientSTS iterates over the configured STS providers until it gets a token
 func (p *CredentialProvider) runAmbientSTS(ctx context.Context) error {
 	for k, provider := range sts.DefaultProviders {
