@@ -10,11 +10,13 @@ option go_package = "github.com/carabiner-dev/signer/api/v1";
 //   a) A sigstore identity
 //   b) A key
 //   c) A reference to an identity defined outside the policy
+//   d) A SPIFFE identity
 message Identity {
     string id = 1;
     optional IdentitySigstore sigstore = 2;
     optional IdentityKey key = 3;
     optional IdentityRef ref = 4;
+    optional IdentitySpiffe spiffe = 5;
 }
 
 // IdentitySigstore represents the identity data in a Fulcio cert.
@@ -34,7 +36,22 @@ message IdentityKey {
 
 // IdentityRef represents an identity defined outside of the policy. Most commonly
 // these identities will be defined at the policy set level to have a common
-// definition that can be reused by all policies in a set. 
+// definition that can be reused by all policies in a set.
 message IdentityRef {
     string id = 1;
+}
+
+// IdentitySpiffe matches signatures produced by a SPIFFE workload. The
+// trust_domain is required; path / path_regex are optional matchers on the
+// SVID's SPIFFE path component (mutually exclusive).
+//
+// trust_roots inlines the PEM-encoded SPIRE upstream CA root(s) used to
+// validate the SVID chain, analogous to IdentityKey.data. Unlike the sigstore
+// flow there is no universal trust-root registry for SPIFFE, so the policy
+// must carry (or reference) the anchor itself.
+message IdentitySpiffe {
+    string trust_domain = 1;
+    string path = 2;
+    string path_regex = 3;
+    string trust_roots = 4;
 }

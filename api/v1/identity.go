@@ -4,9 +4,12 @@
 package v1
 
 import (
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/spiffe/go-spiffe/v2/spiffeid"
 
 	"github.com/carabiner-dev/signer/key"
 )
@@ -108,6 +111,48 @@ func (i *Identity) Validate() error {
 		errs = append(errs, fmt.Errorf("only one type of identity can be set at a time (got %v)", typesDefined))
 	}
 	return errors.Join(errs...)
+}
+
+// IdentitySpiffeFromString parses a SPIFFE ID string (e.g.
+// "spiffe://example.org/workload") into an IdentitySpiffe populated with the
+// parsed trust domain and path. This is the primary helper for turning the
+// SPIFFE ID a verifier surfaces in its VerificationResult (via
+// VerifiedIdentity.SubjectAlternativeName) into an api/v1 identity value
+// suitable for SignatureVerification.Identities.
+//
+// TrustRoots is intentionally NOT populated — it is verifier configuration
+// (which root(s) the chain was validated against), not an attribute of the
+// signer. Policy-side IdentitySpiffe values carry TrustRoots to tell the
+// verifier what to trust; verified-side IdentitySpiffe values describe who
+// signed.
+func IdentitySpiffeFromString(spiffeID string) (*IdentitySpiffe, error) {
+	id, err := spiffeid.FromString(spiffeID)
+	if err != nil {
+		return nil, fmt.Errorf("parsing spiffe id: %w", err)
+	}
+	return &IdentitySpiffe{
+		TrustDomain: id.TrustDomain().Name(),
+		Path:        id.Path(),
+	}, nil
+}
+
+// IdentitySpiffeFromCert builds an IdentitySpiffe from a leaf certificate by
+// extracting the SPIFFE ID from its URI SAN. Delegates to
+// IdentitySpiffeFromString once the SAN is found. Useful when a caller has
+// only the leaf (e.g. test fixtures or standalone cert inspection); when a
+// VerificationResult is available, read the SAN from VerifiedIdentity and
+// call IdentitySpiffeFromString directly.
+func IdentitySpiffeFromCert(leaf *x509.Certificate) (*IdentitySpiffe, error) {
+	if leaf == nil {
+		return nil, errors.New("leaf certificate is nil")
+	}
+	for _, uri := range leaf.URIs {
+		if uri.Scheme != "spiffe" {
+			continue
+		}
+		return IdentitySpiffeFromString(uri.String())
+	}
+	return nil, errors.New("certificate has no spiffe:// URI SAN")
 }
 
 // IdentityKeyFromPublic builds an IdentityKey from a verified *key.Public.

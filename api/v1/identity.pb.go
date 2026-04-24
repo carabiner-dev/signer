@@ -29,12 +29,14 @@ const (
 //	a) A sigstore identity
 //	b) A key
 //	c) A reference to an identity defined outside the policy
+//	d) A SPIFFE identity
 type Identity struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	Sigstore      *IdentitySigstore      `protobuf:"bytes,2,opt,name=sigstore,proto3,oneof" json:"sigstore,omitempty"`
 	Key           *IdentityKey           `protobuf:"bytes,3,opt,name=key,proto3,oneof" json:"key,omitempty"`
 	Ref           *IdentityRef           `protobuf:"bytes,4,opt,name=ref,proto3,oneof" json:"ref,omitempty"`
+	Spiffe        *IdentitySpiffe        `protobuf:"bytes,5,opt,name=spiffe,proto3,oneof" json:"spiffe,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -93,6 +95,13 @@ func (x *Identity) GetKey() *IdentityKey {
 func (x *Identity) GetRef() *IdentityRef {
 	if x != nil {
 		return x.Ref
+	}
+	return nil
+}
+
+func (x *Identity) GetSpiffe() *IdentitySpiffe {
+	if x != nil {
+		return x.Spiffe
 	}
 	return nil
 }
@@ -274,19 +283,97 @@ func (x *IdentityRef) GetId() string {
 	return ""
 }
 
+// IdentitySpiffe matches signatures produced by a SPIFFE workload. The
+// trust_domain is required; path / path_regex are optional matchers on the
+// SVID's SPIFFE path component (mutually exclusive).
+//
+// trust_roots inlines the PEM-encoded SPIRE upstream CA root(s) used to
+// validate the SVID chain, analogous to IdentityKey.data. Unlike the sigstore
+// flow there is no universal trust-root registry for SPIFFE, so the policy
+// must carry (or reference) the anchor itself.
+type IdentitySpiffe struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TrustDomain   string                 `protobuf:"bytes,1,opt,name=trust_domain,json=trustDomain,proto3" json:"trust_domain,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	PathRegex     string                 `protobuf:"bytes,3,opt,name=path_regex,json=pathRegex,proto3" json:"path_regex,omitempty"`
+	TrustRoots    string                 `protobuf:"bytes,4,opt,name=trust_roots,json=trustRoots,proto3" json:"trust_roots,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *IdentitySpiffe) Reset() {
+	*x = IdentitySpiffe{}
+	mi := &file_carabiner_signer_v1_identity_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IdentitySpiffe) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IdentitySpiffe) ProtoMessage() {}
+
+func (x *IdentitySpiffe) ProtoReflect() protoreflect.Message {
+	mi := &file_carabiner_signer_v1_identity_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IdentitySpiffe.ProtoReflect.Descriptor instead.
+func (*IdentitySpiffe) Descriptor() ([]byte, []int) {
+	return file_carabiner_signer_v1_identity_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *IdentitySpiffe) GetTrustDomain() string {
+	if x != nil {
+		return x.TrustDomain
+	}
+	return ""
+}
+
+func (x *IdentitySpiffe) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *IdentitySpiffe) GetPathRegex() string {
+	if x != nil {
+		return x.PathRegex
+	}
+	return ""
+}
+
+func (x *IdentitySpiffe) GetTrustRoots() string {
+	if x != nil {
+		return x.TrustRoots
+	}
+	return ""
+}
+
 var File_carabiner_signer_v1_identity_proto protoreflect.FileDescriptor
 
 const file_carabiner_signer_v1_identity_proto_rawDesc = "" +
 	"\n" +
-	"\"carabiner/signer/v1/identity.proto\x12\x13carabiner.signer.v1\"\xf1\x01\n" +
+	"\"carabiner/signer/v1/identity.proto\x12\x13carabiner.signer.v1\"\xbe\x02\n" +
 	"\bIdentity\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12F\n" +
 	"\bsigstore\x18\x02 \x01(\v2%.carabiner.signer.v1.IdentitySigstoreH\x00R\bsigstore\x88\x01\x01\x127\n" +
 	"\x03key\x18\x03 \x01(\v2 .carabiner.signer.v1.IdentityKeyH\x01R\x03key\x88\x01\x01\x127\n" +
-	"\x03ref\x18\x04 \x01(\v2 .carabiner.signer.v1.IdentityRefH\x02R\x03ref\x88\x01\x01B\v\n" +
+	"\x03ref\x18\x04 \x01(\v2 .carabiner.signer.v1.IdentityRefH\x02R\x03ref\x88\x01\x01\x12@\n" +
+	"\x06spiffe\x18\x05 \x01(\v2#.carabiner.signer.v1.IdentitySpiffeH\x03R\x06spiffe\x88\x01\x01B\v\n" +
 	"\t_sigstoreB\x06\n" +
 	"\x04_keyB\x06\n" +
-	"\x04_ref\"h\n" +
+	"\x04_refB\t\n" +
+	"\a_spiffe\"h\n" +
 	"\x10IdentitySigstore\x12\x17\n" +
 	"\x04mode\x18\x01 \x01(\tH\x00R\x04mode\x88\x01\x01\x12\x16\n" +
 	"\x06issuer\x18\x02 \x01(\tR\x06issuer\x12\x1a\n" +
@@ -298,7 +385,14 @@ const file_carabiner_signer_v1_identity_proto_rawDesc = "" +
 	"\x04data\x18\x03 \x01(\tR\x04data\x12/\n" +
 	"\x13signing_fingerprint\x18\x04 \x01(\tR\x12signingFingerprint\"\x1d\n" +
 	"\vIdentityRef\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02idB\xbe\x01\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"\x87\x01\n" +
+	"\x0eIdentitySpiffe\x12!\n" +
+	"\ftrust_domain\x18\x01 \x01(\tR\vtrustDomain\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\x12\x1d\n" +
+	"\n" +
+	"path_regex\x18\x03 \x01(\tR\tpathRegex\x12\x1f\n" +
+	"\vtrust_roots\x18\x04 \x01(\tR\n" +
+	"trustRootsB\xbe\x01\n" +
 	"\x17com.carabiner.signer.v1B\rIdentityProtoP\x01Z&github.com/carabiner-dev/signer/api/v1\xa2\x02\x03CSX\xaa\x02\x13Carabiner.Signer.V1\xca\x02\x13Carabiner\\Signer\\V1\xe2\x02\x1fCarabiner\\Signer\\V1\\GPBMetadata\xea\x02\x15Carabiner::Signer::V1b\x06proto3"
 
 var (
@@ -313,22 +407,24 @@ func file_carabiner_signer_v1_identity_proto_rawDescGZIP() []byte {
 	return file_carabiner_signer_v1_identity_proto_rawDescData
 }
 
-var file_carabiner_signer_v1_identity_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_carabiner_signer_v1_identity_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_carabiner_signer_v1_identity_proto_goTypes = []any{
 	(*Identity)(nil),         // 0: carabiner.signer.v1.Identity
 	(*IdentitySigstore)(nil), // 1: carabiner.signer.v1.IdentitySigstore
 	(*IdentityKey)(nil),      // 2: carabiner.signer.v1.IdentityKey
 	(*IdentityRef)(nil),      // 3: carabiner.signer.v1.IdentityRef
+	(*IdentitySpiffe)(nil),   // 4: carabiner.signer.v1.IdentitySpiffe
 }
 var file_carabiner_signer_v1_identity_proto_depIdxs = []int32{
 	1, // 0: carabiner.signer.v1.Identity.sigstore:type_name -> carabiner.signer.v1.IdentitySigstore
 	2, // 1: carabiner.signer.v1.Identity.key:type_name -> carabiner.signer.v1.IdentityKey
 	3, // 2: carabiner.signer.v1.Identity.ref:type_name -> carabiner.signer.v1.IdentityRef
-	3, // [3:3] is the sub-list for method output_type
-	3, // [3:3] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	4, // 3: carabiner.signer.v1.Identity.spiffe:type_name -> carabiner.signer.v1.IdentitySpiffe
+	4, // [4:4] is the sub-list for method output_type
+	4, // [4:4] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_carabiner_signer_v1_identity_proto_init() }
@@ -344,7 +440,7 @@ func file_carabiner_signer_v1_identity_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_carabiner_signer_v1_identity_proto_rawDesc), len(file_carabiner_signer_v1_identity_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -8,11 +8,56 @@ import (
 	"strings"
 
 	"github.com/carabiner-dev/attestation"
+	"github.com/sigstore/sigstore-go/pkg/verify"
 	"google.golang.org/protobuf/proto"
 )
 
 // Ensure we are implementing the framworks verification
 var _ attestation.Verification = (*Verification)(nil) //nolint:errcheck
+
+// SignatureVerificationFromResult translates sigstore-go's
+// *verify.VerificationResult into the api/v1 SignatureVerification used for
+// policy matching. Handles both sigstore and SPIFFE flows by inspecting
+// VerifiedIdentity: a spiffe:// SAN produces an IdentitySpiffe; any other
+// SAN/Issuer pair produces an IdentitySigstore.
+//
+// Pass a nil result (e.g. when verification failed) to get back an empty,
+// unverified SignatureVerification. Callers typically invoke this after a
+// successful Verify call:
+//
+//	result, err := verifier.Verify(nil, bndl)
+//	if err != nil {
+//	    return err
+//	}
+//	sv := api.SignatureVerificationFromResult(result)
+//	if !sv.MatchesIdentity(policyIdentity) {
+//	    return errors.New("signer not authorized by policy")
+//	}
+func SignatureVerificationFromResult(r *verify.VerificationResult) *SignatureVerification {
+	if r == nil {
+		return &SignatureVerification{}
+	}
+	sv := &SignatureVerification{Verified: true}
+	if r.VerifiedIdentity == nil {
+		return sv
+	}
+	san := r.VerifiedIdentity.SubjectAlternativeName.SubjectAlternativeName
+	issuer := r.VerifiedIdentity.Issuer.Issuer
+
+	switch {
+	case strings.HasPrefix(san, "spiffe://"):
+		id, err := IdentitySpiffeFromString(san)
+		if err != nil {
+			return sv
+		}
+		sv.Identities = append(sv.Identities, &Identity{Spiffe: id})
+	case san != "" || issuer != "":
+		sv.Identities = append(sv.Identities, &Identity{
+			Sigstore: &IdentitySigstore{Issuer: issuer, Identity: san},
+		})
+	}
+	return sv
+}
 
 // Error implements the Go error interface when verification fails
 func (v *Verification) Error() string {
@@ -51,6 +96,8 @@ func (sv *SignatureVerification) MatchesIdentity(id *Identity) bool {
 		return sv.MatchesSigstoreIdentity(id.GetSigstore())
 	case id.GetKey() != nil:
 		return sv.MatchesKeyIdentity(id.GetKey())
+	case id.GetSpiffe() != nil:
+		return sv.MatchesSpiffeIdentity(id.GetSpiffe())
 	default:
 		return false //  This would be an error
 	}
@@ -96,6 +143,63 @@ func (sv *SignatureVerification) MatchesSigstoreIdentity(id *IdentitySigstore) b
 				return true
 			}
 		}
+	}
+	return false
+}
+
+// MatchesSpiffeIdentity returns true if one of the verified signatures was
+// produced by a SPIFFE workload matching the supplied identity. Matching
+// rules:
+//
+//   - TrustDomain (required): compared exactly against the signer's trust
+//     domain. An empty TrustDomain in the policy is rejected since a
+//     wildcard match across trust domains is almost never the intent.
+//   - Path (optional): when set, the signer's SPIFFE path must match
+//     exactly. Mutually exclusive with PathRegex.
+//   - PathRegex (optional): when set, compiled and applied to the signer's
+//     SPIFFE path. Mutually exclusive with Path.
+//   - TrustRoots is not consulted here — it is policy configuration used
+//     by the verifier to validate the chain, not an attribute of the
+//     signer.
+//
+// If both Path and PathRegex are set the policy is treated as malformed
+// and no match is returned.
+func (sv *SignatureVerification) MatchesSpiffeIdentity(id *IdentitySpiffe) bool {
+	if id.GetTrustDomain() == "" {
+		return false
+	}
+	if id.GetPath() != "" && id.GetPathRegex() != "" {
+		return false
+	}
+
+	var pathRegex *regexp.Regexp
+	if id.GetPathRegex() != "" {
+		re, err := regexp.Compile(id.GetPathRegex())
+		if err != nil {
+			return false
+		}
+		pathRegex = re
+	}
+
+	for _, signer := range sv.GetIdentities() {
+		signerSpiffe := signer.GetSpiffe()
+		if signerSpiffe == nil {
+			continue
+		}
+		if signerSpiffe.GetTrustDomain() != id.GetTrustDomain() {
+			continue
+		}
+		switch {
+		case id.GetPath() != "":
+			if signerSpiffe.GetPath() != id.GetPath() {
+				continue
+			}
+		case pathRegex != nil:
+			if !pathRegex.MatchString(signerSpiffe.GetPath()) {
+				continue
+			}
+		}
+		return true
 	}
 	return false
 }
