@@ -1,0 +1,48 @@
+// SPDX-FileCopyrightText: Copyright 2025 Carabiner Systems, Inc
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+package carabiner.signer.v1;
+
+option go_package = "github.com/carabiner-dev/signer/api/v1";
+
+// Matcher is a single predicate evaluated against a field of the selected
+// Identity variant. The field selector names a sub-field using dotted
+// notation:
+//
+//   "principal"                  // the whole principal string
+//   "sigstore.issuer"
+//   "sigstore.identity"
+//   "key.id"
+//   "key.type"
+//   "key.signing_fingerprint"
+//   "spiffe.trust_domain"
+//   "spiffe.path"
+//
+// The oneof `kind` is designed to grow additively. Adding new matcher
+// kinds (Int, Duration, List, Bool, composite and/or/not) is a proto
+// change, never a breaking one.
+message Matcher {
+    string field = 1;
+    oneof kind {
+        StringMatcher string = 2;
+        // Reserved for near-term additions:
+        //   IntMatcher      int      = 3;
+        //   BoolMatcher     bool     = 4;
+        //   DurationMatcher duration = 5;
+        //   TimeMatcher     time     = 6;
+        //   ListMatcher     list     = 7;
+    }
+}
+
+// StringMatcher is the concrete matcher for string-valued fields.
+// Exactly one of the `kind` variants must be set.
+message StringMatcher {
+    oneof kind {
+        string exact  = 1;
+        string regex  = 2;  // anchored to the full input at compile time
+        string prefix = 3;
+        string glob   = 4;  // shell-style glob (*, ?, [...])
+    }
+    bool case_insensitive = 5;
+}

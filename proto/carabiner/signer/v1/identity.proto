@@ -4,6 +4,8 @@
 syntax = "proto3";
 package carabiner.signer.v1;
 
+import "carabiner/signer/v1/matcher.proto";
+
 option go_package = "github.com/carabiner-dev/signer/api/v1";
 
 // Identity captures a signer identity. An identity can one of:
@@ -11,47 +13,82 @@ option go_package = "github.com/carabiner-dev/signer/api/v1";
 //   b) A key
 //   c) A reference to an identity defined outside the policy
 //   d) A SPIFFE identity
+//
+// The variant fields describe the signer ("who").
+//
+// The matchers slice and per-variant *_match convenience fields describe
+// how policy matches against the signer ("how").
+// 
+// In general:
+// Verified-side Identity leaves matcher fields empty;
+// Policy-side Identity populates them as needed.
 message Identity {
     string id = 1;
     optional IdentitySigstore sigstore = 2;
     optional IdentityKey key = 3;
     optional IdentityRef ref = 4;
     optional IdentitySpiffe spiffe = 5;
+
+    // Canonical policy-side matcher slice. Each Matcher targets a
+    // sub-field of whichever variant is set. Verified-side Identity
+    // leaves this empty.
+    repeated Matcher matchers = 10;
 }
 
 // IdentitySigstore represents the identity data in a Fulcio cert.
 message IdentitySigstore {
-    optional string mode = 1; // exact | regexp
+    optional string mode = 1; // exact | regexp (legacy ti be removed, prefer *_match)
     string issuer = 2;        // https://accounts.google.com
     string identity = 3;      //  "identity": "puerco@gmail.com"
+
+    // Convenience per-field matchers. When set, participate in the
+    // virtual matcher union alongside the legacy Mode/Issuer/Identity
+    // fields and the outer Matcher slice.
+    StringMatcher issuer_match   = 4;
+    StringMatcher identity_match = 5;
 }
 
 // IdentityKey registers the data of a key used to sign attestations.
 message IdentityKey {
-    string id = 1;                  // Key ID
+    string id = 1;                  // Key ID 
     string type = 2;                // Identity type
     string data = 3;                // Public key data
     string signing_fingerprint = 4; // Fingerprint of the signing subkey
+
+    // Convenience per-field matchers. No data_match: PEM blobs aren't
+    // pattern-matched; pin via id_match on the derived fingerprint.
+    StringMatcher id_match                  = 5;
+    StringMatcher type_match                = 6;
+    StringMatcher signing_fingerprint_match = 7;
 }
 
-// IdentityRef represents an identity defined outside of the policy. Most commonly
-// these identities will be defined at the policy set level to have a common
-// definition that can be reused by all policies in a set.
+// IdentityRef represents a reference to an identity. At the policy level, a 
+// ref allows to have a common definitions that can be reused by all policies
+// in a set.
 message IdentityRef {
     string id = 1;
 }
 
-// IdentitySpiffe matches signatures produced by a SPIFFE workload. The
-// trust_domain is required; path / path_regex are optional matchers on the
-// SVID's SPIFFE path component (mutually exclusive).
+// IdentitySpiffe represents a SPIFFE workload identity.
+//
+// svid carries the canonical SPIFFE ID URI (spiffe://<trust-domain><path>).
+// This matches the native SPIFFE representation and what verifiers surface
+// in VerificationResult.VerifiedIdentity.SubjectAlternativeName.
 //
 // trust_roots inlines the PEM-encoded SPIRE upstream CA root(s) used to
-// validate the SVID chain, analogous to IdentityKey.data. Unlike the sigstore
-// flow there is no universal trust-root registry for SPIFFE, so the policy
-// must carry (or reference) the anchor itself.
+// validate the SVID chain, analogous to IdentityKey.data. Unlike the
+// sigstore flow there is no universal trust-root registry for SPIFFE, so
+// the policy must carry (or reference) the anchor itself.
 message IdentitySpiffe {
-    string trust_domain = 1;
-    string path = 2;
-    string path_regex = 3;
-    string trust_roots = 4;
+    string svid        = 1;
+    string trust_roots = 2;
+
+    // Convenience per-field matchers. svid_match matches against the
+    // full SVID URI; trust_domain_match and path_match apply to the
+    // decomposed components parsed from the signer's svid at eval time.
+    // No trust_roots_match: trust anchors are cryptographic material.
+    StringMatcher svid_match         = 3;
+    StringMatcher trust_domain_match = 4;
+    StringMatcher path_match         = 5;
 }
+
