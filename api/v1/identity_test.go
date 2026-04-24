@@ -89,6 +89,113 @@ func TestVerifyIdentity(t *testing.T) {
 				Id: "", Type: "rsa", Data: "",
 			},
 		}},
+		{"spiffe-valid-svid", false, &Identity{
+			Spiffe: &IdentitySpiffe{Svid: "spiffe://example.org/workload"},
+		}},
+		{"spiffe-valid-matcher-only", false, &Identity{
+			Spiffe: &IdentitySpiffe{
+				TrustDomainMatch: &StringMatcher{
+					Kind: &StringMatcher_Exact{Exact: "example.org"},
+				},
+			},
+		}},
+		{"spiffe-no-constraint", true, &Identity{
+			Spiffe: &IdentitySpiffe{},
+		}},
+		{"spiffe-invalid-svid", true, &Identity{
+			Spiffe: &IdentitySpiffe{Svid: "not-a-spiffe-uri"},
+		}},
+		{"spiffe-bad-regex-in-path-match", true, &Identity{
+			Spiffe: &IdentitySpiffe{
+				PathMatch: &StringMatcher{
+					Kind: &StringMatcher_Regex{Regex: "[unclosed"},
+				},
+			},
+		}},
+		{"spiffe-bad-glob-in-svid-match", true, &Identity{
+			Spiffe: &IdentitySpiffe{
+				SvidMatch: &StringMatcher{
+					Kind: &StringMatcher_Glob{Glob: "[malformed"},
+				},
+			},
+		}},
+		{"sigstore-legacy-regex-bad", true, func() *Identity {
+			mode := SigstoreModeRegexp
+			return &Identity{
+				Sigstore: &IdentitySigstore{
+					Mode:     &mode,
+					Issuer:   "https://accounts.google.com",
+					Identity: "[unclosed",
+				},
+			}
+		}()},
+		{"sigstore-legacy-half-specified", true, &Identity{
+			Sigstore: &IdentitySigstore{Issuer: "https://accounts.google.com"},
+		}},
+		{"sigstore-matcher-only-valid", false, &Identity{
+			Sigstore: &IdentitySigstore{
+				IssuerMatch: &StringMatcher{
+					Kind: &StringMatcher_Exact{Exact: "https://accounts.google.com"},
+				},
+			},
+		}},
+		{"sigstore-identity-match-bad-regex", true, &Identity{
+			Sigstore: &IdentitySigstore{
+				IdentityMatch: &StringMatcher{
+					Kind: &StringMatcher_Regex{Regex: "[unclosed"},
+				},
+			},
+		}},
+		{"key-id-match-valid", false, &Identity{
+			Key: &IdentityKey{
+				IdMatch: &StringMatcher{
+					Kind: &StringMatcher_Exact{Exact: "abc123"},
+				},
+			},
+		}},
+		{"key-type-match-bad-regex", true, &Identity{
+			Key: &IdentityKey{
+				Id: "abc123",
+				TypeMatch: &StringMatcher{
+					Kind: &StringMatcher_Regex{Regex: "[unclosed"},
+				},
+			},
+		}},
+		{"outer-matcher-missing-field", true, &Identity{
+			Sigstore: &IdentitySigstore{
+				Issuer:   "https://accounts.google.com",
+				Identity: "u@example.com",
+			},
+			Matchers: []*Matcher{{
+				Kind: &Matcher_String_{String_: &StringMatcher{
+					Kind: &StringMatcher_Exact{Exact: "foo"},
+				}},
+			}},
+		}},
+		{"outer-matcher-bad-regex", true, &Identity{
+			Sigstore: &IdentitySigstore{
+				Issuer:   "https://accounts.google.com",
+				Identity: "u@example.com",
+			},
+			Matchers: []*Matcher{{
+				Field: "sigstore.issuer",
+				Kind: &Matcher_String_{String_: &StringMatcher{
+					Kind: &StringMatcher_Regex{Regex: "[unclosed"},
+				}},
+			}},
+		}},
+		{"outer-matcher-valid", false, &Identity{
+			Sigstore: &IdentitySigstore{
+				Issuer:   "https://accounts.google.com",
+				Identity: "u@example.com",
+			},
+			Matchers: []*Matcher{{
+				Field: "sigstore.issuer",
+				Kind: &Matcher_String_{String_: &StringMatcher{
+					Kind: &StringMatcher_Exact{Exact: "https://accounts.google.com"},
+				}},
+			}},
+		}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
@@ -102,6 +209,38 @@ func TestVerifyIdentity(t *testing.T) {
 	}
 }
 
+func TestIdentityPrincipalRoundTrip(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name      string
+		principal string
+	}{
+		{"sigstore-exact", "sigstore::https://accounts.google.com::user@example.com"},
+		{"sigstore-regexp", "sigstore(regexp)::https://.*::.*@example\\.com"},
+		{"key", "key::rsa::1234abcdef"},
+		{"ref", "ref:shared-identity"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			id, err := NewIdentityFromPrincipal(tt.principal)
+			require.NoError(t, err)
+			require.Equal(t, tt.principal, id.Principal())
+		})
+	}
+}
+
+func TestIdentitySlugAliasesPrincipal(t *testing.T) {
+	t.Parallel()
+	// Existing callers using the deprecated names must see identical
+	// behavior to the new names.
+	viaPrincipal, err := NewIdentityFromPrincipal("sigstore::https://accounts.google.com::user@example.com")
+	require.NoError(t, err)
+	viaSlug, err := NewIdentityFromSlug("sigstore::https://accounts.google.com::user@example.com")
+	require.NoError(t, err)
+	require.Equal(t, viaPrincipal.Principal(), viaSlug.Principal())
+	require.Equal(t, viaPrincipal.Slug(), viaPrincipal.Principal())
+}
+
 func TestIdentitySpiffeFromString(t *testing.T) {
 	t.Parallel()
 
@@ -109,18 +248,15 @@ func TestIdentitySpiffeFromString(t *testing.T) {
 		t.Parallel()
 		id, err := IdentitySpiffeFromString("spiffe://prod.example.org/workload/api")
 		require.NoError(t, err)
-		require.Equal(t, "prod.example.org", id.GetTrustDomain())
-		require.Equal(t, "/workload/api", id.GetPath())
+		require.Equal(t, "spiffe://prod.example.org/workload/api", id.GetSvid())
 		require.Empty(t, id.GetTrustRoots())
-		require.Empty(t, id.GetPathRegex())
 	})
 
 	t.Run("success-no-path", func(t *testing.T) {
 		t.Parallel()
 		id, err := IdentitySpiffeFromString("spiffe://example.org")
 		require.NoError(t, err)
-		require.Equal(t, "example.org", id.GetTrustDomain())
-		require.Empty(t, id.GetPath())
+		require.Equal(t, "spiffe://example.org", id.GetSvid())
 	})
 
 	t.Run("invalid-scheme", func(t *testing.T) {
@@ -150,10 +286,8 @@ func TestIdentitySpiffeFromCert(t *testing.T) {
 		leaf := mintSpiffeLeafForTest(t, "spiffe://prod.example.org/workload/api")
 		id, err := IdentitySpiffeFromCert(leaf)
 		require.NoError(t, err)
-		require.Equal(t, "prod.example.org", id.GetTrustDomain())
-		require.Equal(t, "/workload/api", id.GetPath())
+		require.Equal(t, "spiffe://prod.example.org/workload/api", id.GetSvid())
 		require.Empty(t, id.GetTrustRoots(), "TrustRoots must not be populated on the verified-side identity")
-		require.Empty(t, id.GetPathRegex())
 	})
 
 	t.Run("nil-cert", func(t *testing.T) {

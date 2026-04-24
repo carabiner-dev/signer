@@ -210,6 +210,179 @@ func sigRegexp(identity string) *IdentitySigstore {
 	}
 }
 
+func TestMatchesSigstoreIdentityConvenienceMatchers(t *testing.T) {
+	t.Parallel()
+	signer := &SignatureVerification{
+		Identities: []*Identity{{Sigstore: &IdentitySigstore{
+			Issuer:   "https://token.actions.githubusercontent.com",
+			Identity: "https://github.com/myorg/repo/.github/workflows/release.yml@refs/tags/v1.2.3",
+		}}},
+	}
+	for _, tt := range []struct {
+		name    string
+		policy  *IdentitySigstore
+		matches bool
+	}{
+		{
+			"both-matchers-set",
+			&IdentitySigstore{
+				IssuerMatch: &StringMatcher{
+					Kind: &StringMatcher_Exact{Exact: "https://token.actions.githubusercontent.com"},
+				},
+				IdentityMatch: &StringMatcher{
+					Kind: &StringMatcher_Regex{Regex: `https://github\.com/myorg/repo/.+@refs/tags/v.+`},
+				},
+			},
+			true,
+		},
+		{
+			"issuer-match-glob",
+			&IdentitySigstore{
+				IssuerMatch: &StringMatcher{
+					Kind: &StringMatcher_Glob{Glob: "https://token.actions.githubusercontent.com"},
+				},
+				IdentityMatch: &StringMatcher{
+					Kind: &StringMatcher_Prefix{Prefix: "https://github.com/myorg/"},
+				},
+			},
+			true,
+		},
+		{
+			"identity-match-prefix-collision-rejected",
+			&IdentitySigstore{
+				IdentityMatch: &StringMatcher{
+					Kind: &StringMatcher_Regex{Regex: `https://github\.com/myorg`},
+				},
+			},
+			false,
+		},
+		{
+			"legacy-plus-matcher-both-must-pass",
+			&IdentitySigstore{
+				Issuer:   "https://token.actions.githubusercontent.com",
+				Identity: "https://github.com/myorg/repo/.github/workflows/release.yml@refs/tags/v1.2.3",
+				IdentityMatch: &StringMatcher{
+					Kind: &StringMatcher_Prefix{Prefix: "https://github.com/OTHER/"},
+				},
+			},
+			false, // legacy passes, matcher fails → reject
+		},
+		{
+			"matcher-only-issuer-accepts-any-identity",
+			&IdentitySigstore{
+				IssuerMatch: &StringMatcher{
+					Kind: &StringMatcher_Exact{Exact: "https://token.actions.githubusercontent.com"},
+				},
+			},
+			true,
+		},
+		{
+			"no-constraint-at-all-rejected",
+			&IdentitySigstore{},
+			false,
+		},
+		{
+			"legacy-half-specified-rejected",
+			&IdentitySigstore{Issuer: "https://token.actions.githubusercontent.com"},
+			false,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.matches, signer.MatchesSigstoreIdentity(tt.policy))
+		})
+	}
+}
+
+func TestMatchesKeyIdentityConvenienceMatchers(t *testing.T) {
+	t.Parallel()
+	signer := &SignatureVerification{
+		Identities: []*Identity{{Key: &IdentityKey{
+			Id:                 "PRIMARYFP01",
+			Type:               "ecdsa-sha2-nistp256",
+			SigningFingerprint: "SUBKEYFP02",
+		}}},
+	}
+	for _, tt := range []struct {
+		name    string
+		policy  *IdentityKey
+		matches bool
+	}{
+		{
+			"id-match-against-primary",
+			&IdentityKey{IdMatch: &StringMatcher{
+				Kind: &StringMatcher_Exact{Exact: "PRIMARYFP01"},
+			}},
+			true,
+		},
+		{
+			"id-match-against-subkey",
+			&IdentityKey{IdMatch: &StringMatcher{
+				Kind: &StringMatcher_Exact{Exact: "SUBKEYFP02"},
+			}},
+			true,
+		},
+		{
+			"id-match-case-insensitive",
+			&IdentityKey{IdMatch: &StringMatcher{
+				Kind:            &StringMatcher_Exact{Exact: "primaryfp01"},
+				CaseInsensitive: true,
+			}},
+			true,
+		},
+		{
+			"type-match-glob",
+			&IdentityKey{
+				IdMatch:   &StringMatcher{Kind: &StringMatcher_Exact{Exact: "PRIMARYFP01"}},
+				TypeMatch: &StringMatcher{Kind: &StringMatcher_Glob{Glob: "ecdsa-*"}},
+			},
+			true,
+		},
+		{
+			"type-match-strict-mismatch",
+			&IdentityKey{
+				IdMatch:   &StringMatcher{Kind: &StringMatcher_Exact{Exact: "PRIMARYFP01"}},
+				TypeMatch: &StringMatcher{Kind: &StringMatcher_Exact{Exact: "rsa"}},
+			},
+			false,
+		},
+		{
+			"signing-fp-match-strict",
+			&IdentityKey{
+				IdMatch:                 &StringMatcher{Kind: &StringMatcher_Exact{Exact: "PRIMARYFP01"}},
+				SigningFingerprintMatch: &StringMatcher{Kind: &StringMatcher_Exact{Exact: "SUBKEYFP02"}},
+			},
+			true,
+		},
+		{
+			"signing-fp-match-mismatch",
+			&IdentityKey{
+				IdMatch:                 &StringMatcher{Kind: &StringMatcher_Exact{Exact: "PRIMARYFP01"}},
+				SigningFingerprintMatch: &StringMatcher{Kind: &StringMatcher_Exact{Exact: "OTHER"}},
+			},
+			false,
+		},
+		{
+			"legacy-plus-matcher-both-must-pass",
+			&IdentityKey{
+				Id:                      "PRIMARYFP01",
+				SigningFingerprintMatch: &StringMatcher{Kind: &StringMatcher_Exact{Exact: "OTHER"}},
+			},
+			false,
+		},
+		{
+			"no-id-dimension-rejected",
+			&IdentityKey{},
+			false,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.matches, signer.MatchesKeyIdentity(tt.policy))
+		})
+	}
+}
+
 func TestMatchesSigstoreIdentityRegexAnchored(t *testing.T) {
 	t.Parallel()
 	// Signer fixture — simulates a verified signature from myorg's CI.
@@ -262,6 +435,12 @@ func TestMatchesSigstoreIdentityRegexAnchored(t *testing.T) {
 
 func TestMatchesSpiffeIdentity(t *testing.T) {
 	t.Parallel()
+	// Shorthand: build a signer with the given svid.
+	signer := func(svid string) *SignatureVerification {
+		return &SignatureVerification{
+			Identities: []*Identity{{Spiffe: &IdentitySpiffe{Svid: svid}}},
+		}
+	}
 	for _, tt := range []struct {
 		name    string
 		matches bool
@@ -269,121 +448,118 @@ func TestMatchesSpiffeIdentity(t *testing.T) {
 		id      *IdentitySpiffe
 	}{
 		{
-			"td-and-path-exact-match", true,
-			&SignatureVerification{
-				Identities: []*Identity{{Spiffe: &IdentitySpiffe{TrustDomain: "example.org", Path: "/workload"}}},
-			},
-			&IdentitySpiffe{TrustDomain: "example.org", Path: "/workload"},
+			"svid-exact-match", true,
+			signer("spiffe://example.org/workload"),
+			&IdentitySpiffe{Svid: "spiffe://example.org/workload"},
 		},
 		{
-			"td-only-matches-any-path", true,
-			&SignatureVerification{
-				Identities: []*Identity{{Spiffe: &IdentitySpiffe{TrustDomain: "example.org", Path: "/workload"}}},
-			},
-			&IdentitySpiffe{TrustDomain: "example.org"},
+			"svid-exact-mismatch", false,
+			signer("spiffe://example.org/workload"),
+			&IdentitySpiffe{Svid: "spiffe://example.org/other"},
 		},
 		{
-			"td-mismatch", false,
-			&SignatureVerification{
-				Identities: []*Identity{{Spiffe: &IdentitySpiffe{TrustDomain: "example.org", Path: "/workload"}}},
-			},
-			&IdentitySpiffe{TrustDomain: "other.example", Path: "/workload"},
+			"svid-match-regex", true,
+			signer("spiffe://example.org/workload/api"),
+			&IdentitySpiffe{SvidMatch: &StringMatcher{
+				Kind: &StringMatcher_Regex{Regex: `spiffe://example\.org/workload/.+`},
+			}},
 		},
 		{
-			"path-mismatch", false,
-			&SignatureVerification{
-				Identities: []*Identity{{Spiffe: &IdentitySpiffe{TrustDomain: "example.org", Path: "/workload"}}},
-			},
-			&IdentitySpiffe{TrustDomain: "example.org", Path: "/other"},
+			"svid-match-prefix", true,
+			signer("spiffe://example.org/workload/api"),
+			&IdentitySpiffe{SvidMatch: &StringMatcher{
+				Kind: &StringMatcher_Prefix{Prefix: "spiffe://example.org/workload/"},
+			}},
 		},
 		{
-			"path-regex-match", true,
-			&SignatureVerification{
-				Identities: []*Identity{{Spiffe: &IdentitySpiffe{TrustDomain: "example.org", Path: "/workload/api"}}},
-			},
-			&IdentitySpiffe{TrustDomain: "example.org", PathRegex: `^/workload/.*$`},
+			"svid-match-glob", true,
+			signer("spiffe://example.org/workload/api"),
+			&IdentitySpiffe{SvidMatch: &StringMatcher{
+				Kind: &StringMatcher_Glob{Glob: "spiffe://example.org/workload/*"},
+			}},
 		},
 		{
-			"path-regex-no-match", false,
-			&SignatureVerification{
-				Identities: []*Identity{{Spiffe: &IdentitySpiffe{TrustDomain: "example.org", Path: "/workload/api"}}},
-			},
-			&IdentitySpiffe{TrustDomain: "example.org", PathRegex: `^/other/.*$`},
+			"trust-domain-match-exact", true,
+			signer("spiffe://example.org/workload"),
+			&IdentitySpiffe{TrustDomainMatch: &StringMatcher{
+				Kind: &StringMatcher_Exact{Exact: "example.org"},
+			}},
 		},
 		{
-			"empty-trust-domain-rejected", false,
-			&SignatureVerification{
-				Identities: []*Identity{{Spiffe: &IdentitySpiffe{TrustDomain: "example.org", Path: "/workload"}}},
-			},
-			&IdentitySpiffe{Path: "/workload"},
+			"trust-domain-match-mismatch", false,
+			signer("spiffe://example.org/workload"),
+			&IdentitySpiffe{TrustDomainMatch: &StringMatcher{
+				Kind: &StringMatcher_Exact{Exact: "other.example"},
+			}},
 		},
 		{
-			"path-and-regex-both-set-rejected", false,
-			&SignatureVerification{
-				Identities: []*Identity{{Spiffe: &IdentitySpiffe{TrustDomain: "example.org", Path: "/workload"}}},
-			},
-			&IdentitySpiffe{TrustDomain: "example.org", Path: "/workload", PathRegex: `.*`},
+			// Regex matchers are anchored — pattern /work must NOT match
+			// /workload-stealer via prefix collision.
+			"path-match-regex-anchored", false,
+			signer("spiffe://example.org/workload-stealer"),
+			&IdentitySpiffe{PathMatch: &StringMatcher{
+				Kind: &StringMatcher_Regex{Regex: `/work`},
+			}},
 		},
 		{
-			"invalid-regex-rejected", false,
-			&SignatureVerification{
-				Identities: []*Identity{{Spiffe: &IdentitySpiffe{TrustDomain: "example.org", Path: "/workload"}}},
-			},
-			&IdentitySpiffe{TrustDomain: "example.org", PathRegex: `[invalid`},
+			"path-match-glob", true,
+			signer("spiffe://example.org/workload/api/v1"),
+			&IdentitySpiffe{PathMatch: &StringMatcher{
+				Kind: &StringMatcher_Glob{Glob: "/workload/*/*"},
+			}},
 		},
 		{
-			// Prefix collision: policy pattern /work must NOT match a signer
-			// whose path starts with /work but is longer (/workload-stealer).
-			// Anchoring forces the pattern to cover the entire path.
-			"regex-prefix-rejects-longer-path", false,
-			&SignatureVerification{
-				Identities: []*Identity{{Spiffe: &IdentitySpiffe{TrustDomain: "example.org", Path: "/workload-stealer"}}},
+			"td-and-path-matchers-both-required", true,
+			signer("spiffe://example.org/workload"),
+			&IdentitySpiffe{
+				TrustDomainMatch: &StringMatcher{Kind: &StringMatcher_Exact{Exact: "example.org"}},
+				PathMatch:        &StringMatcher{Kind: &StringMatcher_Exact{Exact: "/workload"}},
 			},
-			&IdentitySpiffe{TrustDomain: "example.org", PathRegex: `/work`},
 		},
 		{
-			// Substring-in-the-middle: policy pattern appears as a substring
-			// of the signer path but isn't the whole thing.
-			"regex-substring-rejected", false,
-			&SignatureVerification{
-				Identities: []*Identity{{Spiffe: &IdentitySpiffe{TrustDomain: "example.org", Path: "/foo/workload/bar"}}},
+			"td-and-path-matchers-one-fails", false,
+			signer("spiffe://example.org/workload"),
+			&IdentitySpiffe{
+				TrustDomainMatch: &StringMatcher{Kind: &StringMatcher_Exact{Exact: "example.org"}},
+				PathMatch:        &StringMatcher{Kind: &StringMatcher_Exact{Exact: "/other"}},
 			},
-			&IdentitySpiffe{TrustDomain: "example.org", PathRegex: `/workload`},
+		},
+		{
+			"no-constraint-rejected", false,
+			signer("spiffe://example.org/workload"),
+			&IdentitySpiffe{},
 		},
 		{
 			"non-spiffe-signer-ignored", false,
 			&SignatureVerification{
 				Identities: []*Identity{{Key: &IdentityKey{Id: "1234abc"}}},
 			},
-			&IdentitySpiffe{TrustDomain: "example.org"},
+			&IdentitySpiffe{Svid: "spiffe://example.org/workload"},
 		},
 		{
 			"two-signers-second-matches", true,
 			&SignatureVerification{
 				Identities: []*Identity{
-					{Spiffe: &IdentitySpiffe{TrustDomain: "other.example", Path: "/a"}},
-					{Spiffe: &IdentitySpiffe{TrustDomain: "example.org", Path: "/b"}},
+					{Spiffe: &IdentitySpiffe{Svid: "spiffe://other.example/a"}},
+					{Spiffe: &IdentitySpiffe{Svid: "spiffe://example.org/b"}},
 				},
 			},
-			&IdentitySpiffe{TrustDomain: "example.org", Path: "/b"},
+			&IdentitySpiffe{Svid: "spiffe://example.org/b"},
 		},
 		{
 			// trust_roots on the policy side is ignored for matching — it's
 			// verifier config, not a signer attribute.
 			"trust-roots-ignored-for-matching", true,
-			&SignatureVerification{
-				Identities: []*Identity{{Spiffe: &IdentitySpiffe{TrustDomain: "example.org", Path: "/workload"}}},
-			},
+			signer("spiffe://example.org/workload"),
 			&IdentitySpiffe{
-				TrustDomain: "example.org",
-				Path:        "/workload",
-				TrustRoots:  "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----",
+				Svid:       "spiffe://example.org/workload",
+				TrustRoots: "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----",
 			},
 		},
 		{
 			"empty-identities", false,
 			&SignatureVerification{Identities: []*Identity{}},
-			&IdentitySpiffe{TrustDomain: "example.org"},
+			&IdentitySpiffe{Svid: "spiffe://example.org/workload"},
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -416,8 +592,7 @@ func TestSignatureVerificationFromResult(t *testing.T) {
 		require.Len(t, sv.GetIdentities(), 1)
 		spiffe := sv.GetIdentities()[0].GetSpiffe()
 		require.NotNil(t, spiffe)
-		require.Equal(t, "example.org", spiffe.GetTrustDomain())
-		require.Equal(t, "/workload", spiffe.GetPath())
+		require.Equal(t, "spiffe://example.org/workload", spiffe.GetSvid())
 	})
 
 	t.Run("fulcio-identity-produces-sigstore-identity", func(t *testing.T) {
@@ -466,13 +641,13 @@ func TestSignatureVerificationFromResult(t *testing.T) {
 func TestMatchesIdentityDispatchesSpiffe(t *testing.T) {
 	t.Parallel()
 	sv := &SignatureVerification{
-		Identities: []*Identity{{Spiffe: &IdentitySpiffe{TrustDomain: "example.org", Path: "/workload"}}},
+		Identities: []*Identity{{Spiffe: &IdentitySpiffe{Svid: "spiffe://example.org/workload"}}},
 	}
 	require.True(t, sv.MatchesIdentity(&Identity{
-		Spiffe: &IdentitySpiffe{TrustDomain: "example.org", Path: "/workload"},
+		Spiffe: &IdentitySpiffe{Svid: "spiffe://example.org/workload"},
 	}))
 	require.False(t, sv.MatchesIdentity(&Identity{
-		Spiffe: &IdentitySpiffe{TrustDomain: "other.example"},
+		Spiffe: &IdentitySpiffe{Svid: "spiffe://other.example/workload"},
 	}))
 }
 
