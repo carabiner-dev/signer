@@ -31,6 +31,12 @@ if [[ ! -f upstream-ca/ca.pem ]]; then
         -subj "/CN=carabiner-signer-test-upstream-ca" \
         -addext "basicConstraints=critical,CA:TRUE,pathlen:1" \
         -addext "keyUsage=critical,keyCertSign,cRLSign"
+    # The spire-server container runs as a non-root `spire` user. When we
+    # bind-mount this directory the in-container UID won't match the host
+    # user that just generated these files, so openssl's default 0600 key
+    # mode prevents SPIRE from loading it. Test-fixture CA; not a secret
+    # worth protecting with tight perms.
+    chmod 0644 upstream-ca/ca-key.pem upstream-ca/ca.pem
     echo "    generated fresh upstream CA in upstream-ca/"
 else
     echo "    reusing existing upstream CA at upstream-ca/ca.pem"
