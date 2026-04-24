@@ -5,6 +5,7 @@ package spiffe
 
 import (
 	"context"
+	"crypto/x509"
 	"fmt"
 
 	"github.com/sigstore/sigstore-go/pkg/sign"
@@ -98,6 +99,23 @@ func (p *CredentialProvider) Keypair() sign.Keypair { return p.keypair }
 // No provider options are required for the SPIFFE path.
 func (p *CredentialProvider) CertificateProvider() (sign.CertificateProvider, *sign.CertificateProviderOptions) {
 	return p.certProv, nil
+}
+
+// Intermediates returns the certs between the SVID leaf and the trust domain
+// root, taken from the current SVID. The trust anchor itself is NOT
+// included — verifiers pin it out-of-band.
+func (p *CredentialProvider) Intermediates() []*x509.Certificate {
+	if p.Source == nil {
+		return nil
+	}
+	svid, err := p.Source.GetX509SVID()
+	if err != nil || len(svid.Certificates) <= 1 {
+		return nil
+	}
+	// Copy so callers can't mutate the SVID's slice.
+	out := make([]*x509.Certificate, len(svid.Certificates)-1)
+	copy(out, svid.Certificates[1:])
+	return out
 }
 
 // Close releases any workloadapi.X509Source opened by Prepare. Sources
