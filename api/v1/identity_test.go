@@ -215,10 +215,11 @@ func TestIdentityPrincipalRoundTrip(t *testing.T) {
 		name      string
 		principal string
 	}{
-		{"sigstore-exact", "sigstore::https://accounts.google.com::user@example.com"},
-		{"sigstore-regexp", "sigstore(regexp)::https://.*::.*@example\\.com"},
+		{"sigstore", "sigstore::https://accounts.google.com::user@example.com"},
+		{"sigstore-regex-pattern", "sigstore::https://.*::.*@example\\.com"},
 		{"key", "key::rsa::1234abcdef"},
 		{"ref", "ref:shared-identity"},
+		{"spiffe", "spiffe://prod.example.org/workload/api"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
@@ -227,6 +228,24 @@ func TestIdentityPrincipalRoundTrip(t *testing.T) {
 			require.Equal(t, tt.principal, id.Principal())
 		})
 	}
+}
+
+// TestIdentityPrincipalLegacyRegexpFormAccepted documents that the parser
+// still accepts the historical "sigstore(regexp)::..." principal form for
+// back-compat, but Principal() now emits the bare form — matcher semantics
+// (Mode=regexp) are not part of the principal identifier.
+func TestIdentityPrincipalLegacyRegexpFormAccepted(t *testing.T) {
+	t.Parallel()
+	id, err := NewIdentityFromPrincipal("sigstore(regexp)::https://.*::.*@example\\.com")
+	require.NoError(t, err)
+	require.NotNil(t, id.GetSigstore())
+	require.Equal(t, SigstoreModeRegexp, id.GetSigstore().GetMode())
+	require.Equal(t, "https://.*", id.GetSigstore().GetIssuer())
+	require.Equal(t, ".*@example\\.com", id.GetSigstore().GetIdentity())
+	require.Equal(t,
+		"sigstore::https://.*::.*@example\\.com",
+		id.Principal(),
+		"Principal() drops the (regexp) marker — matcher semantics aren't part of the identifier")
 }
 
 func TestIdentitySlugAliasesPrincipal(t *testing.T) {

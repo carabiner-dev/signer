@@ -22,9 +22,23 @@ import (
 //	sigstore::<issuer>::<identity>
 //	key::<type>::<id>
 //	ref:<id>
+//	spiffe://<trust-domain><path>
+//
+// The legacy "sigstore(regexp)::<issuer>::<identity>" form is also accepted
+// for back-compat and produces an Identity with Mode=regexp, but Principal()
+// no longer emits the marker — matcher semantics are not part of the
+// identifier.
 //
 // Round-trips with (*Identity).Principal.
 func NewIdentityFromPrincipal(principal string) (*Identity, error) {
+	if strings.HasPrefix(principal, "spiffe://") {
+		spiffeID, err := IdentitySpiffeFromString(principal)
+		if err != nil {
+			return nil, fmt.Errorf("parsing spiffe principal: %w", err)
+		}
+		return &Identity{Spiffe: spiffeID}, nil
+	}
+
 	itype, identityString, ok := strings.Cut(principal, "::")
 	if !ok {
 		refId, isRef := strings.CutPrefix(principal, "ref:")
@@ -74,21 +88,19 @@ func NewIdentityFromSlug(slug string) (*Identity, error) {
 
 // Principal returns the canonical string naming this identity — the
 // security-domain "principal" that uniquely identifies who signed.
-// Round-trips with NewIdentityFromPrincipal.
+// Matcher semantics (e.g. sigstore Mode=regexp) are NOT encoded in the
+// principal: it is a pure identifier. The bare form round-trips with
+// NewIdentityFromPrincipal; the legacy "sigstore(regexp)::..." form is
+// still accepted by the parser but is no longer emitted here.
 func (i *Identity) Principal() string {
 	switch {
 	case i.GetSigstore() != nil:
-		mode := ""
-		if i.GetSigstore().GetMode() == SigstoreModeRegexp {
-			mode = "(regexp)"
-		}
-		return fmt.Sprintf("sigstore%s::%s::%s", mode, i.GetSigstore().GetIssuer(), i.GetSigstore().GetIdentity())
+		return fmt.Sprintf("sigstore::%s::%s", i.GetSigstore().GetIssuer(), i.GetSigstore().GetIdentity())
 	case i.GetKey() != nil:
 		return fmt.Sprintf("key::%s::%s", i.GetKey().GetType(), i.GetKey().GetId())
 	case i.GetRef() != nil:
 		return fmt.Sprintf("ref:%s", i.GetRef().GetId())
 	case i.GetSpiffe() != nil:
-		// SPIFFE IDs are canonical URIs — the svid string IS the principal.
 		return i.GetSpiffe().GetSvid()
 	default:
 		return ""
