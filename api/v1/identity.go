@@ -7,6 +7,8 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"path"
+	"regexp"
 	"strings"
 
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
@@ -98,40 +100,188 @@ func (i *Identity) Slug() string {
 }
 
 // Validate checks the integrity of the identity and returns an error if
-// fields are missing or invalid
+// fields are missing or invalid. Validates each variant's required fields,
+// compiles regex patterns on legacy sigstore fields (when Mode=regexp)
+// and on any StringMatcher regex/glob kinds, and checks spiffe svid parses
+// as a valid SPIFFE ID — surfacing policy-authoring errors early rather
+// than at match time.
 func (i *Identity) Validate() error {
 	errs := []error{}
 	typesDefined := []string{}
+
 	if i.GetSigstore() != nil {
 		typesDefined = append(typesDefined, "sigstore")
-		if i.GetSigstore().GetIssuer() == "" {
-			errs = append(errs, fmt.Errorf("sigstore identity has no issuer defined"))
-		}
-
-		if i.GetSigstore().GetIdentity() == "" {
-			errs = append(errs, fmt.Errorf("sigstore identity has no identifier (email/account) defined"))
-		}
+		errs = append(errs, validateSigstore(i.GetSigstore())...)
 	}
 
 	if i.GetKey() != nil {
 		typesDefined = append(typesDefined, "key")
-		if i.GetKey().GetId() == "" && i.GetKey().GetData() == "" {
-			errs = append(errs, errors.New("key identity has to have either id or data set"))
-		}
+		errs = append(errs, validateKey(i.GetKey())...)
 	}
 
 	if i.GetRef() != nil {
 		typesDefined = append(typesDefined, "ref")
 	}
 
+	if i.GetSpiffe() != nil {
+		typesDefined = append(typesDefined, "spiffe")
+		errs = append(errs, validateSpiffe(i.GetSpiffe())...)
+	}
+
+	for idx, m := range i.GetMatchers() {
+		if err := validateMatcher(m); err != nil {
+			errs = append(errs, fmt.Errorf("matchers[%d]: %w", idx, err))
+		}
+	}
+
 	if len(typesDefined) == 0 {
-		errs = append(errs, errors.New("at least one type of identity must be set (sigstore, key or ref)"))
+		errs = append(errs, errors.New("at least one type of identity must be set (sigstore, key, ref or spiffe)"))
 	}
 
 	if len(typesDefined) > 1 {
 		errs = append(errs, fmt.Errorf("only one type of identity can be set at a time (got %v)", typesDefined))
 	}
 	return errors.Join(errs...)
+}
+
+// validateSigstore checks a sigstore identity's legacy fields + convenience
+// matchers. Legacy Issuer/Identity as regex (Mode=regexp) are compiled up
+// front so bad patterns surface at policy-load time.
+func validateSigstore(s *IdentitySigstore) []error {
+	var errs []error
+
+	useLegacy := s.GetIssuer() != "" || s.GetIdentity() != ""
+	useMatchers := s.GetIssuerMatch() != nil || s.GetIdentityMatch() != nil
+	if !useLegacy && !useMatchers {
+		errs = append(errs, errors.New("sigstore identity requires issuer, identity, issuer_match, or identity_match"))
+	}
+	if useLegacy && !useMatchers && (s.GetIssuer() == "" || s.GetIdentity() == "") {
+		errs = append(errs, errors.New("sigstore legacy form requires both issuer and identity when matchers are not used"))
+	}
+
+	if s.GetMode() == SigstoreModeRegexp {
+		if v := s.GetIssuer(); v != "" {
+			if _, err := regexp.Compile(anchoredRegex(v)); err != nil {
+				errs = append(errs, fmt.Errorf("sigstore issuer regex: %w", err))
+			}
+		}
+		if v := s.GetIdentity(); v != "" {
+			if _, err := regexp.Compile(anchoredRegex(v)); err != nil {
+				errs = append(errs, fmt.Errorf("sigstore identity regex: %w", err))
+			}
+		}
+	}
+
+	if m := s.GetIssuerMatch(); m != nil {
+		if err := validateStringMatcher(m); err != nil {
+			errs = append(errs, fmt.Errorf("issuer_match: %w", err))
+		}
+	}
+	if m := s.GetIdentityMatch(); m != nil {
+		if err := validateStringMatcher(m); err != nil {
+			errs = append(errs, fmt.Errorf("identity_match: %w", err))
+		}
+	}
+	return errs
+}
+
+func validateKey(k *IdentityKey) []error {
+	var errs []error
+	if k.GetId() == "" && k.GetData() == "" && k.GetIdMatch() == nil {
+		errs = append(errs, errors.New("key identity requires id, data, or id_match"))
+	}
+	if m := k.GetIdMatch(); m != nil {
+		if err := validateStringMatcher(m); err != nil {
+			errs = append(errs, fmt.Errorf("id_match: %w", err))
+		}
+	}
+	if m := k.GetTypeMatch(); m != nil {
+		if err := validateStringMatcher(m); err != nil {
+			errs = append(errs, fmt.Errorf("type_match: %w", err))
+		}
+	}
+	if m := k.GetSigningFingerprintMatch(); m != nil {
+		if err := validateStringMatcher(m); err != nil {
+			errs = append(errs, fmt.Errorf("signing_fingerprint_match: %w", err))
+		}
+	}
+	return errs
+}
+
+func validateSpiffe(s *IdentitySpiffe) []error {
+	var errs []error
+	if s.GetSvid() == "" &&
+		s.GetSvidMatch() == nil &&
+		s.GetTrustDomainMatch() == nil &&
+		s.GetPathMatch() == nil {
+		errs = append(errs, errors.New("spiffe identity requires svid, svid_match, trust_domain_match, or path_match"))
+	}
+	if v := s.GetSvid(); v != "" {
+		if _, err := spiffeid.FromString(v); err != nil {
+			errs = append(errs, fmt.Errorf("spiffe svid: %w", err))
+		}
+	}
+	if m := s.GetSvidMatch(); m != nil {
+		if err := validateStringMatcher(m); err != nil {
+			errs = append(errs, fmt.Errorf("svid_match: %w", err))
+		}
+	}
+	if m := s.GetTrustDomainMatch(); m != nil {
+		if err := validateStringMatcher(m); err != nil {
+			errs = append(errs, fmt.Errorf("trust_domain_match: %w", err))
+		}
+	}
+	if m := s.GetPathMatch(); m != nil {
+		if err := validateStringMatcher(m); err != nil {
+			errs = append(errs, fmt.Errorf("path_match: %w", err))
+		}
+	}
+	return errs
+}
+
+// validateMatcher checks an outer Matcher entry: field is required, the
+// embedded kind is validated by its concrete type.
+func validateMatcher(m *Matcher) error {
+	if m.GetField() == "" {
+		return errors.New("field is required")
+	}
+	switch kind := m.GetKind().(type) {
+	case *Matcher_String_:
+		if kind.String_ == nil {
+			return errors.New("string matcher is nil")
+		}
+		return validateStringMatcher(kind.String_)
+	case nil:
+		return errors.New("matcher kind is not set")
+	default:
+		return fmt.Errorf("unsupported matcher kind %T", kind)
+	}
+}
+
+// validateStringMatcher ensures regex patterns compile and glob patterns
+// are well-formed. Exact/Prefix kinds have no format requirements.
+func validateStringMatcher(m *StringMatcher) error {
+	switch kind := m.GetKind().(type) {
+	case *StringMatcher_Regex:
+		pattern := anchoredRegex(kind.Regex)
+		if m.GetCaseInsensitive() {
+			pattern = "(?i)" + pattern
+		}
+		if _, err := regexp.Compile(pattern); err != nil {
+			return fmt.Errorf("regex %q: %w", kind.Regex, err)
+		}
+	case *StringMatcher_Glob:
+		if _, err := path.Match(kind.Glob, ""); err != nil {
+			return fmt.Errorf("glob %q: %w", kind.Glob, err)
+		}
+	case *StringMatcher_Exact, *StringMatcher_Prefix:
+		// no format to validate
+	case nil:
+		return errors.New("matcher kind is not set")
+	default:
+		return fmt.Errorf("unsupported string matcher kind %T", kind)
+	}
+	return nil
 }
 
 // IdentitySpiffeFromString parses a SPIFFE ID string (e.g.
