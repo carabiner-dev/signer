@@ -37,12 +37,15 @@ type VerificationResult struct {
 
 // VerifyMessage verifies the signature by getting the whole message
 func (v *Verifier) VerifyMessage(pkeyProv PublicKeyProvider, message, signature []byte) (bool, error) {
-	// If the provider is a GPG key, try OpenPGP detached signature first,
-	// then fall back to standard crypto verification via the extracted key.
+	// OpenPGP entities are verified exclusively via the OpenPGP path so
+	// that subkey binding signatures, key-usage flags, and revocation are
+	// enforced by the openpgp library. We intentionally do not fall
+	// through to raw crypto verification on the entity's primary-key
+	// material — that would accept signatures the entity's self-signatures
+	// forbid (e.g. a primary-key signature on an entity that restricts
+	// signing to a subkey, or a signature from a revoked/expired subkey).
 	if gpgKey, ok := pkeyProv.(*GPGPublic); ok {
-		if verifyGPGDetachedSignature(gpgKey, message, signature) {
-			return true, nil
-		}
+		return verifyGPGDetachedSignature(gpgKey, message, signature), nil
 	}
 
 	pubKey, err := pkeyProv.PublicKey()

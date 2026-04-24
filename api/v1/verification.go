@@ -59,6 +59,16 @@ func SignatureVerificationFromResult(r *verify.VerificationResult) *SignatureVer
 	return sv
 }
 
+// anchoredRegex wraps a user-supplied pattern so it must match the full
+// input end-to-end. Without anchoring, Go's regexp.MatchString returns
+// true on any substring match — a policy author writing an identity
+// regex would reasonably expect full-string semantics (same convention
+// as sigstore-go's cert-identity verification and cosign), and an
+// unanchored pattern enables prefix/substring collision attacks.
+func anchoredRegex(pattern string) string {
+	return "^(?:" + pattern + ")$"
+}
+
 // Error implements the Go error interface when verification fails
 func (v *Verification) Error() string {
 	if !v.GetVerified() && v.GetSignature() != nil {
@@ -112,15 +122,20 @@ func (sv *SignatureVerification) MatchesSigstoreIdentity(id *IdentitySigstore) b
 		return false
 	}
 
-	// If this is a regexp matcher, compile them
+	// If this is a regexp matcher, compile them. Policy-supplied patterns
+	// are anchored to the full input so a pattern meant to pin a specific
+	// identity can't match via substring or prefix (e.g. pattern "myorg"
+	// would otherwise match SAN "myorg-evil/..."). Anchoring matches the
+	// convention sigstore-go and cosign use for certificate-identity regex
+	// policies.
 	var regIdentity, regIssuer *regexp.Regexp
 	if id.Mode != nil && id.GetMode() == SigstoreModeRegexp {
 		var err error
-		regIdentity, err = regexp.Compile(id.GetIdentity())
+		regIdentity, err = regexp.Compile(anchoredRegex(id.GetIdentity()))
 		if err != nil {
 			return false
 		}
-		regIssuer, err = regexp.Compile(id.GetIssuer())
+		regIssuer, err = regexp.Compile(anchoredRegex(id.GetIssuer()))
 		if err != nil {
 			return false
 		}
@@ -172,9 +187,11 @@ func (sv *SignatureVerification) MatchesSpiffeIdentity(id *IdentitySpiffe) bool 
 		return false
 	}
 
+	// PathRegex is anchored — see anchoredRegex comment in
+	// MatchesSigstoreIdentity for rationale.
 	var pathRegex *regexp.Regexp
 	if id.GetPathRegex() != "" {
-		re, err := regexp.Compile(id.GetPathRegex())
+		re, err := regexp.Compile(anchoredRegex(id.GetPathRegex()))
 		if err != nil {
 			return false
 		}

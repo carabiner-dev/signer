@@ -8,6 +8,7 @@ import (
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/rsa"
 	"encoding/hex"
 	"os"
@@ -718,6 +719,57 @@ func TestGPG_SigningKeyFingerprint_Primary(t *testing.T) {
 	fp, err := gpgPub.SigningKeyFingerprint(sigBuf.Bytes())
 	require.NoError(t, err)
 	require.Equal(t, gpgPub.Fingerprint(), fp)
+}
+
+// TestGPG_RejectsRawCryptoSignature asserts that a signature produced
+// outside OpenPGP framing (i.e. a bare ecdsa.SignASN1 output over the
+// message digest) is NOT accepted by VerifyMessage when presented against
+// a GPG entity, even though the entity's primary-key crypto material
+// would validate it. OpenPGP subkey binding, key-usage flags, and
+// revocation only have force when verification goes through the OpenPGP
+// path; raw-crypto acceptance would let any holder of the primary key
+// signing material bypass the entity's self-signatures.
+func TestGPG_RejectsRawCryptoSignature(t *testing.T) {
+	t.Parallel()
+	entity := generateTestEntity(t, "Raw", "raw@example.com", &packet.Config{
+		Algorithm: packet.PubKeyAlgoECDSA,
+		Curve:     packet.CurveNistP256,
+	})
+
+	// Convert the primary key material to stdlib types and produce a raw
+	// ECDSA signature — no OpenPGP packet, no signature subpackets.
+	stdPriv, err := gpgPrivateKeyToStdlib(entity.PrivateKey.PrivateKey, entity.PrimaryKey.PublicKey)
+	require.NoError(t, err)
+	ecPriv, ok := stdPriv.(*ecdsa.PrivateKey)
+	require.True(t, ok, "expected ECDSA primary-key material")
+
+	stdPub, err := gpgPublicKeyToStdlib(entity.PrimaryKey.PublicKey)
+	require.NoError(t, err)
+	ecPub, ok := stdPub.(*ecdsa.PublicKey)
+	require.True(t, ok)
+
+	message := []byte("attacker-crafted message, signed with raw ECDSA")
+	digest := crypto.SHA256.New()
+	_, err = digest.Write(message)
+	require.NoError(t, err)
+	d := digest.Sum(nil)
+
+	rawSig, err := ecdsa.SignASN1(rand.Reader, ecPriv, d)
+	require.NoError(t, err)
+
+	// Sanity check: the raw signature does verify against the raw primary
+	// public key via plain stdlib crypto. If OpenPGP policy were bypassed
+	// and the library fell through to stdlib verification, it would
+	// accept this signature.
+	require.True(t, ecdsa.VerifyASN1(ecPub, d, rawSig),
+		"fixture invariant: raw ECDSA signature must verify against raw primary key")
+
+	gpgPub := newGPGPublic(entity)
+	verifier := NewVerifier()
+	accepted, err := verifier.VerifyMessage(gpgPub, message, rawSig)
+	require.NoError(t, err)
+	require.False(t, accepted,
+		"raw ECDSA signature must not verify against a GPG entity — OpenPGP framing is required")
 }
 
 // TestGPG_FixtureSignVerify loads the pre-generated GPG key and signature
