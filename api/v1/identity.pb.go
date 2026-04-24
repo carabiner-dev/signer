@@ -30,13 +30,26 @@ const (
 //	b) A key
 //	c) A reference to an identity defined outside the policy
 //	d) A SPIFFE identity
+//
+// The variant fields describe the signer ("who").
+//
+// The matchers slice and per-variant *_match convenience fields describe
+// how policy matches against the signer ("how").
+//
+// In general:
+// Verified-side Identity leaves matcher fields empty;
+// Policy-side Identity populates them as needed.
 type Identity struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Sigstore      *IdentitySigstore      `protobuf:"bytes,2,opt,name=sigstore,proto3,oneof" json:"sigstore,omitempty"`
-	Key           *IdentityKey           `protobuf:"bytes,3,opt,name=key,proto3,oneof" json:"key,omitempty"`
-	Ref           *IdentityRef           `protobuf:"bytes,4,opt,name=ref,proto3,oneof" json:"ref,omitempty"`
-	Spiffe        *IdentitySpiffe        `protobuf:"bytes,5,opt,name=spiffe,proto3,oneof" json:"spiffe,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Id       string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Sigstore *IdentitySigstore      `protobuf:"bytes,2,opt,name=sigstore,proto3,oneof" json:"sigstore,omitempty"`
+	Key      *IdentityKey           `protobuf:"bytes,3,opt,name=key,proto3,oneof" json:"key,omitempty"`
+	Ref      *IdentityRef           `protobuf:"bytes,4,opt,name=ref,proto3,oneof" json:"ref,omitempty"`
+	Spiffe   *IdentitySpiffe        `protobuf:"bytes,5,opt,name=spiffe,proto3,oneof" json:"spiffe,omitempty"`
+	// Canonical policy-side matcher slice. Each Matcher targets a
+	// sub-field of whichever variant is set. Verified-side Identity
+	// leaves this empty.
+	Matchers      []*Matcher `protobuf:"bytes,10,rep,name=matchers,proto3" json:"matchers,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -106,12 +119,24 @@ func (x *Identity) GetSpiffe() *IdentitySpiffe {
 	return nil
 }
 
+func (x *Identity) GetMatchers() []*Matcher {
+	if x != nil {
+		return x.Matchers
+	}
+	return nil
+}
+
 // IdentitySigstore represents the identity data in a Fulcio cert.
 type IdentitySigstore struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Mode          *string                `protobuf:"bytes,1,opt,name=mode,proto3,oneof" json:"mode,omitempty"`   // exact | regexp
-	Issuer        string                 `protobuf:"bytes,2,opt,name=issuer,proto3" json:"issuer,omitempty"`     // https://accounts.google.com
-	Identity      string                 `protobuf:"bytes,3,opt,name=identity,proto3" json:"identity,omitempty"` //  "identity": "puerco@gmail.com"
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Mode     *string                `protobuf:"bytes,1,opt,name=mode,proto3,oneof" json:"mode,omitempty"`   // exact | regexp (legacy ti be removed, prefer *_match)
+	Issuer   string                 `protobuf:"bytes,2,opt,name=issuer,proto3" json:"issuer,omitempty"`     // https://accounts.google.com
+	Identity string                 `protobuf:"bytes,3,opt,name=identity,proto3" json:"identity,omitempty"` //  "identity": "puerco@gmail.com"
+	// Convenience per-field matchers. When set, participate in the
+	// virtual matcher union alongside the legacy Mode/Issuer/Identity
+	// fields and the outer Matcher slice.
+	IssuerMatch   *StringMatcher `protobuf:"bytes,4,opt,name=issuer_match,json=issuerMatch,proto3" json:"issuer_match,omitempty"`
+	IdentityMatch *StringMatcher `protobuf:"bytes,5,opt,name=identity_match,json=identityMatch,proto3" json:"identity_match,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -167,6 +192,20 @@ func (x *IdentitySigstore) GetIdentity() string {
 	return ""
 }
 
+func (x *IdentitySigstore) GetIssuerMatch() *StringMatcher {
+	if x != nil {
+		return x.IssuerMatch
+	}
+	return nil
+}
+
+func (x *IdentitySigstore) GetIdentityMatch() *StringMatcher {
+	if x != nil {
+		return x.IdentityMatch
+	}
+	return nil
+}
+
 // IdentityKey registers the data of a key used to sign attestations.
 type IdentityKey struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
@@ -174,8 +213,13 @@ type IdentityKey struct {
 	Type               string                 `protobuf:"bytes,2,opt,name=type,proto3" json:"type,omitempty"`                                                       // Identity type
 	Data               string                 `protobuf:"bytes,3,opt,name=data,proto3" json:"data,omitempty"`                                                       // Public key data
 	SigningFingerprint string                 `protobuf:"bytes,4,opt,name=signing_fingerprint,json=signingFingerprint,proto3" json:"signing_fingerprint,omitempty"` // Fingerprint of the signing subkey
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	// Convenience per-field matchers. No data_match: PEM blobs aren't
+	// pattern-matched; pin via id_match on the derived fingerprint.
+	IdMatch                 *StringMatcher `protobuf:"bytes,5,opt,name=id_match,json=idMatch,proto3" json:"id_match,omitempty"`
+	TypeMatch               *StringMatcher `protobuf:"bytes,6,opt,name=type_match,json=typeMatch,proto3" json:"type_match,omitempty"`
+	SigningFingerprintMatch *StringMatcher `protobuf:"bytes,7,opt,name=signing_fingerprint_match,json=signingFingerprintMatch,proto3" json:"signing_fingerprint_match,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *IdentityKey) Reset() {
@@ -236,9 +280,30 @@ func (x *IdentityKey) GetSigningFingerprint() string {
 	return ""
 }
 
-// IdentityRef represents an identity defined outside of the policy. Most commonly
-// these identities will be defined at the policy set level to have a common
-// definition that can be reused by all policies in a set.
+func (x *IdentityKey) GetIdMatch() *StringMatcher {
+	if x != nil {
+		return x.IdMatch
+	}
+	return nil
+}
+
+func (x *IdentityKey) GetTypeMatch() *StringMatcher {
+	if x != nil {
+		return x.TypeMatch
+	}
+	return nil
+}
+
+func (x *IdentityKey) GetSigningFingerprintMatch() *StringMatcher {
+	if x != nil {
+		return x.SigningFingerprintMatch
+	}
+	return nil
+}
+
+// IdentityRef represents a reference to an identity. At the policy level, a
+// ref allows to have a common definitions that can be reused by all policies
+// in a set.
 type IdentityRef struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -283,22 +348,29 @@ func (x *IdentityRef) GetId() string {
 	return ""
 }
 
-// IdentitySpiffe matches signatures produced by a SPIFFE workload. The
-// trust_domain is required; path / path_regex are optional matchers on the
-// SVID's SPIFFE path component (mutually exclusive).
+// IdentitySpiffe represents a SPIFFE workload identity.
+//
+// svid carries the canonical SPIFFE ID URI (spiffe://<trust-domain><path>).
+// This matches the native SPIFFE representation and what verifiers surface
+// in VerificationResult.VerifiedIdentity.SubjectAlternativeName.
 //
 // trust_roots inlines the PEM-encoded SPIRE upstream CA root(s) used to
-// validate the SVID chain, analogous to IdentityKey.data. Unlike the sigstore
-// flow there is no universal trust-root registry for SPIFFE, so the policy
-// must carry (or reference) the anchor itself.
+// validate the SVID chain, analogous to IdentityKey.data. Unlike the
+// sigstore flow there is no universal trust-root registry for SPIFFE, so
+// the policy must carry (or reference) the anchor itself.
 type IdentitySpiffe struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TrustDomain   string                 `protobuf:"bytes,1,opt,name=trust_domain,json=trustDomain,proto3" json:"trust_domain,omitempty"`
-	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
-	PathRegex     string                 `protobuf:"bytes,3,opt,name=path_regex,json=pathRegex,proto3" json:"path_regex,omitempty"`
-	TrustRoots    string                 `protobuf:"bytes,4,opt,name=trust_roots,json=trustRoots,proto3" json:"trust_roots,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Svid       string                 `protobuf:"bytes,1,opt,name=svid,proto3" json:"svid,omitempty"`
+	TrustRoots string                 `protobuf:"bytes,2,opt,name=trust_roots,json=trustRoots,proto3" json:"trust_roots,omitempty"`
+	// Convenience per-field matchers. svid_match matches against the
+	// full SVID URI; trust_domain_match and path_match apply to the
+	// decomposed components parsed from the signer's svid at eval time.
+	// No trust_roots_match: trust anchors are cryptographic material.
+	SvidMatch        *StringMatcher `protobuf:"bytes,3,opt,name=svid_match,json=svidMatch,proto3" json:"svid_match,omitempty"`
+	TrustDomainMatch *StringMatcher `protobuf:"bytes,4,opt,name=trust_domain_match,json=trustDomainMatch,proto3" json:"trust_domain_match,omitempty"`
+	PathMatch        *StringMatcher `protobuf:"bytes,5,opt,name=path_match,json=pathMatch,proto3" json:"path_match,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *IdentitySpiffe) Reset() {
@@ -331,23 +403,9 @@ func (*IdentitySpiffe) Descriptor() ([]byte, []int) {
 	return file_carabiner_signer_v1_identity_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *IdentitySpiffe) GetTrustDomain() string {
+func (x *IdentitySpiffe) GetSvid() string {
 	if x != nil {
-		return x.TrustDomain
-	}
-	return ""
-}
-
-func (x *IdentitySpiffe) GetPath() string {
-	if x != nil {
-		return x.Path
-	}
-	return ""
-}
-
-func (x *IdentitySpiffe) GetPathRegex() string {
-	if x != nil {
-		return x.PathRegex
+		return x.Svid
 	}
 	return ""
 }
@@ -359,40 +417,71 @@ func (x *IdentitySpiffe) GetTrustRoots() string {
 	return ""
 }
 
+func (x *IdentitySpiffe) GetSvidMatch() *StringMatcher {
+	if x != nil {
+		return x.SvidMatch
+	}
+	return nil
+}
+
+func (x *IdentitySpiffe) GetTrustDomainMatch() *StringMatcher {
+	if x != nil {
+		return x.TrustDomainMatch
+	}
+	return nil
+}
+
+func (x *IdentitySpiffe) GetPathMatch() *StringMatcher {
+	if x != nil {
+		return x.PathMatch
+	}
+	return nil
+}
+
 var File_carabiner_signer_v1_identity_proto protoreflect.FileDescriptor
 
 const file_carabiner_signer_v1_identity_proto_rawDesc = "" +
 	"\n" +
-	"\"carabiner/signer/v1/identity.proto\x12\x13carabiner.signer.v1\"\xbe\x02\n" +
+	"\"carabiner/signer/v1/identity.proto\x12\x13carabiner.signer.v1\x1a!carabiner/signer/v1/matcher.proto\"\xf8\x02\n" +
 	"\bIdentity\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12F\n" +
 	"\bsigstore\x18\x02 \x01(\v2%.carabiner.signer.v1.IdentitySigstoreH\x00R\bsigstore\x88\x01\x01\x127\n" +
 	"\x03key\x18\x03 \x01(\v2 .carabiner.signer.v1.IdentityKeyH\x01R\x03key\x88\x01\x01\x127\n" +
 	"\x03ref\x18\x04 \x01(\v2 .carabiner.signer.v1.IdentityRefH\x02R\x03ref\x88\x01\x01\x12@\n" +
-	"\x06spiffe\x18\x05 \x01(\v2#.carabiner.signer.v1.IdentitySpiffeH\x03R\x06spiffe\x88\x01\x01B\v\n" +
+	"\x06spiffe\x18\x05 \x01(\v2#.carabiner.signer.v1.IdentitySpiffeH\x03R\x06spiffe\x88\x01\x01\x128\n" +
+	"\bmatchers\x18\n" +
+	" \x03(\v2\x1c.carabiner.signer.v1.MatcherR\bmatchersB\v\n" +
 	"\t_sigstoreB\x06\n" +
 	"\x04_keyB\x06\n" +
 	"\x04_refB\t\n" +
-	"\a_spiffe\"h\n" +
+	"\a_spiffe\"\xfa\x01\n" +
 	"\x10IdentitySigstore\x12\x17\n" +
 	"\x04mode\x18\x01 \x01(\tH\x00R\x04mode\x88\x01\x01\x12\x16\n" +
 	"\x06issuer\x18\x02 \x01(\tR\x06issuer\x12\x1a\n" +
-	"\bidentity\x18\x03 \x01(\tR\bidentityB\a\n" +
-	"\x05_mode\"v\n" +
+	"\bidentity\x18\x03 \x01(\tR\bidentity\x12E\n" +
+	"\fissuer_match\x18\x04 \x01(\v2\".carabiner.signer.v1.StringMatcherR\vissuerMatch\x12I\n" +
+	"\x0eidentity_match\x18\x05 \x01(\v2\".carabiner.signer.v1.StringMatcherR\ridentityMatchB\a\n" +
+	"\x05_mode\"\xd8\x02\n" +
 	"\vIdentityKey\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04type\x18\x02 \x01(\tR\x04type\x12\x12\n" +
 	"\x04data\x18\x03 \x01(\tR\x04data\x12/\n" +
-	"\x13signing_fingerprint\x18\x04 \x01(\tR\x12signingFingerprint\"\x1d\n" +
-	"\vIdentityRef\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\"\x87\x01\n" +
-	"\x0eIdentitySpiffe\x12!\n" +
-	"\ftrust_domain\x18\x01 \x01(\tR\vtrustDomain\x12\x12\n" +
-	"\x04path\x18\x02 \x01(\tR\x04path\x12\x1d\n" +
+	"\x13signing_fingerprint\x18\x04 \x01(\tR\x12signingFingerprint\x12=\n" +
+	"\bid_match\x18\x05 \x01(\v2\".carabiner.signer.v1.StringMatcherR\aidMatch\x12A\n" +
 	"\n" +
-	"path_regex\x18\x03 \x01(\tR\tpathRegex\x12\x1f\n" +
-	"\vtrust_roots\x18\x04 \x01(\tR\n" +
-	"trustRootsB\xbe\x01\n" +
+	"type_match\x18\x06 \x01(\v2\".carabiner.signer.v1.StringMatcherR\ttypeMatch\x12^\n" +
+	"\x19signing_fingerprint_match\x18\a \x01(\v2\".carabiner.signer.v1.StringMatcherR\x17signingFingerprintMatch\"\x1d\n" +
+	"\vIdentityRef\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"\x9d\x02\n" +
+	"\x0eIdentitySpiffe\x12\x12\n" +
+	"\x04svid\x18\x01 \x01(\tR\x04svid\x12\x1f\n" +
+	"\vtrust_roots\x18\x02 \x01(\tR\n" +
+	"trustRoots\x12A\n" +
+	"\n" +
+	"svid_match\x18\x03 \x01(\v2\".carabiner.signer.v1.StringMatcherR\tsvidMatch\x12P\n" +
+	"\x12trust_domain_match\x18\x04 \x01(\v2\".carabiner.signer.v1.StringMatcherR\x10trustDomainMatch\x12A\n" +
+	"\n" +
+	"path_match\x18\x05 \x01(\v2\".carabiner.signer.v1.StringMatcherR\tpathMatchB\xbe\x01\n" +
 	"\x17com.carabiner.signer.v1B\rIdentityProtoP\x01Z&github.com/carabiner-dev/signer/api/v1\xa2\x02\x03CSX\xaa\x02\x13Carabiner.Signer.V1\xca\x02\x13Carabiner\\Signer\\V1\xe2\x02\x1fCarabiner\\Signer\\V1\\GPBMetadata\xea\x02\x15Carabiner::Signer::V1b\x06proto3"
 
 var (
@@ -414,17 +503,28 @@ var file_carabiner_signer_v1_identity_proto_goTypes = []any{
 	(*IdentityKey)(nil),      // 2: carabiner.signer.v1.IdentityKey
 	(*IdentityRef)(nil),      // 3: carabiner.signer.v1.IdentityRef
 	(*IdentitySpiffe)(nil),   // 4: carabiner.signer.v1.IdentitySpiffe
+	(*Matcher)(nil),          // 5: carabiner.signer.v1.Matcher
+	(*StringMatcher)(nil),    // 6: carabiner.signer.v1.StringMatcher
 }
 var file_carabiner_signer_v1_identity_proto_depIdxs = []int32{
-	1, // 0: carabiner.signer.v1.Identity.sigstore:type_name -> carabiner.signer.v1.IdentitySigstore
-	2, // 1: carabiner.signer.v1.Identity.key:type_name -> carabiner.signer.v1.IdentityKey
-	3, // 2: carabiner.signer.v1.Identity.ref:type_name -> carabiner.signer.v1.IdentityRef
-	4, // 3: carabiner.signer.v1.Identity.spiffe:type_name -> carabiner.signer.v1.IdentitySpiffe
-	4, // [4:4] is the sub-list for method output_type
-	4, // [4:4] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	1,  // 0: carabiner.signer.v1.Identity.sigstore:type_name -> carabiner.signer.v1.IdentitySigstore
+	2,  // 1: carabiner.signer.v1.Identity.key:type_name -> carabiner.signer.v1.IdentityKey
+	3,  // 2: carabiner.signer.v1.Identity.ref:type_name -> carabiner.signer.v1.IdentityRef
+	4,  // 3: carabiner.signer.v1.Identity.spiffe:type_name -> carabiner.signer.v1.IdentitySpiffe
+	5,  // 4: carabiner.signer.v1.Identity.matchers:type_name -> carabiner.signer.v1.Matcher
+	6,  // 5: carabiner.signer.v1.IdentitySigstore.issuer_match:type_name -> carabiner.signer.v1.StringMatcher
+	6,  // 6: carabiner.signer.v1.IdentitySigstore.identity_match:type_name -> carabiner.signer.v1.StringMatcher
+	6,  // 7: carabiner.signer.v1.IdentityKey.id_match:type_name -> carabiner.signer.v1.StringMatcher
+	6,  // 8: carabiner.signer.v1.IdentityKey.type_match:type_name -> carabiner.signer.v1.StringMatcher
+	6,  // 9: carabiner.signer.v1.IdentityKey.signing_fingerprint_match:type_name -> carabiner.signer.v1.StringMatcher
+	6,  // 10: carabiner.signer.v1.IdentitySpiffe.svid_match:type_name -> carabiner.signer.v1.StringMatcher
+	6,  // 11: carabiner.signer.v1.IdentitySpiffe.trust_domain_match:type_name -> carabiner.signer.v1.StringMatcher
+	6,  // 12: carabiner.signer.v1.IdentitySpiffe.path_match:type_name -> carabiner.signer.v1.StringMatcher
+	13, // [13:13] is the sub-list for method output_type
+	13, // [13:13] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_carabiner_signer_v1_identity_proto_init() }
@@ -432,6 +532,7 @@ func file_carabiner_signer_v1_identity_proto_init() {
 	if File_carabiner_signer_v1_identity_proto != nil {
 		return
 	}
+	file_carabiner_signer_v1_matcher_proto_init()
 	file_carabiner_signer_v1_identity_proto_msgTypes[0].OneofWrappers = []any{}
 	file_carabiner_signer_v1_identity_proto_msgTypes[1].OneofWrappers = []any{}
 	type x struct{}
