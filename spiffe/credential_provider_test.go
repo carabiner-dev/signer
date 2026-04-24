@@ -159,6 +159,30 @@ func TestGetHintStableForSameSVID(t *testing.T) {
 	require.NotEmpty(t, h1)
 }
 
+func TestIntermediatesReturnsNonLeafCerts(t *testing.T) {
+	t.Parallel()
+	leaf := mintTestSVID(t, "")
+	extra := mintTestSVID(t, "")
+
+	// Attach a second cert after the leaf to simulate a chain.
+	leaf.Certificates = append(leaf.Certificates, extra.Certificates[0])
+
+	p := &CredentialProvider{Source: &fakeSource{svid: leaf}}
+	require.NoError(t, p.Prepare(context.Background()))
+
+	ints := p.Intermediates()
+	require.Len(t, ints, 1)
+	require.Equal(t, extra.Certificates[0].Raw, ints[0].Raw)
+}
+
+func TestIntermediatesEmptyForLeafOnlySVID(t *testing.T) {
+	t.Parallel()
+	svid := mintTestSVID(t, "")
+	p := &CredentialProvider{Source: &fakeSource{svid: svid}}
+	require.NoError(t, p.Prepare(context.Background()))
+	require.Empty(t, p.Intermediates())
+}
+
 func TestKeypairAccessorsForECDSAP256(t *testing.T) {
 	t.Parallel()
 	svid := mintTestSVID(t, "")

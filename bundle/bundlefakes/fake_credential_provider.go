@@ -3,6 +3,7 @@ package bundlefakes
 
 import (
 	"context"
+	"crypto/x509"
 	"sync"
 
 	"github.com/carabiner-dev/signer/bundle"
@@ -21,6 +22,16 @@ type FakeCredentialProvider struct {
 	certificateProviderReturnsOnCall map[int]struct {
 		result1 sign.CertificateProvider
 		result2 *sign.CertificateProviderOptions
+	}
+	IntermediatesStub        func() []*x509.Certificate
+	intermediatesMutex       sync.RWMutex
+	intermediatesArgsForCall []struct {
+	}
+	intermediatesReturns struct {
+		result1 []*x509.Certificate
+	}
+	intermediatesReturnsOnCall map[int]struct {
+		result1 []*x509.Certificate
 	}
 	KeypairStub        func() sign.Keypair
 	keypairMutex       sync.RWMutex
@@ -101,6 +112,59 @@ func (fake *FakeCredentialProvider) CertificateProviderReturnsOnCall(i int, resu
 		result1 sign.CertificateProvider
 		result2 *sign.CertificateProviderOptions
 	}{result1, result2}
+}
+
+func (fake *FakeCredentialProvider) Intermediates() []*x509.Certificate {
+	fake.intermediatesMutex.Lock()
+	ret, specificReturn := fake.intermediatesReturnsOnCall[len(fake.intermediatesArgsForCall)]
+	fake.intermediatesArgsForCall = append(fake.intermediatesArgsForCall, struct {
+	}{})
+	stub := fake.IntermediatesStub
+	fakeReturns := fake.intermediatesReturns
+	fake.recordInvocation("Intermediates", []interface{}{})
+	fake.intermediatesMutex.Unlock()
+	if stub != nil {
+		return stub()
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	return fakeReturns.result1
+}
+
+func (fake *FakeCredentialProvider) IntermediatesCallCount() int {
+	fake.intermediatesMutex.RLock()
+	defer fake.intermediatesMutex.RUnlock()
+	return len(fake.intermediatesArgsForCall)
+}
+
+func (fake *FakeCredentialProvider) IntermediatesCalls(stub func() []*x509.Certificate) {
+	fake.intermediatesMutex.Lock()
+	defer fake.intermediatesMutex.Unlock()
+	fake.IntermediatesStub = stub
+}
+
+func (fake *FakeCredentialProvider) IntermediatesReturns(result1 []*x509.Certificate) {
+	fake.intermediatesMutex.Lock()
+	defer fake.intermediatesMutex.Unlock()
+	fake.IntermediatesStub = nil
+	fake.intermediatesReturns = struct {
+		result1 []*x509.Certificate
+	}{result1}
+}
+
+func (fake *FakeCredentialProvider) IntermediatesReturnsOnCall(i int, result1 []*x509.Certificate) {
+	fake.intermediatesMutex.Lock()
+	defer fake.intermediatesMutex.Unlock()
+	fake.IntermediatesStub = nil
+	if fake.intermediatesReturnsOnCall == nil {
+		fake.intermediatesReturnsOnCall = make(map[int]struct {
+			result1 []*x509.Certificate
+		})
+	}
+	fake.intermediatesReturnsOnCall[i] = struct {
+		result1 []*x509.Certificate
+	}{result1}
 }
 
 func (fake *FakeCredentialProvider) Keypair() sign.Keypair {
