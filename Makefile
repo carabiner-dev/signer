@@ -19,3 +19,21 @@ fakes: ## Rebuild the implementation fakes
 .PHONY: proto
 proto: ## Rebuild the code from the protobuf definitions
 	hack/generate-protos.sh
+
+.PHONY: spire-up
+spire-up: ## Start a local SPIRE server+agent fixture for e2e tests
+	hack/spire/up.sh
+
+.PHONY: spire-down
+spire-down: ## Tear down the local SPIRE fixture
+	hack/spire/down.sh
+
+.PHONY: spire-logs
+spire-logs: ## Follow logs from the local SPIRE server+agent
+	cd hack/spire && docker compose logs -f
+
+.PHONY: spiffe-tests
+spiffe-tests: ## Run the SPIFFE end-to-end tests against the local fixture (spire-up first)
+	SPIFFE_ENDPOINT_SOCKET="unix://$(CURDIR)/hack/spire/socket/api.sock" \
+	SPIFFE_TRUST_BUNDLE="$(CURDIR)/hack/spire/bundle.pem" \
+	go test -tags=e2e -v ./spiffe/...
