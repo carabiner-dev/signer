@@ -6,6 +6,7 @@ package v1
 import (
 	"path"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/carabiner-dev/attestation"
@@ -101,18 +102,42 @@ func (v *Verification) GetVerified() bool {
 	return v.GetSignature().GetVerified()
 }
 
-// HasIdentity returns true if one of the verifiers matches the passed identity
+// MatchesIdentity returns true when at least one verified signer satisfies
+// the variant-specific check AND every outer matcher in id.GetMatchers()
+// passes for that same signer. AND semantics — all set constraints must
+// pass for a signer to be accepted.
 func (sv *SignatureVerification) MatchesIdentity(id *Identity) bool {
+	variant, ok := variantPredicate(id)
+	if !ok {
+		return false
+	}
+	outer := id.GetMatchers()
+	for _, signer := range sv.GetIdentities() {
+		if !variant(signer) {
+			continue
+		}
+		if !outerMatchersPass(signer, outer) {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+// variantPredicate returns a per-signer predicate capturing the variant-
+// specific preconditions + precomputed state (regex compiles, key
+// normalization). Returns (nil, false) when the policy has no valid
+// variant selected or its preconditions fail.
+func variantPredicate(id *Identity) (func(*Identity) bool, bool) {
 	switch {
 	case id.GetSigstore() != nil:
-		return sv.MatchesSigstoreIdentity(id.GetSigstore())
+		return sigstorePredicate(id.GetSigstore())
 	case id.GetKey() != nil:
-		return sv.MatchesKeyIdentity(id.GetKey())
+		return keyPredicate(id.GetKey())
 	case id.GetSpiffe() != nil:
-		return sv.MatchesSpiffeIdentity(id.GetSpiffe())
-	default:
-		return false //  This would be an error
+		return spiffePredicate(id.GetSpiffe())
 	}
+	return nil, false
 }
 
 // MatchesSigstoreIdentity returns true if one of the verified signatures
@@ -131,85 +156,85 @@ func (sv *SignatureVerification) MatchesIdentity(id *Identity) bool {
 // not both) is treated as malformed and matches nothing, preserving the
 // previous "both required" contract for legacy-only policies.
 func (sv *SignatureVerification) MatchesSigstoreIdentity(id *IdentitySigstore) bool {
-	// Old style matching way: The regexp is in the Identity and Isuser
+	pred, ok := sigstorePredicate(id)
+	if !ok {
+		return false
+	}
+	return slices.ContainsFunc(sv.GetIdentities(), pred)
+}
+
+// sigstorePredicate builds a per-signer predicate from a sigstore policy.
+// Returns (nil, false) when the policy is malformed or sets no constraint:
+// captures the legacy "both required" check and precompiles any regex
+// patterns so failures surface before the signer loop.
+func sigstorePredicate(id *IdentitySigstore) (func(*Identity) bool, bool) {
 	issuerLegacy := id.GetIssuer()
 	identityLegacy := id.GetIdentity()
-
-	// New (v0.5+) matcher fields
 	issuerMatch := id.GetIssuerMatch()
 	identityMatch := id.GetIdentityMatch()
 
 	useLegacy := issuerLegacy != "" || identityLegacy != ""
 	useMatchers := issuerMatch != nil || identityMatch != nil
 	if !useLegacy && !useMatchers {
-		return false
+		return nil, false
 	}
-	// Preserve the legacy "both required" rule when ONLY legacy fields
-	// are used — a half-specified policy is very likely a mistake.
 	if useLegacy && (issuerLegacy == "" || identityLegacy == "") && !useMatchers {
-		return false
+		return nil, false
 	}
 
-	// Precompile legacy regex patterns once. The anchoredRegex wrap
-	// forces a full-input match so a pattern meant to pin a specific
-	// identity can't match via substring/prefix collision.
 	var regIssuer, regIdentity *regexp.Regexp
 	if id.GetMode() == SigstoreModeRegexp {
 		if issuerLegacy != "" {
 			re, err := regexp.Compile(anchoredRegex(issuerLegacy))
 			if err != nil {
-				return false
+				return nil, false
 			}
 			regIssuer = re
 		}
 		if identityLegacy != "" {
 			re, err := regexp.Compile(anchoredRegex(identityLegacy))
 			if err != nil {
-				return false
+				return nil, false
 			}
 			regIdentity = re
 		}
 	}
 	regexpMode := id.GetMode() == SigstoreModeRegexp
 
-	for _, signer := range sv.GetIdentities() {
+	return func(signer *Identity) bool {
 		ss := signer.GetSigstore()
 		if ss == nil {
-			continue
+			return false
 		}
 		signerIssuer := ss.GetIssuer()
 		signerIdentity := ss.GetIdentity()
 
-		// Legacy issuer
 		if issuerLegacy != "" {
 			if regexpMode {
 				if !regIssuer.MatchString(signerIssuer) {
-					continue
+					return false
 				}
 			} else if signerIssuer != issuerLegacy {
-				continue
+				return false
 			}
 		}
-		// Legacy identity
 		if identityLegacy != "" {
 			if regexpMode {
 				if !regIdentity.MatchString(signerIdentity) {
-					continue
+					return false
 				}
 			} else if signerIdentity != identityLegacy {
-				continue
+				return false
 			}
 		}
-		// Convenience matchers (layered on)
 		if issuerMatch != nil && !matchString(issuerMatch, signerIssuer) {
-			continue
+			return false
 		}
 		if identityMatch != nil && !matchString(identityMatch, signerIdentity) {
-			continue
+			return false
 		}
 		return true
-	}
-	return false
+	}, true
 }
 
 // MatchesSpiffeIdentity returns true if one of the verified signatures was
@@ -232,46 +257,145 @@ func (sv *SignatureVerification) MatchesSigstoreIdentity(id *IdentitySigstore) b
 // constraint must be specified; an identity with none of svid, svid_match,
 // trust_domain_match, or path_match set matches nothing.
 func (sv *SignatureVerification) MatchesSpiffeIdentity(id *IdentitySpiffe) bool {
-	hasConstraint := id.GetSvid() != "" ||
-		id.GetSvidMatch() != nil ||
-		id.GetTrustDomainMatch() != nil ||
-		id.GetPathMatch() != nil
-	if !hasConstraint {
+	pred, ok := spiffePredicate(id)
+	if !ok {
 		return false
 	}
-
-	needsParsed := id.GetTrustDomainMatch() != nil || id.GetPathMatch() != nil
-
 	for _, signer := range sv.GetIdentities() {
-		signerSpiffe := signer.GetSpiffe()
-		if signerSpiffe == nil {
-			continue
+		if pred(signer) {
+			return true
 		}
-		signerSvid := signerSpiffe.GetSvid()
-
-		if want := id.GetSvid(); want != "" && signerSvid != want {
-			continue
-		}
-		if m := id.GetSvidMatch(); m != nil && !matchString(m, signerSvid) {
-			continue
-		}
-
-		if needsParsed {
-			parsed, err := spiffeid.FromString(signerSvid)
-			if err != nil {
-				continue
-			}
-			if m := id.GetTrustDomainMatch(); m != nil && !matchString(m, parsed.TrustDomain().Name()) {
-				continue
-			}
-			if m := id.GetPathMatch(); m != nil && !matchString(m, parsed.Path()) {
-				continue
-			}
-		}
-
-		return true
 	}
 	return false
+}
+
+// spiffePredicate builds a per-signer predicate from a SPIFFE policy.
+// trust_domain_match and path_match parse the signer's svid at eval time
+// via spiffeid.FromString; unparseable SVIDs fail closed.
+func spiffePredicate(id *IdentitySpiffe) (func(*Identity) bool, bool) {
+	svid := id.GetSvid()
+	svidMatch := id.GetSvidMatch()
+	tdMatch := id.GetTrustDomainMatch()
+	pathMatch := id.GetPathMatch()
+
+	if svid == "" && svidMatch == nil && tdMatch == nil && pathMatch == nil {
+		return nil, false
+	}
+	needsParsed := tdMatch != nil || pathMatch != nil
+
+	return func(signer *Identity) bool {
+		sp := signer.GetSpiffe()
+		if sp == nil {
+			return false
+		}
+		sSvid := sp.GetSvid()
+
+		if svid != "" && sSvid != svid {
+			return false
+		}
+		if svidMatch != nil && !matchString(svidMatch, sSvid) {
+			return false
+		}
+		if needsParsed {
+			parsed, err := spiffeid.FromString(sSvid)
+			if err != nil {
+				return false
+			}
+			if tdMatch != nil && !matchString(tdMatch, parsed.TrustDomain().Name()) {
+				return false
+			}
+			if pathMatch != nil && !matchString(pathMatch, parsed.Path()) {
+				return false
+			}
+		}
+		return true
+	}, true
+}
+
+// outerMatchersPass evaluates the Identity.matchers slice against a
+// signer. All entries must pass (AND). A matcher whose field isn't
+// applicable to the signer's variant fails closed for that signer.
+// An empty slice is trivially satisfied.
+func outerMatchersPass(signer *Identity, matchers []*Matcher) bool {
+	for _, m := range matchers {
+		value, ok := resolveIdentityField(signer, m.GetField())
+		if !ok {
+			return false
+		}
+		switch kind := m.GetKind().(type) {
+		case *Matcher_String_:
+			if kind.String_ == nil || !matchString(kind.String_, value) {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// resolveIdentityField returns the value of a dotted field path on a
+// signer Identity. The special field "principal" maps to Identity.Principal()
+// regardless of variant. Variant-qualified paths ("sigstore.issuer",
+// "key.id", "spiffe.trust_domain", ...) return ok=false when the signer
+// is a different variant or the requested sub-field is unknown. SPIFFE's
+// trust_domain and path are virtual — derived by parsing the signer's svid.
+func resolveIdentityField(signer *Identity, field string) (string, bool) {
+	if field == "principal" {
+		return signer.Principal(), true
+	}
+	variant, name, ok := strings.Cut(field, ".")
+	if !ok {
+		return "", false
+	}
+	switch variant {
+	case "sigstore":
+		ss := signer.GetSigstore()
+		if ss == nil {
+			return "", false
+		}
+		switch name {
+		case "issuer":
+			return ss.GetIssuer(), true
+		case "identity":
+			return ss.GetIdentity(), true
+		}
+	case "key":
+		k := signer.GetKey()
+		if k == nil {
+			return "", false
+		}
+		switch name {
+		case "id":
+			return k.GetId(), true
+		case "type":
+			return k.GetType(), true
+		case "signing_fingerprint":
+			return k.GetSigningFingerprint(), true
+		}
+	case "spiffe":
+		sp := signer.GetSpiffe()
+		if sp == nil {
+			return "", false
+		}
+		switch name {
+		case "svid":
+			return sp.GetSvid(), true
+		case "trust_domain":
+			id, err := spiffeid.FromString(sp.GetSvid())
+			if err != nil {
+				return "", false
+			}
+			return id.TrustDomain().Name(), true
+		case "path":
+			id, err := spiffeid.FromString(sp.GetSvid())
+			if err != nil {
+				return "", false
+			}
+			return id.Path(), true
+		}
+	}
+	return "", false
 }
 
 // matchString evaluates a StringMatcher against value. An unset matcher
@@ -330,6 +454,21 @@ func matchString(m *StringMatcher, value string) bool {
 //
 // If the identity has Data but no Id, Normalize is called first.
 func (sv *SignatureVerification) MatchesKeyIdentity(keyIdentity *IdentityKey) bool {
+	pred, ok := keyPredicate(keyIdentity)
+	if !ok {
+		return false
+	}
+	for _, signer := range sv.GetIdentities() {
+		if pred(signer) {
+			return true
+		}
+	}
+	return false
+}
+
+// keyPredicate builds a per-signer predicate from a key policy. Normalize
+// (legacy Data → Id derivation) runs once up front on a clone.
+func keyPredicate(keyIdentity *IdentityKey) (func(*Identity) bool, bool) {
 	ki := keyIdentity
 	if ki.GetId() == "" && ki.GetData() != "" {
 		cloned, ok := proto.Clone(keyIdentity).(*IdentityKey)
@@ -346,54 +485,40 @@ func (sv *SignatureVerification) MatchesKeyIdentity(keyIdentity *IdentityKey) bo
 	typeMatch := ki.GetTypeMatch()
 	sfpMatch := ki.GetSigningFingerprintMatch()
 
-	// Need at least an id dimension from somewhere.
 	if id == "" && idMatch == nil {
-		return false
+		return nil, false
 	}
 
-	for _, signer := range sv.GetIdentities() {
+	return func(signer *Identity) bool {
 		signerKeyData := signer.GetKey()
 		if signerKeyData == nil {
-			continue
+			return false
 		}
 
 		signerID := strings.TrimSpace(signerKeyData.GetId())
 		signerSubFP := strings.TrimSpace(signerKeyData.GetSigningFingerprint())
 		signerType := strings.TrimSpace(signerKeyData.GetType())
 
-		// Legacy Id: case-insensitive primary-or-subkey.
 		if id != "" {
 			if !strings.EqualFold(id, signerID) && !strings.EqualFold(id, signerSubFP) {
-				continue
+				return false
 			}
 		}
-		// IdMatch: apply against primary OR subkey fingerprint; accept
-		// if either passes. Preserves the legacy Id disjunction semantic
-		// for callers that moved to the matcher form.
 		if idMatch != nil && !matchString(idMatch, signerID) && !matchString(idMatch, signerSubFP) {
-			continue
+			return false
 		}
-
-		// Legacy Type: narrows only when both sides set the field.
 		if keyType != "" && signerType != "" && signerType != keyType {
-			continue
+			return false
 		}
-		// TypeMatch: strict — when set, the signer's type must satisfy it
-		// regardless of whether the signer has a type at all.
 		if typeMatch != nil && !matchString(typeMatch, signerType) {
-			continue
+			return false
 		}
-
-		// Legacy SigningFingerprint: case-insensitive exact pin.
 		if signingFP != "" && !strings.EqualFold(signerSubFP, signingFP) {
-			continue
+			return false
 		}
-		// SigningFingerprintMatch: strict when set.
 		if sfpMatch != nil && !matchString(sfpMatch, signerSubFP) {
-			continue
+			return false
 		}
-
 		return true
-	}
-	return false
+	}, true
 }

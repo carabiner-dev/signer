@@ -87,6 +87,9 @@ func (i *Identity) Principal() string {
 		return fmt.Sprintf("key::%s::%s", i.GetKey().GetType(), i.GetKey().GetId())
 	case i.GetRef() != nil:
 		return fmt.Sprintf("ref:%s", i.GetRef().GetId())
+	case i.GetSpiffe() != nil:
+		// SPIFFE IDs are canonical URIs — the svid string IS the principal.
+		return i.GetSpiffe().GetSvid()
 	default:
 		return ""
 	}

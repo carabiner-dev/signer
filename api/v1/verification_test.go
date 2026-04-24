@@ -383,6 +383,194 @@ func TestMatchesKeyIdentityConvenienceMatchers(t *testing.T) {
 	}
 }
 
+// TestMatchesIdentityOuterMatchers exercises the outer matchers slice —
+// the canonical policy-side predicate layer that lives on Identity.matchers.
+// Each matcher targets a dotted field path on the signer; the special
+// "principal" field matches the whole principal string regardless of
+// variant. All set constraints AND together with the variant check.
+func TestMatchesIdentityOuterMatchers(t *testing.T) {
+	t.Parallel()
+
+	sigstoreSigner := &SignatureVerification{
+		Identities: []*Identity{{Sigstore: &IdentitySigstore{
+			Issuer:   "https://token.actions.githubusercontent.com",
+			Identity: "https://github.com/myorg/repo/.github/workflows/release.yml@refs/tags/v1.2.3",
+		}}},
+	}
+	spiffeSigner := &SignatureVerification{
+		Identities: []*Identity{{Spiffe: &IdentitySpiffe{Svid: "spiffe://prod.example.org/workload/api"}}},
+	}
+
+	stringMatch := func(field, exact string) *Matcher {
+		return &Matcher{
+			Field: field,
+			Kind: &Matcher_String_{String_: &StringMatcher{
+				Kind: &StringMatcher_Exact{Exact: exact},
+			}},
+		}
+	}
+	stringPrefix := func(field, prefix string) *Matcher {
+		return &Matcher{
+			Field: field,
+			Kind: &Matcher_String_{String_: &StringMatcher{
+				Kind: &StringMatcher_Prefix{Prefix: prefix},
+			}},
+		}
+	}
+	stringRegex := func(field, re string) *Matcher {
+		return &Matcher{
+			Field: field,
+			Kind: &Matcher_String_{String_: &StringMatcher{
+				Kind: &StringMatcher_Regex{Regex: re},
+			}},
+		}
+	}
+
+	for _, tt := range []struct {
+		name    string
+		sv      *SignatureVerification
+		policy  *Identity
+		matches bool
+	}{
+		{
+			"sigstore-variant-only-no-outer",
+			sigstoreSigner,
+			&Identity{Sigstore: &IdentitySigstore{
+				Issuer:   "https://token.actions.githubusercontent.com",
+				Identity: "https://github.com/myorg/repo/.github/workflows/release.yml@refs/tags/v1.2.3",
+			}},
+			true,
+		},
+		{
+			"outer-matcher-passes-alongside-variant",
+			sigstoreSigner,
+			&Identity{
+				Sigstore: &IdentitySigstore{
+					Issuer:   "https://token.actions.githubusercontent.com",
+					Identity: "https://github.com/myorg/repo/.github/workflows/release.yml@refs/tags/v1.2.3",
+				},
+				Matchers: []*Matcher{
+					stringPrefix("sigstore.identity", "https://github.com/myorg/"),
+				},
+			},
+			true,
+		},
+		{
+			"outer-matcher-fails-rejects-whole-identity",
+			sigstoreSigner,
+			&Identity{
+				Sigstore: &IdentitySigstore{
+					Issuer:   "https://token.actions.githubusercontent.com",
+					Identity: "https://github.com/myorg/repo/.github/workflows/release.yml@refs/tags/v1.2.3",
+				},
+				Matchers: []*Matcher{
+					// Variant passes; outer forces a different issuer. Overall reject.
+					stringMatch("sigstore.issuer", "https://accounts.google.com"),
+				},
+			},
+			false,
+		},
+		{
+			"principal-field-matches-any-variant",
+			sigstoreSigner,
+			&Identity{
+				Sigstore: &IdentitySigstore{
+					Issuer:   "https://token.actions.githubusercontent.com",
+					Identity: "https://github.com/myorg/repo/.github/workflows/release.yml@refs/tags/v1.2.3",
+				},
+				Matchers: []*Matcher{
+					stringRegex("principal", `sigstore::.*myorg.*`),
+				},
+			},
+			true,
+		},
+		{
+			"spiffe-trust-domain-virtual-field",
+			spiffeSigner,
+			&Identity{
+				Spiffe: &IdentitySpiffe{Svid: "spiffe://prod.example.org/workload/api"},
+				Matchers: []*Matcher{
+					stringMatch("spiffe.trust_domain", "prod.example.org"),
+				},
+			},
+			true,
+		},
+		{
+			"spiffe-path-virtual-field-mismatch",
+			spiffeSigner,
+			&Identity{
+				Spiffe: &IdentitySpiffe{Svid: "spiffe://prod.example.org/workload/api"},
+				Matchers: []*Matcher{
+					stringMatch("spiffe.path", "/other"),
+				},
+			},
+			false,
+		},
+		{
+			"principal-on-spiffe-signer",
+			spiffeSigner,
+			&Identity{
+				Spiffe: &IdentitySpiffe{Svid: "spiffe://prod.example.org/workload/api"},
+				Matchers: []*Matcher{
+					stringMatch("principal", "spiffe://prod.example.org/workload/api"),
+				},
+			},
+			true,
+		},
+		{
+			"outer-field-inapplicable-to-signer-variant",
+			sigstoreSigner,
+			// Policy selects sigstore variant but an outer matcher targets
+			// spiffe.path — doesn't apply to this signer's variant; fail
+			// closed.
+			&Identity{
+				Sigstore: &IdentitySigstore{
+					Issuer:   "https://token.actions.githubusercontent.com",
+					Identity: "https://github.com/myorg/repo/.github/workflows/release.yml@refs/tags/v1.2.3",
+				},
+				Matchers: []*Matcher{
+					stringMatch("spiffe.path", "/anything"),
+				},
+			},
+			false,
+		},
+		{
+			"multiple-outer-matchers-all-must-pass",
+			sigstoreSigner,
+			&Identity{
+				Sigstore: &IdentitySigstore{
+					Issuer:   "https://token.actions.githubusercontent.com",
+					Identity: "https://github.com/myorg/repo/.github/workflows/release.yml@refs/tags/v1.2.3",
+				},
+				Matchers: []*Matcher{
+					stringPrefix("sigstore.identity", "https://github.com/myorg/"),
+					stringMatch("sigstore.issuer", "https://token.actions.githubusercontent.com"),
+				},
+			},
+			true,
+		},
+		{
+			"unknown-field-fails-closed",
+			sigstoreSigner,
+			&Identity{
+				Sigstore: &IdentitySigstore{
+					Issuer:   "https://token.actions.githubusercontent.com",
+					Identity: "https://github.com/myorg/repo/.github/workflows/release.yml@refs/tags/v1.2.3",
+				},
+				Matchers: []*Matcher{
+					stringMatch("sigstore.unknown", "x"),
+				},
+			},
+			false,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.matches, tt.sv.MatchesIdentity(tt.policy))
+		})
+	}
+}
+
 func TestMatchesSigstoreIdentityRegexAnchored(t *testing.T) {
 	t.Parallel()
 	// Signer fixture — simulates a verified signature from myorg's CI.
