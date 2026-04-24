@@ -346,6 +346,35 @@ func TestVerifierPerCallRejectsAmbiguousPathOptions(t *testing.T) {
 	require.Contains(t, err.Error(), "mutually exclusive")
 }
 
+func TestVerifierRegexAnchoredAgainstPrefixCollision(t *testing.T) {
+	t.Parallel()
+	// Signer's SVID path is /workload-stealer. A policy meant to pin /work
+	// must NOT match this via prefix collision.
+	pki := newTestPKI(t, "/workload-stealer")
+	bndl := makeSignedBundle(t, pki, testPayload)
+
+	v, err := NewVerifier(VerifierOptions{TrustRoots: pki.rootPool()})
+	require.NoError(t, err)
+
+	// Via per-call option — policy regex is unanchored user input.
+	opts := &options.Verification{
+		SpiffeVerification: options.SpiffeVerification{
+			ExpectedPathRegex: `/work`,
+		},
+	}
+	_, err = v.Verify(opts, bndl)
+	require.Error(t, err, "regex /work must not match full path /workload-stealer")
+
+	// Via NewVerifierFromOptions (construction-time) — same guarantee.
+	v2, err := NewVerifierFromOptions(&options.SpiffeVerification{
+		TrustRootsPEM:     pki.rootPEM(),
+		ExpectedPathRegex: `/work`,
+	})
+	require.NoError(t, err)
+	_, err = v2.Verify(nil, bndl)
+	require.Error(t, err)
+}
+
 func TestVerifierPerCallRejectsInvalidRegex(t *testing.T) {
 	t.Parallel()
 	pki := newTestPKI(t, "/workload")

@@ -199,6 +199,67 @@ func TestMatchesKeyIdentity(t *testing.T) {
 	}
 }
 
+// sigRegexp builds an IdentitySigstore with Mode=regexp pinned at the
+// GitHub Actions OIDC issuer for tests.
+func sigRegexp(identity string) *IdentitySigstore {
+	mode := SigstoreModeRegexp
+	return &IdentitySigstore{
+		Mode:     &mode,
+		Issuer:   `https://token\.actions\.githubusercontent\.com`,
+		Identity: identity,
+	}
+}
+
+func TestMatchesSigstoreIdentityRegexAnchored(t *testing.T) {
+	t.Parallel()
+	// Signer fixture — simulates a verified signature from myorg's CI.
+	sv := &SignatureVerification{
+		Identities: []*Identity{{Sigstore: &IdentitySigstore{
+			Issuer:   "https://token.actions.githubusercontent.com",
+			Identity: "https://github.com/myorg/repo/.github/workflows/release.yml@refs/heads/main",
+		}}},
+	}
+
+	for _, tt := range []struct {
+		name    string
+		policy  *IdentitySigstore
+		matches bool
+	}{
+		{
+			"exact-full-match",
+			sigRegexp(`https://github\.com/myorg/repo/.*`),
+			true,
+		},
+		{
+			// Prefix-collision attack: the signer's SAN starts with
+			// `https://github.com/myorg` — under unanchored matching a policy
+			// meant to pin "myorg" would also match "myorg-evil". Anchoring
+			// forces the pattern to cover the entire SAN.
+			"policy-prefix-rejects-longer-signer",
+			sigRegexp(`https://github\.com/myorg`),
+			false,
+		},
+		{
+			// Substring-in-the-middle attack: policy pattern appears as a
+			// substring of the SAN but isn't the whole thing.
+			"policy-substring-rejected",
+			sigRegexp(`myorg/repo`),
+			false,
+		},
+		{
+			// Anchored pattern users may write explicitly — still works.
+			"user-anchored-pattern",
+			sigRegexp(`^https://github\.com/myorg/repo/.+@refs/heads/main$`),
+			true,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.matches, sv.MatchesSigstoreIdentity(tt.policy))
+		})
+	}
+}
+
 func TestMatchesSpiffeIdentity(t *testing.T) {
 	t.Parallel()
 	for _, tt := range []struct {
@@ -269,6 +330,25 @@ func TestMatchesSpiffeIdentity(t *testing.T) {
 				Identities: []*Identity{{Spiffe: &IdentitySpiffe{TrustDomain: "example.org", Path: "/workload"}}},
 			},
 			&IdentitySpiffe{TrustDomain: "example.org", PathRegex: `[invalid`},
+		},
+		{
+			// Prefix collision: policy pattern /work must NOT match a signer
+			// whose path starts with /work but is longer (/workload-stealer).
+			// Anchoring forces the pattern to cover the entire path.
+			"regex-prefix-rejects-longer-path", false,
+			&SignatureVerification{
+				Identities: []*Identity{{Spiffe: &IdentitySpiffe{TrustDomain: "example.org", Path: "/workload-stealer"}}},
+			},
+			&IdentitySpiffe{TrustDomain: "example.org", PathRegex: `/work`},
+		},
+		{
+			// Substring-in-the-middle: policy pattern appears as a substring
+			// of the signer path but isn't the whole thing.
+			"regex-substring-rejected", false,
+			&SignatureVerification{
+				Identities: []*Identity{{Spiffe: &IdentitySpiffe{TrustDomain: "example.org", Path: "/foo/workload/bar"}}},
+			},
+			&IdentitySpiffe{TrustDomain: "example.org", PathRegex: `/workload`},
 		},
 		{
 			"non-spiffe-signer-ignored", false,

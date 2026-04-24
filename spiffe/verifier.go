@@ -79,13 +79,21 @@ func NewVerifierFromOptions(opts *options.SpiffeVerification) (*Verifier, error)
 		vOpts.ExpectedTrustDomain = td
 	}
 	if opts.ExpectedPathRegex != "" {
-		re, err := regexp.Compile(opts.ExpectedPathRegex)
+		re, err := regexp.Compile(anchoredRegex(opts.ExpectedPathRegex))
 		if err != nil {
 			return nil, fmt.Errorf("compiling spiffe path regex: %w", err)
 		}
 		vOpts.ExpectedPathRegex = re
 	}
 	return NewVerifier(vOpts)
+}
+
+// anchoredRegex wraps a user-supplied pattern so it must match the full
+// input end-to-end. Unanchored patterns passed to regexp.MatchString match
+// on any substring, which lets a policy regex meant to pin a specific
+// SPIFFE path match via prefix/substring collision.
+func anchoredRegex(pattern string) string {
+	return "^(?:" + pattern + ")$"
 }
 
 func loadTrustRoots(opts *options.SpiffeVerification) (*x509.CertPool, error) {
@@ -191,7 +199,7 @@ func (v *Verifier) effectiveOptions(opts *options.Verification) (VerifierOptions
 		eff.ExpectedPathRegex = nil
 	}
 	if sv.ExpectedPathRegex != "" {
-		re, err := regexp.Compile(sv.ExpectedPathRegex)
+		re, err := regexp.Compile(anchoredRegex(sv.ExpectedPathRegex))
 		if err != nil {
 			return eff, fmt.Errorf("compiling per-call spiffe path regex: %w", err)
 		}
