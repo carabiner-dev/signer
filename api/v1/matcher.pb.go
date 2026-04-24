@@ -24,9 +24,8 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Matcher is a single predicate evaluated against a field of the selected
-// Identity variant. The field selector names a sub-field using dotted
-// notation:
+// Matcher is a single constraint on a field of the selected Identity
+// variant. The field selector names a sub-field using dotted notation:
 //
 //	"principal"                  // the whole principal string
 //	"sigstore.issuer"

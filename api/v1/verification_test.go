@@ -125,7 +125,7 @@ func TestMatchesKeyIdentity(t *testing.T) {
 			},
 		},
 		{
-			// Policy pins the signing subkey and verified identity matches it.
+			// Expectation pins the signing subkey and the verified identity matches it.
 			"signing-fingerprint-pin-match", true,
 			&SignatureVerification{
 				Identities: []*Identity{{Key: &IdentityKey{
@@ -143,7 +143,7 @@ func TestMatchesKeyIdentity(t *testing.T) {
 			}, &IdentityKey{Id: "PRIMARYFP", SigningFingerprint: "SUBKEYFP"},
 		},
 		{
-			// Policy pins a different subkey than the one that signed.
+			// Expectation pins a different subkey than the one that signed.
 			"signing-fingerprint-pin-mismatch", false,
 			&SignatureVerification{
 				Identities: []*Identity{{Key: &IdentityKey{
@@ -152,8 +152,8 @@ func TestMatchesKeyIdentity(t *testing.T) {
 			}, &IdentityKey{Id: "PRIMARYFP", SigningFingerprint: "SUBKEY_B"},
 		},
 		{
-			// Policy omits the signing fingerprint — pin is not enforced even
-			// if the verified identity has one.
+			// Expectation omits the signing fingerprint — pin is not enforced
+			// even if the verified identity has one.
 			"signing-fingerprint-unpinned-permissive", true,
 			&SignatureVerification{
 				Identities: []*Identity{{Key: &IdentityKey{
@@ -162,8 +162,8 @@ func TestMatchesKeyIdentity(t *testing.T) {
 			}, &IdentityKey{Id: "PRIMARYFP"},
 		},
 		{
-			// Policy uses only the subkey fingerprint as Id — matches against
-			// the signer's SigningFingerprint field.
+			// Expectation uses only the subkey fingerprint as Id — matches
+			// against the signer's SigningFingerprint field.
 			"id-matches-signer-subkey", true,
 			&SignatureVerification{
 				Identities: []*Identity{{Key: &IdentityKey{
@@ -172,8 +172,8 @@ func TestMatchesKeyIdentity(t *testing.T) {
 			}, &IdentityKey{Id: "SUBKEYFP"},
 		},
 		{
-			// Policy Id is a subkey fingerprint that doesn't match either the
-			// primary or the signer's actual subkey.
+			// Expected Id is a subkey fingerprint that doesn't match either
+			// the primary or the signer's actual subkey.
 			"id-matches-neither-primary-nor-subkey", false,
 			&SignatureVerification{
 				Identities: []*Identity{{Key: &IdentityKey{
@@ -219,9 +219,9 @@ func TestMatchesSigstoreIdentityConvenienceMatchers(t *testing.T) {
 		}}},
 	}
 	for _, tt := range []struct {
-		name    string
-		policy  *IdentitySigstore
-		matches bool
+		name     string
+		expected *IdentitySigstore
+		matches  bool
 	}{
 		{
 			"both-matchers-set",
@@ -289,7 +289,7 @@ func TestMatchesSigstoreIdentityConvenienceMatchers(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tt.matches, signer.MatchesSigstoreIdentity(tt.policy))
+			require.Equal(t, tt.matches, signer.MatchesSigstoreIdentity(tt.expected))
 		})
 	}
 }
@@ -304,9 +304,9 @@ func TestMatchesKeyIdentityConvenienceMatchers(t *testing.T) {
 		}}},
 	}
 	for _, tt := range []struct {
-		name    string
-		policy  *IdentityKey
-		matches bool
+		name     string
+		expected *IdentityKey
+		matches  bool
 	}{
 		{
 			"id-match-against-primary",
@@ -378,13 +378,13 @@ func TestMatchesKeyIdentityConvenienceMatchers(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tt.matches, signer.MatchesKeyIdentity(tt.policy))
+			require.Equal(t, tt.matches, signer.MatchesKeyIdentity(tt.expected))
 		})
 	}
 }
 
 // TestMatchesIdentityOuterMatchers exercises the outer matchers slice —
-// the canonical policy-side predicate layer that lives on Identity.matchers.
+// the canonical expectation-side check layer that lives on Identity.matchers.
 // Each matcher targets a dotted field path on the signer; the special
 // "principal" field matches the whole principal string regardless of
 // variant. All set constraints AND together with the variant check.
@@ -427,10 +427,10 @@ func TestMatchesIdentityOuterMatchers(t *testing.T) {
 	}
 
 	for _, tt := range []struct {
-		name    string
-		sv      *SignatureVerification
-		policy  *Identity
-		matches bool
+		name     string
+		sv       *SignatureVerification
+		expected *Identity
+		matches  bool
 	}{
 		{
 			"sigstore-variant-only-no-outer",
@@ -520,9 +520,9 @@ func TestMatchesIdentityOuterMatchers(t *testing.T) {
 		{
 			"outer-field-inapplicable-to-signer-variant",
 			sigstoreSigner,
-			// Policy selects sigstore variant but an outer matcher targets
-			// spiffe.path — doesn't apply to this signer's variant; fail
-			// closed.
+			// Expectation selects sigstore variant but an outer matcher
+			// targets spiffe.path — doesn't apply to this signer's
+			// variant; fail closed.
 			&Identity{
 				Sigstore: &IdentitySigstore{
 					Issuer:   "https://token.actions.githubusercontent.com",
@@ -566,7 +566,7 @@ func TestMatchesIdentityOuterMatchers(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tt.matches, tt.sv.MatchesIdentity(tt.policy))
+			require.Equal(t, tt.matches, tt.sv.MatchesIdentity(tt.expected))
 		})
 	}
 }
@@ -582,9 +582,9 @@ func TestMatchesSigstoreIdentityRegexAnchored(t *testing.T) {
 	}
 
 	for _, tt := range []struct {
-		name    string
-		policy  *IdentitySigstore
-		matches bool
+		name     string
+		expected *IdentitySigstore
+		matches  bool
 	}{
 		{
 			"exact-full-match",
@@ -593,17 +593,19 @@ func TestMatchesSigstoreIdentityRegexAnchored(t *testing.T) {
 		},
 		{
 			// Prefix-collision attack: the signer's SAN starts with
-			// `https://github.com/myorg` — under unanchored matching a policy
-			// meant to pin "myorg" would also match "myorg-evil". Anchoring
-			// forces the pattern to cover the entire SAN.
-			"policy-prefix-rejects-longer-signer",
+			// `https://github.com/myorg` — under unanchored matching an
+			// expectation meant to pin "myorg" would also match
+			// "myorg-evil". Anchoring forces the pattern to cover the
+			// entire SAN.
+			"prefix-rejects-longer-signer",
 			sigRegexp(`https://github\.com/myorg`),
 			false,
 		},
 		{
-			// Substring-in-the-middle attack: policy pattern appears as a
-			// substring of the SAN but isn't the whole thing.
-			"policy-substring-rejected",
+			// Substring-in-the-middle attack: the expected pattern
+			// appears as a substring of the SAN but isn't the whole
+			// thing.
+			"substring-rejected",
 			sigRegexp(`myorg/repo`),
 			false,
 		},
@@ -616,7 +618,7 @@ func TestMatchesSigstoreIdentityRegexAnchored(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tt.matches, sv.MatchesSigstoreIdentity(tt.policy))
+			require.Equal(t, tt.matches, sv.MatchesSigstoreIdentity(tt.expected))
 		})
 	}
 }
@@ -735,8 +737,8 @@ func TestMatchesSpiffeIdentity(t *testing.T) {
 			&IdentitySpiffe{Svid: "spiffe://example.org/b"},
 		},
 		{
-			// trust_roots on the policy side is ignored for matching — it's
-			// verifier config, not a signer attribute.
+			// trust_roots on the expectation side is ignored for matching
+			// — it's verifier config, not a signer attribute.
 			"trust-roots-ignored-for-matching", true,
 			signer("spiffe://example.org/workload"),
 			&IdentitySpiffe{

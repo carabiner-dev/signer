@@ -523,8 +523,8 @@ func stringMatcherPattern(m *StringMatcher) string {
 // fields are missing or invalid. Validates each variant's required fields,
 // compiles regex patterns on legacy sigstore fields (when Mode=regexp)
 // and on any StringMatcher regex/glob kinds, and checks spiffe svid parses
-// as a valid SPIFFE ID — surfacing policy-authoring errors early rather
-// than at match time.
+// as a valid SPIFFE ID — surfacing authoring errors at validation time
+// rather than at match time.
 func (i *Identity) Validate() error {
 	errs := []error{}
 	typesDefined := []string{}
@@ -566,7 +566,7 @@ func (i *Identity) Validate() error {
 
 // validateSigstore checks a sigstore identity's legacy fields + convenience
 // matchers. Legacy Issuer/Identity as regex (Mode=regexp) are compiled up
-// front so bad patterns surface at policy-load time.
+// front so bad patterns surface at validation time.
 func validateSigstore(s *IdentitySigstore) []error {
 	var errs []error
 
@@ -709,9 +709,9 @@ func validateStringMatcher(m *StringMatcher) error {
 //
 // TrustRoots is intentionally NOT populated — it is a verifier configuration
 // (which root(s) the chain was validated against), not an attribute of the
-// signer. Policy-side IdentitySpiffe values carry TrustRoots to tell the
-// verifier what to trust; verified-side IdentitySpiffe values describe who
-// signed.
+// signer. Expectation-side IdentitySpiffe values carry TrustRoots to tell
+// the verifier what to trust; verified-side IdentitySpiffe values
+// describe who signed.
 func IdentitySpiffeFromString(spiffeID string) (*IdentitySpiffe, error) {
 	id, err := spiffeid.FromString(spiffeID)
 	if err != nil {

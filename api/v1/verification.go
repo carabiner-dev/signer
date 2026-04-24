@@ -20,7 +20,7 @@ var _ attestation.Verification = (*Verification)(nil) //nolint:errcheck
 
 // SignatureVerificationFromResult translates sigstore-go's
 // *verify.VerificationResult into the api/v1 SignatureVerification used for
-// policy matching. Handles both sigstore and SPIFFE flows by inspecting
+// identity matching. Handles both sigstore and SPIFFE flows by inspecting
 // VerifiedIdentity: a spiffe:// SAN produces an IdentitySpiffe; any other
 // SAN/Issuer pair produces an IdentitySigstore.
 //
@@ -33,8 +33,8 @@ var _ attestation.Verification = (*Verification)(nil) //nolint:errcheck
 //	    return err
 //	}
 //	sv := api.SignatureVerificationFromResult(result)
-//	if !sv.MatchesIdentity(policyIdentity) {
-//	    return errors.New("signer not authorized by policy")
+//	if !sv.MatchesIdentity(expected) {
+//	    return errors.New("signer did not match expected identity")
 //	}
 func SignatureVerificationFromResult(r *verify.VerificationResult) *SignatureVerification {
 	if r == nil {
@@ -64,9 +64,9 @@ func SignatureVerificationFromResult(r *verify.VerificationResult) *SignatureVer
 
 // anchoredRegex wraps a user-supplied pattern so it must match the full
 // input end-to-end. Without anchoring, Go's regexp.MatchString returns
-// true on any substring match — a policy author writing an identity
-// regex would reasonably expect full-string semantics (same convention
-// as sigstore-go's cert-identity verification and cosign), and an
+// true on any substring match — a caller authoring an identity regex
+// would reasonably expect full-string semantics (same convention as
+// sigstore-go's cert-identity verification and cosign), and an
 // unanchored pattern enables prefix/substring collision attacks.
 func anchoredRegex(pattern string) string {
 	return "^(?:" + pattern + ")$"
@@ -107,7 +107,7 @@ func (v *Verification) GetVerified() bool {
 // passes for that same signer. AND semantics — all set constraints must
 // pass for a signer to be accepted.
 func (sv *SignatureVerification) MatchesIdentity(id *Identity) bool {
-	variant, ok := variantPredicate(id)
+	variant, ok := variantCheck(id)
 	if !ok {
 		return false
 	}
@@ -124,18 +124,18 @@ func (sv *SignatureVerification) MatchesIdentity(id *Identity) bool {
 	return false
 }
 
-// variantPredicate returns a per-signer predicate capturing the variant-
+// variantCheck returns a per-signer check capturing the variant-
 // specific preconditions + precomputed state (regex compiles, key
-// normalization). Returns (nil, false) when the policy has no valid
-// variant selected or its preconditions fail.
-func variantPredicate(id *Identity) (func(*Identity) bool, bool) {
+// normalization). Returns (nil, false) when the expected identity has
+// no variant selected or its preconditions fail.
+func variantCheck(id *Identity) (func(*Identity) bool, bool) {
 	switch {
 	case id.GetSigstore() != nil:
-		return sigstorePredicate(id.GetSigstore())
+		return sigstoreCheck(id.GetSigstore())
 	case id.GetKey() != nil:
-		return keyPredicate(id.GetKey())
+		return keyCheck(id.GetKey())
 	case id.GetSpiffe() != nil:
-		return spiffePredicate(id.GetSpiffe())
+		return spiffeCheck(id.GetSpiffe())
 	}
 	return nil, false
 }
@@ -151,23 +151,25 @@ func variantPredicate(id *Identity) (func(*Identity) bool, bool) {
 //   - Legacy and convenience forms may be combined — all constraints
 //     that are set must match the signer (AND semantics).
 //
-// A policy that sets NO constraint across either path matches nothing.
-// A policy that sets exactly one legacy field (Issuer OR Identity but
-// not both) is treated as malformed and matches nothing, preserving the
-// previous "both required" contract for legacy-only policies.
+// An expectation that sets NO constraint across either path matches
+// nothing. An expectation that sets exactly one legacy field (Issuer
+// OR Identity but not both) is treated as malformed and matches nothing,
+// preserving the previous "both required" contract for legacy-only
+// expectations.
 func (sv *SignatureVerification) MatchesSigstoreIdentity(id *IdentitySigstore) bool {
-	pred, ok := sigstorePredicate(id)
+	check, ok := sigstoreCheck(id)
 	if !ok {
 		return false
 	}
-	return slices.ContainsFunc(sv.GetIdentities(), pred)
+	return slices.ContainsFunc(sv.GetIdentities(), check)
 }
 
-// sigstorePredicate builds a per-signer predicate from a sigstore policy.
-// Returns (nil, false) when the policy is malformed or sets no constraint:
-// captures the legacy "both required" check and precompiles any regex
-// patterns so failures surface before the signer loop.
-func sigstorePredicate(id *IdentitySigstore) (func(*Identity) bool, bool) {
+// sigstoreCheck builds a per-signer check from an expected sigstore
+// identity. Returns (nil, false) when the expectation is malformed or
+// sets no constraint: captures the legacy "both required" rule and
+// precompiles any regex patterns so failures surface before the signer
+// loop.
+func sigstoreCheck(id *IdentitySigstore) (func(*Identity) bool, bool) {
 	issuerLegacy := id.GetIssuer()
 	identityLegacy := id.GetIdentity()
 	issuerMatch := id.GetIssuerMatch()
@@ -249,30 +251,24 @@ func sigstorePredicate(id *IdentitySigstore) (func(*Identity) bool, bool) {
 //     the trust-domain / path components parsed from the signer's svid
 //     at eval time. If the signer's svid doesn't parse as a valid SPIFFE
 //     ID, these matchers fail closed.
-//   - TrustRoots is not consulted here — it is policy configuration used
-//     by the verifier to validate the chain, not an attribute of the
-//     signer.
+//   - TrustRoots is not consulted here — it is verifier configuration
+//     used to validate the chain, not an attribute of the signer.
 //
 // All conditions that are set must pass (AND semantics). At least one
 // constraint must be specified; an identity with none of svid, svid_match,
 // trust_domain_match, or path_match set matches nothing.
 func (sv *SignatureVerification) MatchesSpiffeIdentity(id *IdentitySpiffe) bool {
-	pred, ok := spiffePredicate(id)
+	check, ok := spiffeCheck(id)
 	if !ok {
 		return false
 	}
-	for _, signer := range sv.GetIdentities() {
-		if pred(signer) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(sv.GetIdentities(), check)
 }
 
-// spiffePredicate builds a per-signer predicate from a SPIFFE policy.
-// trust_domain_match and path_match parse the signer's svid at eval time
-// via spiffeid.FromString; unparseable SVIDs fail closed.
-func spiffePredicate(id *IdentitySpiffe) (func(*Identity) bool, bool) {
+// spiffeCheck builds a per-signer check from an expected SPIFFE
+// identity. trust_domain_match and path_match parse the signer's svid
+// at eval time via spiffeid.FromString; unparseable SVIDs fail closed.
+func spiffeCheck(id *IdentitySpiffe) (func(*Identity) bool, bool) {
 	svid := id.GetSvid()
 	svidMatch := id.GetSvidMatch()
 	tdMatch := id.GetTrustDomainMatch()
@@ -444,8 +440,9 @@ func matchString(m *StringMatcher, value string) bool {
 //
 //   - Id (required via legacy field OR IdMatch): compared against both
 //     the signer's primary key Id and its signing subkey fingerprint —
-//     a policy can name a GPG identity by either. Legacy Id is
-//     case-insensitive; IdMatch follows its StringMatcher configuration.
+//     an expected identity can name a GPG signer by either. Legacy Id
+//     is case-insensitive; IdMatch follows its StringMatcher
+//     configuration.
 //   - Type (optional, legacy): narrows the match when both sides set it.
 //     An unset signer type skips the check. TypeMatch (new) is strict:
 //     when set, the signer's type must satisfy it.
@@ -454,21 +451,16 @@ func matchString(m *StringMatcher, value string) bool {
 //
 // If the identity has Data but no Id, Normalize is called first.
 func (sv *SignatureVerification) MatchesKeyIdentity(keyIdentity *IdentityKey) bool {
-	pred, ok := keyPredicate(keyIdentity)
+	check, ok := keyCheck(keyIdentity)
 	if !ok {
 		return false
 	}
-	for _, signer := range sv.GetIdentities() {
-		if pred(signer) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(sv.GetIdentities(), check)
 }
 
-// keyPredicate builds a per-signer predicate from a key policy. Normalize
-// (legacy Data → Id derivation) runs once up front on a clone.
-func keyPredicate(keyIdentity *IdentityKey) (func(*Identity) bool, bool) {
+// keyCheck builds a per-signer check from an expected key identity.
+// Normalize (legacy Data → Id derivation) runs once up front on a clone.
+func keyCheck(keyIdentity *IdentityKey) (func(*Identity) bool, bool) {
 	ki := keyIdentity
 	if ki.GetId() == "" && ki.GetData() != "" {
 		cloned, ok := proto.Clone(keyIdentity).(*IdentityKey)
