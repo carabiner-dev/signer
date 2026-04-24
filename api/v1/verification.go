@@ -115,51 +115,99 @@ func (sv *SignatureVerification) MatchesIdentity(id *Identity) bool {
 	}
 }
 
-// HasIdentity returns true if one of the verifiers matches the passed sigstore
-// identity.
+// MatchesSigstoreIdentity returns true if one of the verified signatures
+// matches the supplied sigstore identity. Matching rules:
+//
+//   - Legacy fields (Issuer + Identity + Mode): when used, BOTH Issuer
+//     and Identity must be set. Mode chooses literal-equality or
+//     (anchored) regex semantics for the pair. Both must match.
+//   - Convenience matchers (IssuerMatch / IdentityMatch): independent
+//     StringMatchers layered on top. Each, when set, must pass.
+//   - Legacy and convenience forms may be combined — all constraints
+//     that are set must match the signer (AND semantics).
+//
+// A policy that sets NO constraint across either path matches nothing.
+// A policy that sets exactly one legacy field (Issuer OR Identity but
+// not both) is treated as malformed and matches nothing, preserving the
+// previous "both required" contract for legacy-only policies.
 func (sv *SignatureVerification) MatchesSigstoreIdentity(id *IdentitySigstore) bool {
-	// If the identity is missing either the issuer or its ID string, then
-	// we reject it.
-	if id.GetIdentity() == "" || id.GetIssuer() == "" {
+	// Old style matching way: The regexp is in the Identity and Isuser
+	issuerLegacy := id.GetIssuer()
+	identityLegacy := id.GetIdentity()
+
+	// New (v0.5+) matcher fields
+	issuerMatch := id.GetIssuerMatch()
+	identityMatch := id.GetIdentityMatch()
+
+	useLegacy := issuerLegacy != "" || identityLegacy != ""
+	useMatchers := issuerMatch != nil || identityMatch != nil
+	if !useLegacy && !useMatchers {
+		return false
+	}
+	// Preserve the legacy "both required" rule when ONLY legacy fields
+	// are used — a half-specified policy is very likely a mistake.
+	if useLegacy && (issuerLegacy == "" || identityLegacy == "") && !useMatchers {
 		return false
 	}
 
-	// If this is a regexp matcher, compile them. Policy-supplied patterns
-	// are anchored to the full input so a pattern meant to pin a specific
-	// identity can't match via substring or prefix (e.g. pattern "myorg"
-	// would otherwise match SAN "myorg-evil/..."). Anchoring matches the
-	// convention sigstore-go and cosign use for certificate-identity regex
-	// policies.
-	var regIdentity, regIssuer *regexp.Regexp
-	if id.Mode != nil && id.GetMode() == SigstoreModeRegexp {
-		var err error
-		regIdentity, err = regexp.Compile(anchoredRegex(id.GetIdentity()))
-		if err != nil {
-			return false
+	// Precompile legacy regex patterns once. The anchoredRegex wrap
+	// forces a full-input match so a pattern meant to pin a specific
+	// identity can't match via substring/prefix collision.
+	var regIssuer, regIdentity *regexp.Regexp
+	if id.GetMode() == SigstoreModeRegexp {
+		if issuerLegacy != "" {
+			re, err := regexp.Compile(anchoredRegex(issuerLegacy))
+			if err != nil {
+				return false
+			}
+			regIssuer = re
 		}
-		regIssuer, err = regexp.Compile(anchoredRegex(id.GetIssuer()))
-		if err != nil {
-			return false
+		if identityLegacy != "" {
+			re, err := regexp.Compile(anchoredRegex(identityLegacy))
+			if err != nil {
+				return false
+			}
+			regIdentity = re
 		}
 	}
+	regexpMode := id.GetMode() == SigstoreModeRegexp
 
-	// Check each identity in the verification until one matches.
 	for _, signer := range sv.GetIdentities() {
-		if signer.GetSigstore() == nil {
+		ss := signer.GetSigstore()
+		if ss == nil {
 			continue
 		}
+		signerIssuer := ss.GetIssuer()
+		signerIdentity := ss.GetIdentity()
 
-		if id.Mode == nil || id.GetMode() == SigstoreModeExact {
-			if signer.GetSigstore().GetIdentity() == id.GetIdentity() &&
-				signer.GetSigstore().GetIssuer() == id.GetIssuer() {
-				return true
-			}
-		} else if id.GetMode() == SigstoreModeRegexp {
-			if regIdentity.MatchString(signer.GetSigstore().GetIdentity()) &&
-				regIssuer.MatchString(signer.GetSigstore().GetIssuer()) {
-				return true
+		// Legacy issuer
+		if issuerLegacy != "" {
+			if regexpMode {
+				if !regIssuer.MatchString(signerIssuer) {
+					continue
+				}
+			} else if signerIssuer != issuerLegacy {
+				continue
 			}
 		}
+		// Legacy identity
+		if identityLegacy != "" {
+			if regexpMode {
+				if !regIdentity.MatchString(signerIdentity) {
+					continue
+				}
+			} else if signerIdentity != identityLegacy {
+				continue
+			}
+		}
+		// Convenience matchers (layered on)
+		if issuerMatch != nil && !matchString(issuerMatch, signerIssuer) {
+			continue
+		}
+		if identityMatch != nil && !matchString(identityMatch, signerIdentity) {
+			continue
+		}
+		return true
 	}
 	return false
 }
@@ -270,17 +318,17 @@ func matchString(m *StringMatcher, value string) bool {
 // MatchesKeyIdentity returns true if one of the verified signatures was
 // performed with the specified key. Matching rules:
 //
-//   - Id (required): compared against both the signer's primary key Id and
-//     its signing subkey fingerprint — a policy can name a GPG identity by
-//     either its primary or its signing subkey.
-//   - Type (optional): narrows the match when both sides set it.
-//   - SigningFingerprint (optional): additional pin requiring the signer's
-//     subkey fingerprint to match exactly. Useful for policies that accept
-//     a key's identity but constrain which subkey is authorized.
+//   - Id (required via legacy field OR IdMatch): compared against both
+//     the signer's primary key Id and its signing subkey fingerprint —
+//     a policy can name a GPG identity by either. Legacy Id is
+//     case-insensitive; IdMatch follows its StringMatcher configuration.
+//   - Type (optional, legacy): narrows the match when both sides set it.
+//     An unset signer type skips the check. TypeMatch (new) is strict:
+//     when set, the signer's type must satisfy it.
+//   - SigningFingerprint (optional, legacy): case-insensitive exact pin.
+//     SigningFingerprintMatch (new) is strict when set.
 //
-// Id and SigningFingerprint comparisons are case-insensitive since hex
-// fingerprints appear in both cases in the wild. If the identity has Data
-// but no Id, Normalize is called first to populate it.
+// If the identity has Data but no Id, Normalize is called first.
 func (sv *SignatureVerification) MatchesKeyIdentity(keyIdentity *IdentityKey) bool {
 	ki := keyIdentity
 	if ki.GetId() == "" && ki.GetData() != "" {
@@ -294,13 +342,15 @@ func (sv *SignatureVerification) MatchesKeyIdentity(keyIdentity *IdentityKey) bo
 	id := strings.TrimSpace(ki.GetId())
 	keyType := strings.TrimSpace(ki.GetType())
 	signingFP := strings.TrimSpace(ki.GetSigningFingerprint())
+	idMatch := ki.GetIdMatch()
+	typeMatch := ki.GetTypeMatch()
+	sfpMatch := ki.GetSigningFingerprintMatch()
 
-	// We need at least the key ID to match.
-	if id == "" {
+	// Need at least an id dimension from somewhere.
+	if id == "" && idMatch == nil {
 		return false
 	}
 
-	// Check each identity in the verification until one matches.
 	for _, signer := range sv.GetIdentities() {
 		signerKeyData := signer.GetKey()
 		if signerKeyData == nil {
@@ -309,24 +359,40 @@ func (sv *SignatureVerification) MatchesKeyIdentity(keyIdentity *IdentityKey) bo
 
 		signerID := strings.TrimSpace(signerKeyData.GetId())
 		signerSubFP := strings.TrimSpace(signerKeyData.GetSigningFingerprint())
+		signerType := strings.TrimSpace(signerKeyData.GetType())
 
-		// Id matches either the signer's primary or its signing subkey.
-		if !strings.EqualFold(id, signerID) && !strings.EqualFold(id, signerSubFP) {
+		// Legacy Id: case-insensitive primary-or-subkey.
+		if id != "" {
+			if !strings.EqualFold(id, signerID) && !strings.EqualFold(id, signerSubFP) {
+				continue
+			}
+		}
+		// IdMatch: apply against primary OR subkey fingerprint; accept
+		// if either passes. Preserves the legacy Id disjunction semantic
+		// for callers that moved to the matcher form.
+		if idMatch != nil && !matchString(idMatch, signerID) && !matchString(idMatch, signerSubFP) {
 			continue
 		}
 
-		if keyType != "" && strings.TrimSpace(signerKeyData.GetType()) != "" &&
-			strings.TrimSpace(signerKeyData.GetType()) != keyType {
+		// Legacy Type: narrows only when both sides set the field.
+		if keyType != "" && signerType != "" && signerType != keyType {
+			continue
+		}
+		// TypeMatch: strict — when set, the signer's type must satisfy it
+		// regardless of whether the signer has a type at all.
+		if typeMatch != nil && !matchString(typeMatch, signerType) {
 			continue
 		}
 
-		// When the policy additionally pins a signing subkey, the verified
-		// identity must carry the same fingerprint.
+		// Legacy SigningFingerprint: case-insensitive exact pin.
 		if signingFP != "" && !strings.EqualFold(signerSubFP, signingFP) {
 			continue
 		}
+		// SigningFingerprintMatch: strict when set.
+		if sfpMatch != nil && !matchString(sfpMatch, signerSubFP) {
+			continue
+		}
 
-		// Match
 		return true
 	}
 	return false
