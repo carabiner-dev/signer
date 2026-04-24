@@ -15,9 +15,34 @@ type VerificationOptFunc func(*Verification) error
 type Verification struct {
 	SigstoreVerification
 	KeyVerification
+	SpiffeVerification
 }
 
 var DefaultVerification = Verification{}
+
+// SpiffeVerification carries the trust material and identity matchers used
+// when verifying a bundle signed against a SPIFFE/SPIRE trust domain.
+type SpiffeVerification struct {
+	// TrustRootsPEM is the inline PEM-encoded set of trust anchors used to
+	// validate the SVID chain. At least one of TrustRootsPEM or
+	// TrustRootsPath must be set for SPIFFE verification to be enabled.
+	TrustRootsPEM []byte
+
+	// TrustRootsPath is a filesystem path to a PEM-encoded trust anchor file.
+	TrustRootsPath string
+
+	// ExpectedTrustDomain, when non-empty, asserts the leaf SVID's trust
+	// domain matches this string (e.g. "prod.example.org").
+	ExpectedTrustDomain string
+
+	// ExpectedPath, when non-empty, requires an exact match on the SVID's
+	// SPIFFE path component (e.g. "/workload/api").
+	ExpectedPath string
+
+	// ExpectedPathRegex, when non-empty, requires a regex match on the SVID's
+	// SPIFFE path component. Mutually exclusive with ExpectedPath.
+	ExpectedPathRegex string
+}
 
 // WithExpectedIdentity serts the ExpectedIssuer and ExptectedSan options
 // and unsets the regex alternatives
@@ -64,6 +89,51 @@ func WithExpectedIdentityRegex(issuer, san string) VerificationOptFunc {
 func WithSkipIdentityCheck(yesno bool) VerificationOptFunc {
 	return func(v *Verification) error {
 		v.SkipIdentityCheck = yesno
+		return nil
+	}
+}
+
+// WithSpiffeTrustRootsPEM sets the inline PEM-encoded SPIFFE trust anchors.
+func WithSpiffeTrustRootsPEM(pem []byte) VerificationOptFunc {
+	return func(v *Verification) error {
+		v.TrustRootsPEM = pem
+		return nil
+	}
+}
+
+// WithSpiffeTrustRootsFile sets the filesystem path to a PEM-encoded SPIFFE
+// trust anchor file.
+func WithSpiffeTrustRootsFile(path string) VerificationOptFunc {
+	return func(v *Verification) error {
+		v.TrustRootsPath = path
+		return nil
+	}
+}
+
+// WithExpectedSpiffeID sets the expected trust domain and path for the SVID
+// leaf. Either can be empty to skip that check; both together form an exact
+// match (use WithExpectedSpiffeIDRegex for pattern matching on the path).
+func WithExpectedSpiffeID(trustDomain, path string) VerificationOptFunc {
+	return func(v *Verification) error {
+		v.ExpectedTrustDomain = trustDomain
+		v.ExpectedPath = path
+		v.ExpectedPathRegex = ""
+		return nil
+	}
+}
+
+// WithExpectedSpiffeIDRegex sets the expected trust domain and a regex that
+// must match the SVID path. Unsets any exact ExpectedPath.
+func WithExpectedSpiffeIDRegex(trustDomain, pathRegex string) VerificationOptFunc {
+	return func(v *Verification) error {
+		if pathRegex != "" {
+			if _, err := regexp.Compile(pathRegex); err != nil {
+				return fmt.Errorf("compiling spiffe path regex: %w", err)
+			}
+		}
+		v.ExpectedTrustDomain = trustDomain
+		v.ExpectedPathRegex = pathRegex
+		v.ExpectedPath = ""
 		return nil
 	}
 }

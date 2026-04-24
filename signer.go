@@ -230,6 +230,10 @@ func (s *Signer) attachIntermediates(bndl *protobundle.Bundle) error {
 	bndl.VerificationMaterial.Content = &protobundle.VerificationMaterial_X509CertificateChain{
 		X509CertificateChain: chain,
 	}
+	// sigstore-go's sbundle.NewBundle rejects X509CertificateChain content at
+	// v0.3 (only single Certificate allowed). v0.2 permits the chain variant,
+	// which is exactly what SPIFFE signing needs to carry intermediates.
+	bndl.MediaType = "application/vnd.dev.sigstore.bundle+json;version=0.2"
 	return nil
 }
 

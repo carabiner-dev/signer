@@ -4,6 +4,7 @@
 package bundle
 
 import (
+	"crypto/x509"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -43,6 +44,15 @@ func WithSigstoreRootsData(data []byte) BundleOptsFunc {
 	}
 }
 
+// WithSpiffeVerifier installs the verifier used when a bundle carries a
+// SPIFFE-shaped identity (leaf cert with a spiffe:// URI SAN).
+func WithSpiffeVerifier(sv SpiffeVerifier) BundleOptsFunc {
+	return func(v *DefaultVerifier) error {
+		v.SPIFFE = sv
+		return nil
+	}
+}
+
 // New creates a new verifier. Initialization errors are logged to stderr
 // but not returned. Use NewWithError if you need to handle errors.
 func New(funcs ...BundleOptsFunc) Verifier {
@@ -70,6 +80,13 @@ type VerifyCapable interface {
 	Verify(verify.SignedEntity, verify.PolicyBuilder) (*verify.VerificationResult, error)
 }
 
+// SpiffeVerifier verifies bundles signed against a SPIFFE/SPIRE trust domain.
+// Implemented by spiffe.Verifier; typed as an interface here so the bundle
+// package doesn't have to import the spiffe package.
+type SpiffeVerifier interface {
+	Verify(*options.Verification, *bundle.Bundle) (*verify.VerificationResult, error)
+}
+
 // BundleVerifier abstracts the verification implementation to make it easy to
 // mock for testing.
 //
@@ -84,6 +101,11 @@ type Verifier interface {
 // DefaultVerifier implements the BundleVerifier interface.
 type DefaultVerifier struct {
 	Verifiers []VerifyCapable
+
+	// SPIFFE, when set, handles bundles whose leaf certificate carries a
+	// spiffe:// URI SAN. Constructed outside this package (typically in
+	// signer.NewVerifier) to avoid a bundle -> spiffe import dependency.
+	SPIFFE SpiffeVerifier
 }
 
 // OpenBundle opens a bundle file
@@ -95,8 +117,16 @@ func (bv *DefaultVerifier) OpenBundle(path string) (*bundle.Bundle, error) {
 	return b, nil
 }
 
-// Verify is the main verification function to check bundles
+// Verify is the main verification function to check bundles. Dispatches to
+// the SPIFFE verifier when the bundle carries a spiffe:// URI SAN; otherwise
+// iterates the configured sigstore instances.
 func (bv *DefaultVerifier) Verify(opts *options.Verification, bndl *bundle.Bundle) (*verify.VerificationResult, error) {
+	if isSpiffeBundle(bndl) {
+		if bv.SPIFFE == nil {
+			return nil, errors.New("bundle carries a spiffe identity but no spiffe verifier is configured")
+		}
+		return bv.SPIFFE.Verify(opts, bndl)
+	}
 	if len(bv.Verifiers) == 0 {
 		return nil, fmt.Errorf("unable to verify bundle, no sigstore instances loaded")
 	}
@@ -267,6 +297,34 @@ func (bv *DefaultVerifier) RunVerification(
 	}
 
 	return res, nil
+}
+
+// isSpiffeBundle reports whether the bundle's leaf certificate carries a
+// spiffe:// URI SAN. Used to dispatch between the sigstore and SPIFFE paths.
+func isSpiffeBundle(bndl *bundle.Bundle) bool {
+	vm := bndl.GetVerificationMaterial()
+	if vm == nil {
+		return false
+	}
+	var der []byte
+	if chain := vm.GetX509CertificateChain(); chain != nil && len(chain.GetCertificates()) > 0 {
+		der = chain.GetCertificates()[0].GetRawBytes()
+	} else if cert := vm.GetCertificate(); cert != nil {
+		der = cert.GetRawBytes()
+	}
+	if len(der) == 0 {
+		return false
+	}
+	leaf, err := x509.ParseCertificate(der)
+	if err != nil {
+		return false
+	}
+	for _, uri := range leaf.URIs {
+		if uri.Scheme == "spiffe" {
+			return true
+		}
+	}
+	return false
 }
 
 // hashAlgorithmToString maps a protobuf HashAlgorithm enum to the string

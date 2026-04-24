@@ -9,11 +9,13 @@ import (
 	sdsse "github.com/sigstore/protobuf-specs/gen/pb-go/dsse"
 	sbundle "github.com/sigstore/sigstore-go/pkg/bundle"
 	"github.com/sigstore/sigstore-go/pkg/verify"
+	"github.com/sirupsen/logrus"
 
 	"github.com/carabiner-dev/signer/bundle"
 	"github.com/carabiner-dev/signer/dsse"
 	"github.com/carabiner-dev/signer/key"
 	"github.com/carabiner-dev/signer/options"
+	"github.com/carabiner-dev/signer/spiffe"
 )
 
 // NewVerifier creates a new verifier with default options and verifiers
@@ -23,7 +25,19 @@ func NewVerifier(fnOpts ...options.VerifierOptFunc) *Verifier {
 		f(&opts)
 	}
 
-	bv := bundle.New(bundle.WithSigstoreRootsData(opts.SigstoreRootsData))
+	bundleOpts := []bundle.BundleOptsFunc{bundle.WithSigstoreRootsData(opts.SigstoreRootsData)}
+	if opts.TrustRootsPEM != nil || opts.TrustRootsPath != "" {
+		sv, err := spiffe.NewVerifierFromOptions(&opts.SpiffeVerification)
+		if err != nil {
+			// Initialization errors are logged but not fatal, matching the
+			// bundle.New contract for the sigstore-roots option.
+			logrus.Errorf("building spiffe verifier: %v", err)
+		} else {
+			bundleOpts = append(bundleOpts, bundle.WithSpiffeVerifier(sv))
+		}
+	}
+
+	bv := bundle.New(bundleOpts...)
 	return &Verifier{
 		Options:        opts,
 		bundleVerifier: bv,
