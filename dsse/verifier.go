@@ -55,7 +55,7 @@ func (dv *DefaultVerifier) RunVerification(
 
 	// Precompute PAE digests for keys that verify via prehash. ED25519 and
 	// GPG-wrapped signatures operate on the raw PAE message, so skip them.
-	paeMessage := paeEncode(env)
+	paeMessage := PAEEncode(env)
 	digests := map[crypto.Hash][]byte{}
 	digestStrs := map[string]string{}
 	for _, k := range publicKeys {
@@ -165,19 +165,19 @@ func hashPayload(env *sdsse.Envelope, hasher crypto.Hash) ([]byte, error) {
 		return nil, errors.New("unset payload type in DSSE envelope")
 	}
 
-	paeEncoded := paeEncode(env)
+	PAEEncoded := PAEEncode(env)
 
 	h := hasher.New()
-	if _, err := h.Write(paeEncoded); err != nil {
+	if _, err := h.Write(PAEEncoded); err != nil {
 		return nil, fmt.Errorf("writing to hasher: %w", err)
 	}
 	return h.Sum(nil), nil
 }
 
-// paeEncode implements the DSSE signing protocol:
+// PAEEncode implements the DSSE signing protocol:
 // https://github.com/secure-systems-lab/dsse/blob/master/protocol.md#signature-definition
 // This function was stolen from the Secure System Labs dsse packager.
-func paeEncode(env *sdsse.Envelope) []byte {
+func PAEEncode(env *sdsse.Envelope) []byte {
 	// payloadType string, payload []byte) []byte {
 	return fmt.Appendf(nil, "DSSEv1 %d %s %d %s",
 		len(env.GetPayloadType()), env.GetPayloadType(),
