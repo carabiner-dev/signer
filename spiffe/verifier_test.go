@@ -29,6 +29,18 @@ import (
 	"github.com/carabiner-dev/signer/options"
 )
 
+// withExpectedSpiffeID returns a *options.Verification populated with just
+// the per-call SPIFFE identity matchers, analogous to what
+// options.WithExpectedSpiffeID produces when called by a verifier's caller.
+func withExpectedSpiffeID(td, path string) *options.Verification {
+	return &options.Verification{
+		SpiffeVerification: options.SpiffeVerification{
+			ExpectedTrustDomain: td,
+			ExpectedPath:        path,
+		},
+	}
+}
+
 // testPKI is a minimal CA + leaf pair used across verifier tests.
 type testPKI struct {
 	root    *x509.Certificate
@@ -250,6 +262,118 @@ func TestVerifierRejectsTamperedPayload(t *testing.T) {
 	_, err = v.Verify(nil, bndl)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "dsse signature")
+}
+
+func TestVerifierHonorsPerCallIdentityOptions(t *testing.T) {
+	t.Parallel()
+	pki := newTestPKI(t, "/workload")
+	bndl := makeSignedBundle(t, pki, testPayload)
+
+	// Construction time: no identity matchers — only trust roots.
+	v, err := NewVerifier(VerifierOptions{TrustRoots: pki.rootPool()})
+	require.NoError(t, err)
+
+	// With matching per-call identity → success.
+	_, err = v.Verify(withExpectedSpiffeID("example.org", "/workload"), bndl)
+	require.NoError(t, err, "per-call matching identity should verify")
+
+	// With per-call trust domain that doesn't match → reject.
+	_, err = v.Verify(withExpectedSpiffeID("other.example", ""), bndl)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "trust domain")
+
+	// With per-call path that doesn't match → reject.
+	_, err = v.Verify(withExpectedSpiffeID("example.org", "/other"), bndl)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "path")
+}
+
+func TestVerifierPerCallOverridesConstructorIdentity(t *testing.T) {
+	t.Parallel()
+	pki := newTestPKI(t, "/workload")
+	bndl := makeSignedBundle(t, pki, testPayload)
+
+	// Construction pins path /workload.
+	v, err := NewVerifier(VerifierOptions{
+		TrustRoots:   pki.rootPool(),
+		ExpectedPath: "/workload",
+	})
+	require.NoError(t, err)
+
+	// Baseline: construction-time matcher is honored when no per-call opts.
+	_, err = v.Verify(nil, bndl)
+	require.NoError(t, err)
+
+	// Per-call path that disagrees with construction-time overrides it and rejects.
+	_, err = v.Verify(withExpectedSpiffeID("", "/other"), bndl)
+	require.Error(t, err, "per-call path override must be applied")
+	require.Contains(t, err.Error(), "/other")
+}
+
+func TestVerifierPerCallRegexHonored(t *testing.T) {
+	t.Parallel()
+	pki := newTestPKI(t, "/workload/api")
+	bndl := makeSignedBundle(t, pki, testPayload)
+
+	v, err := NewVerifier(VerifierOptions{TrustRoots: pki.rootPool()})
+	require.NoError(t, err)
+
+	opts := &options.Verification{
+		SpiffeVerification: options.SpiffeVerification{
+			ExpectedPathRegex: `^/workload/.*$`,
+		},
+	}
+	_, err = v.Verify(opts, bndl)
+	require.NoError(t, err)
+}
+
+func TestVerifierPerCallRejectsAmbiguousPathOptions(t *testing.T) {
+	t.Parallel()
+	pki := newTestPKI(t, "/workload")
+	bndl := makeSignedBundle(t, pki, testPayload)
+
+	v, err := NewVerifier(VerifierOptions{TrustRoots: pki.rootPool()})
+	require.NoError(t, err)
+
+	opts := &options.Verification{
+		SpiffeVerification: options.SpiffeVerification{
+			ExpectedPath:      "/workload",
+			ExpectedPathRegex: `.*`,
+		},
+	}
+	_, err = v.Verify(opts, bndl)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "mutually exclusive")
+}
+
+func TestVerifierPerCallRejectsInvalidRegex(t *testing.T) {
+	t.Parallel()
+	pki := newTestPKI(t, "/workload")
+	bndl := makeSignedBundle(t, pki, testPayload)
+
+	v, err := NewVerifier(VerifierOptions{TrustRoots: pki.rootPool()})
+	require.NoError(t, err)
+
+	opts := &options.Verification{
+		SpiffeVerification: options.SpiffeVerification{
+			ExpectedPathRegex: `[invalid`,
+		},
+	}
+	_, err = v.Verify(opts, bndl)
+	require.Error(t, err)
+}
+
+func TestVerifierPerCallRejectsInvalidTrustDomain(t *testing.T) {
+	t.Parallel()
+	pki := newTestPKI(t, "/workload")
+	bndl := makeSignedBundle(t, pki, testPayload)
+
+	v, err := NewVerifier(VerifierOptions{TrustRoots: pki.rootPool()})
+	require.NoError(t, err)
+
+	_, err = v.Verify(withExpectedSpiffeID("not a valid trust domain!!", ""), bndl)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "trust domain")
 }
 
 func TestNewVerifierRequiresTrustRoots(t *testing.T) {

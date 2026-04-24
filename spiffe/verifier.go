@@ -116,7 +116,12 @@ func loadTrustRoots(opts *options.SpiffeVerification) (*x509.CertPool, error) {
 // *verify.VerificationResult on success (sigstore-specific fields like
 // transparency-log entries are left zero; SPIFFE signatures don't produce
 // them).
-func (v *Verifier) Verify(_ *options.Verification, bndl *sbundle.Bundle) (*verify.VerificationResult, error) {
+func (v *Verifier) Verify(opts *options.Verification, bndl *sbundle.Bundle) (*verify.VerificationResult, error) {
+	effective, err := v.effectiveOptions(opts)
+	if err != nil {
+		return nil, err
+	}
+
 	chain, err := extractChain(bndl)
 	if err != nil {
 		return nil, fmt.Errorf("extracting x509 chain from bundle: %w", err)
@@ -129,7 +134,7 @@ func (v *Verifier) Verify(_ *options.Verification, bndl *sbundle.Bundle) (*verif
 	}
 
 	if _, err := leaf.Verify(x509.VerifyOptions{
-		Roots:         v.opts.TrustRoots,
+		Roots:         effective.TrustRoots,
 		Intermediates: intermediates,
 		// Accept any EKU — SPIRE SVIDs typically don't set a code-signing EKU.
 		KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
@@ -141,7 +146,7 @@ func (v *Verifier) Verify(_ *options.Verification, bndl *sbundle.Bundle) (*verif
 	if err != nil {
 		return nil, fmt.Errorf("extracting spiffe id: %w", err)
 	}
-	if err := v.matchIdentity(id); err != nil {
+	if err := matchIdentity(effective, id); err != nil {
 		return nil, err
 	}
 
@@ -152,20 +157,64 @@ func (v *Verifier) Verify(_ *options.Verification, bndl *sbundle.Bundle) (*verif
 	return buildResult(bndl, leaf, id), nil
 }
 
-func (v *Verifier) matchIdentity(id spiffeid.ID) error {
-	if !v.opts.ExpectedTrustDomain.IsZero() && id.TrustDomain() != v.opts.ExpectedTrustDomain {
+// effectiveOptions overlays per-call *options.Verification on top of the
+// Verifier's construction-time VerifierOptions. Per-call fields override
+// construction-time values when set; unset per-call fields fall back. This
+// lets callers pin identity per-invocation via options.WithExpectedSpiffeID
+// and friends without mutating shared verifier state.
+func (v *Verifier) effectiveOptions(opts *options.Verification) (VerifierOptions, error) {
+	eff := v.opts
+	if opts == nil {
+		return eff, nil
+	}
+	sv := opts.SpiffeVerification
+
+	if len(sv.TrustRootsPEM) > 0 || sv.TrustRootsPath != "" {
+		pool, err := loadTrustRoots(&sv)
+		if err != nil {
+			return eff, fmt.Errorf("per-call spiffe trust roots: %w", err)
+		}
+		eff.TrustRoots = pool
+	}
+	if sv.ExpectedTrustDomain != "" {
+		td, err := spiffeid.TrustDomainFromString(sv.ExpectedTrustDomain)
+		if err != nil {
+			return eff, fmt.Errorf("parsing per-call spiffe trust domain: %w", err)
+		}
+		eff.ExpectedTrustDomain = td
+	}
+	if sv.ExpectedPath != "" && sv.ExpectedPathRegex != "" {
+		return eff, errors.New("per-call spiffe options: ExpectedPath and ExpectedPathRegex are mutually exclusive")
+	}
+	if sv.ExpectedPath != "" {
+		eff.ExpectedPath = sv.ExpectedPath
+		eff.ExpectedPathRegex = nil
+	}
+	if sv.ExpectedPathRegex != "" {
+		re, err := regexp.Compile(sv.ExpectedPathRegex)
+		if err != nil {
+			return eff, fmt.Errorf("compiling per-call spiffe path regex: %w", err)
+		}
+		eff.ExpectedPathRegex = re
+		eff.ExpectedPath = ""
+	}
+	return eff, nil
+}
+
+func matchIdentity(opts VerifierOptions, id spiffeid.ID) error {
+	if !opts.ExpectedTrustDomain.IsZero() && id.TrustDomain() != opts.ExpectedTrustDomain {
 		return fmt.Errorf(
 			"spiffe id trust domain %q does not match expected %q",
-			id.TrustDomain(), v.opts.ExpectedTrustDomain,
+			id.TrustDomain(), opts.ExpectedTrustDomain,
 		)
 	}
-	if v.opts.ExpectedPath != "" && id.Path() != v.opts.ExpectedPath {
-		return fmt.Errorf("spiffe id path %q does not match expected %q", id.Path(), v.opts.ExpectedPath)
+	if opts.ExpectedPath != "" && id.Path() != opts.ExpectedPath {
+		return fmt.Errorf("spiffe id path %q does not match expected %q", id.Path(), opts.ExpectedPath)
 	}
-	if v.opts.ExpectedPathRegex != nil && !v.opts.ExpectedPathRegex.MatchString(id.Path()) {
+	if opts.ExpectedPathRegex != nil && !opts.ExpectedPathRegex.MatchString(id.Path()) {
 		return fmt.Errorf(
 			"spiffe id path %q does not match regex %q",
-			id.Path(), v.opts.ExpectedPathRegex,
+			id.Path(), opts.ExpectedPathRegex,
 		)
 	}
 	return nil
