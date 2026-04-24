@@ -4,10 +4,19 @@
 package signer
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"errors"
+	"math/big"
 	"os"
 	"testing"
+	"time"
 
+	protobundle "github.com/sigstore/protobuf-specs/gen/pb-go/bundle/v1"
+	protocommon "github.com/sigstore/protobuf-specs/gen/pb-go/common/v1"
 	sdsse "github.com/sigstore/protobuf-specs/gen/pb-go/dsse"
 	"github.com/sigstore/sigstore-go/pkg/verify"
 	"github.com/stretchr/testify/require"
@@ -286,6 +295,115 @@ func TestSigningStateReuse(t *testing.T) {
 	// But credential preparation and bundle options wiring only happen once
 	require.Equal(t, 1, fakeCredentials.PrepareCallCount())
 	require.Equal(t, 1, fakeBundleSigner.BuildBundleOptionsCallCount())
+}
+
+// mintTestCert mints a self-signed ECDSA cert for tests that need a
+// DER-encoded x509.Certificate.
+func mintTestCert(t *testing.T, cn string) *x509.Certificate {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	template := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: cn},
+		NotBefore:             time.Now().Add(-time.Minute),
+		NotAfter:              time.Now().Add(time.Hour),
+		KeyUsage:              x509.KeyUsageDigitalSignature,
+		BasicConstraintsValid: true,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	require.NoError(t, err)
+	cert, err := x509.ParseCertificate(der)
+	require.NoError(t, err)
+	return cert
+}
+
+// TestSignStatementAttachesIntermediates exercises the bundle post-processing
+// path: when the credential provider returns intermediates, the outer Signer
+// rewrites the bundle's VerificationMaterial from Certificate (leaf-only) to
+// X509CertificateChain carrying [leaf, ...intermediates].
+func TestSignStatementAttachesIntermediates(t *testing.T) {
+	t.Parallel()
+
+	statementData, err := os.ReadFile("bundle/testdata/statement.json")
+	require.NoError(t, err)
+
+	leaf := mintTestCert(t, "leaf")
+	intermediate := mintTestCert(t, "intermediate")
+
+	// Fake SignBundle returns a leaf-only bundle — mirrors what sigstore-go's
+	// sign.Bundle produces via VerificationMaterial_Certificate.
+	fakeBundleSigner := &bundlefakes.FakeSigner{}
+	fakeBundleSigner.SignBundleReturns(&protobundle.Bundle{
+		VerificationMaterial: &protobundle.VerificationMaterial{
+			Content: &protobundle.VerificationMaterial_Certificate{
+				Certificate: &protocommon.X509Certificate{RawBytes: leaf.Raw},
+			},
+		},
+	}, nil)
+
+	fakeCredentials := &bundlefakes.FakeCredentialProvider{}
+	fakeCredentials.IntermediatesReturns([]*x509.Certificate{intermediate})
+
+	opts := options.DefaultSigner
+	require.NoError(t, opts.Validate())
+
+	s := &Signer{
+		Options:      opts,
+		Credentials:  fakeCredentials,
+		bundleSigner: fakeBundleSigner,
+	}
+
+	bndl, err := s.SignStatement(statementData)
+	require.NoError(t, err)
+	require.NotNil(t, bndl)
+
+	chainContent, ok := bndl.GetVerificationMaterial().GetContent().(*protobundle.VerificationMaterial_X509CertificateChain)
+	require.True(t, ok, "expected X509CertificateChain content, got %T", bndl.GetVerificationMaterial().GetContent())
+	chainCerts := chainContent.X509CertificateChain.GetCertificates()
+	require.Len(t, chainCerts, 2)
+	require.Equal(t, leaf.Raw, chainCerts[0].GetRawBytes())
+	require.Equal(t, intermediate.Raw, chainCerts[1].GetRawBytes())
+}
+
+// TestSignStatementLeavesLeafOnlyBundleUntouched verifies the sigstore path:
+// when the credential provider reports no intermediates, the bundle's
+// leaf-only VerificationMaterial is preserved.
+func TestSignStatementLeavesLeafOnlyBundleUntouched(t *testing.T) {
+	t.Parallel()
+
+	statementData, err := os.ReadFile("bundle/testdata/statement.json")
+	require.NoError(t, err)
+
+	leaf := mintTestCert(t, "leaf")
+
+	fakeBundleSigner := &bundlefakes.FakeSigner{}
+	fakeBundleSigner.SignBundleReturns(&protobundle.Bundle{
+		VerificationMaterial: &protobundle.VerificationMaterial{
+			Content: &protobundle.VerificationMaterial_Certificate{
+				Certificate: &protocommon.X509Certificate{RawBytes: leaf.Raw},
+			},
+		},
+	}, nil)
+
+	fakeCredentials := &bundlefakes.FakeCredentialProvider{}
+	// Intermediates defaults to returning nil.
+
+	opts := options.DefaultSigner
+	require.NoError(t, opts.Validate())
+
+	s := &Signer{
+		Options:      opts,
+		Credentials:  fakeCredentials,
+		bundleSigner: fakeBundleSigner,
+	}
+
+	bndl, err := s.SignStatement(statementData)
+	require.NoError(t, err)
+
+	leafContent, ok := bndl.GetVerificationMaterial().GetContent().(*protobundle.VerificationMaterial_Certificate)
+	require.True(t, ok, "expected Certificate content, got %T", bndl.GetVerificationMaterial().GetContent())
+	require.Equal(t, leaf.Raw, leafContent.Certificate.GetRawBytes())
 }
 
 // Compile-time check: bundle.CredentialProvider and bundle.Signer are
