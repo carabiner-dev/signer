@@ -1,0 +1,46 @@
+# Local SPIRE fixture for running the SPIFFE end-to-end tests.
+# See hack/spire/up.sh for orchestration — docker compose alone can't
+# bootstrap this because the agent needs a join token generated after the
+# server starts.
+
+services:
+  spire-server:
+    image: ghcr.io/spiffe/spire-server:${SPIRE_VERSION:-1.10.4}
+    container_name: carabiner-signer-spire-server
+    command: ["-config", "/opt/spire/conf/server/server.conf"]
+    volumes:
+      - ./server.conf:/opt/spire/conf/server/server.conf:ro
+      - ./upstream-ca:/opt/spire/upstream-ca:ro
+    networks:
+      - spire
+    healthcheck:
+      test: ["CMD", "/opt/spire/bin/spire-server", "healthcheck"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  spire-agent:
+    image: ghcr.io/spiffe/spire-agent:${SPIRE_VERSION:-1.10.4}
+    container_name: carabiner-signer-spire-agent
+    # Share the host PID namespace so the unix workload attestor can read
+    # /proc/<pid> for host processes connecting to the mounted socket.
+    # Without this, the agent logs "could not resolve caller information"
+    # on every attestation attempt from the host. Test fixture only.
+    pid: host
+    command:
+      - "-config"
+      - "/opt/spire/conf/agent/agent.conf"
+      - "-joinToken"
+      - "${SPIRE_JOIN_TOKEN:-}"
+    volumes:
+      - ./agent.conf:/opt/spire/conf/agent/agent.conf:ro
+      - ./socket:/tmp/spire-agent/public
+    depends_on:
+      spire-server:
+        condition: service_healthy
+    networks:
+      - spire
+
+networks:
+  spire:
+    name: carabiner-signer-spire
