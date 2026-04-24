@@ -14,13 +14,18 @@ import (
 	"github.com/carabiner-dev/signer/key"
 )
 
-// NewIdentityFromSlug returns a new identity by parsing a slug string.
+// NewIdentityFromPrincipal parses an Identity from its canonical principal
+// string — a compact, self-describing name for the signer. Supported forms:
 //
-// There are three kinds of identities supported: sigstore, key and reference.
-func NewIdentityFromSlug(slug string) (*Identity, error) {
-	itype, identityString, ok := strings.Cut(slug, "::")
+//	sigstore::<issuer>::<identity>
+//	key::<type>::<id>
+//	ref:<id>
+//
+// Round-trips with (*Identity).Principal.
+func NewIdentityFromPrincipal(principal string) (*Identity, error) {
+	itype, identityString, ok := strings.Cut(principal, "::")
 	if !ok {
-		refId, isRef := strings.CutPrefix(slug, "ref:")
+		refId, isRef := strings.CutPrefix(principal, "ref:")
 		if isRef {
 			return &Identity{Ref: &IdentityRef{Id: refId}}, nil
 		}
@@ -30,7 +35,7 @@ func NewIdentityFromSlug(slug string) (*Identity, error) {
 	case "sigstore", "sigstore(regexp)":
 		issuer, ident, ok := strings.Cut(identityString, "::")
 		if !ok {
-			return nil, fmt.Errorf("unable to parse sigstore identity from identity string")
+			return nil, fmt.Errorf("unable to parse sigstore identity from principal string")
 		}
 		mode := SigstoreModeExact
 		if itype == "sigstore(regexp)" {
@@ -46,7 +51,7 @@ func NewIdentityFromSlug(slug string) (*Identity, error) {
 	case "key":
 		keyType, keyId, ok := strings.Cut(identityString, "::")
 		if !ok {
-			return nil, fmt.Errorf("unable to parse key details from identity string")
+			return nil, fmt.Errorf("unable to parse key details from principal string")
 		}
 		return &Identity{
 			Key: &IdentityKey{
@@ -55,11 +60,20 @@ func NewIdentityFromSlug(slug string) (*Identity, error) {
 			},
 		}, nil
 	}
-	return nil, fmt.Errorf("unable to parse identity from slug string")
+	return nil, fmt.Errorf("unable to parse identity from principal string")
 }
 
-// Slug returns a string representing the identity
-func (i *Identity) Slug() string {
+// NewIdentityFromSlug is a compatibility alias for NewIdentityFromPrincipal.
+//
+// This will be deprecated: use NewIdentityFromPrincipal. Retained for existing callers.
+func NewIdentityFromSlug(slug string) (*Identity, error) {
+	return NewIdentityFromPrincipal(slug)
+}
+
+// Principal returns the canonical string naming this identity — the
+// security-domain "principal" that uniquely identifies who signed.
+// Round-trips with NewIdentityFromPrincipal.
+func (i *Identity) Principal() string {
 	switch {
 	case i.GetSigstore() != nil:
 		mode := ""
@@ -74,6 +88,13 @@ func (i *Identity) Slug() string {
 	default:
 		return ""
 	}
+}
+
+// Slug is a compatibility alias for Principal.
+//
+// This will be deprecated: use Principal. Retained for existing callers.
+func (i *Identity) Slug() string {
+	return i.Principal()
 }
 
 // Validate checks the integrity of the identity and returns an error if
@@ -114,13 +135,9 @@ func (i *Identity) Validate() error {
 }
 
 // IdentitySpiffeFromString parses a SPIFFE ID string (e.g.
-// "spiffe://example.org/workload") into an IdentitySpiffe populated with the
-// parsed trust domain and path. This is the primary helper for turning the
-// SPIFFE ID a verifier surfaces in its VerificationResult (via
-// VerifiedIdentity.SubjectAlternativeName) into an api/v1 identity value
-// suitable for SignatureVerification.Identities.
+// "spiffe://example.org/workload") into an IdentitySpiffe.
 //
-// TrustRoots is intentionally NOT populated — it is verifier configuration
+// TrustRoots is intentionally NOT populated — it is a verifier configuration
 // (which root(s) the chain was validated against), not an attribute of the
 // signer. Policy-side IdentitySpiffe values carry TrustRoots to tell the
 // verifier what to trust; verified-side IdentitySpiffe values describe who
@@ -131,13 +148,12 @@ func IdentitySpiffeFromString(spiffeID string) (*IdentitySpiffe, error) {
 		return nil, fmt.Errorf("parsing spiffe id: %w", err)
 	}
 	return &IdentitySpiffe{
-		TrustDomain: id.TrustDomain().Name(),
-		Path:        id.Path(),
+		Svid: id.String(),
 	}, nil
 }
 
 // IdentitySpiffeFromCert builds an IdentitySpiffe from a leaf certificate by
-// extracting the SPIFFE ID from its URI SAN. Delegates to
+// extracting the SPIFFE ID from its URI SAN and then delegating to
 // IdentitySpiffeFromString once the SAN is found. Useful when a caller has
 // only the leaf (e.g. test fixtures or standalone cert inspection); when a
 // VerificationResult is available, read the SAN from VerifiedIdentity and
