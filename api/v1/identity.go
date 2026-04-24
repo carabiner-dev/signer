@@ -16,20 +16,25 @@ import (
 	"github.com/carabiner-dev/signer/key"
 )
 
+// Identity-type prefixes used in Principal/Spec strings.
+const (
+	identityTypeSigstore = "sigstore"
+	identityTypeKey      = "key"
+	identityTypeSpiffe   = "spiffe"
+)
+
 // NewIdentityFromPrincipal parses an Identity from its canonical principal
-// string — a compact, self-describing name for the signer. Supported forms:
+// string — a pure, matcher-free identifier. Supported forms:
 //
 //	sigstore::<issuer>::<identity>
 //	key::<type>::<id>
 //	ref:<id>
 //	spiffe://<trust-domain><path>
 //
-// The legacy "sigstore(regexp)::<issuer>::<identity>" form is also accepted
-// for back-compat and produces an Identity with Mode=regexp, but Principal()
-// no longer emits the marker — matcher semantics are not part of the
-// identifier.
-//
-// Round-trips with (*Identity).Principal.
+// Strict: parenthetical annotations like "sigstore(regexp)::..." or
+// "sigstore(issuerMatch=exact)::..." are rejected — those carry matcher
+// semantics and belong to NewIdentityFromSpec. Round-trips with
+// (*Identity).Principal.
 func NewIdentityFromPrincipal(principal string) (*Identity, error) {
 	if strings.HasPrefix(principal, "spiffe://") {
 		spiffeID, err := IdentitySpiffeFromString(principal)
@@ -45,26 +50,26 @@ func NewIdentityFromPrincipal(principal string) (*Identity, error) {
 		if isRef {
 			return &Identity{Ref: &IdentityRef{Id: refId}}, nil
 		}
+		return nil, fmt.Errorf("unable to parse identity from principal string %q", principal)
+	}
+
+	if strings.ContainsAny(itype, "()") {
+		return nil, fmt.Errorf("principal does not accept matcher annotations; use NewIdentityFromSpec for %q", principal)
 	}
 
 	switch itype {
-	case "sigstore", "sigstore(regexp)":
+	case identityTypeSigstore:
 		issuer, ident, ok := strings.Cut(identityString, "::")
 		if !ok {
 			return nil, fmt.Errorf("unable to parse sigstore identity from principal string")
 		}
-		mode := SigstoreModeExact
-		if itype == "sigstore(regexp)" {
-			mode = SigstoreModeRegexp
-		}
 		return &Identity{
 			Sigstore: &IdentitySigstore{
-				Mode:     &mode,
 				Issuer:   issuer,
 				Identity: ident,
 			},
 		}, nil
-	case "key":
+	case identityTypeKey:
 		keyType, keyId, ok := strings.Cut(identityString, "::")
 		if !ok {
 			return nil, fmt.Errorf("unable to parse key details from principal string")
@@ -76,22 +81,83 @@ func NewIdentityFromPrincipal(principal string) (*Identity, error) {
 			},
 		}, nil
 	}
-	return nil, fmt.Errorf("unable to parse identity from principal string")
+	return nil, fmt.Errorf("unable to parse identity from principal string %q", principal)
 }
 
-// NewIdentityFromSlug is a compatibility alias for NewIdentityFromPrincipal.
+// NewIdentityFromSpec parses an Identity from its rich canonical form.
+// The spec carries both the principal AND its matcher semantics.
 //
-// This will be deprecated: use NewIdentityFromPrincipal. Retained for existing callers.
+// Accepts:
+//
+//   - all forms supported by NewIdentityFromPrincipal (pure identifiers)
+//
+//   - the legacy single-token form "sigstore(regexp)::<issuer>::<identity>"
+//     (sets Mode=regexp on the resulting IdentitySigstore)
+//
+//   - the rich form with per-field StringMatcher annotations:
+//
+//     sigstore(issuerMatch=exact,identityMatch=regex)::<issuer>::<identity>
+//     key(idMatch=glob,typeMatch=exact)::<type>::<id>
+//     spiffe(svidMatch=regex)::<pattern>
+//     spiffe(trustDomainMatch=exact,pathMatch=glob)::<trust-domain>::<path>
+//
+// Matcher kinds: exact | regex | prefix | glob. The /i suffix on a kind
+// (e.g. "identityMatch=regex/i") sets case_insensitive on that matcher.
+//
+// Slot semantics: each annotated field consumes a positional slot; slots
+// not annotated populate the legacy field at that position
+// (e.g. "sigstore(issuerMatch=regex)::https://.*::user@x" becomes
+// IssuerMatch=regex, Identity="user@x"). Round-trips with (*Identity).Spec.
+func NewIdentityFromSpec(spec string) (*Identity, error) {
+	// Pure forms with no matcher annotations dispatch to Principal.
+	if strings.HasPrefix(spec, "spiffe://") || strings.HasPrefix(spec, "ref:") {
+		return NewIdentityFromPrincipal(spec)
+	}
+
+	itype, paramStr, rest, err := splitSpecHead(spec)
+	if err != nil {
+		return nil, err
+	}
+
+	// No annotations: the spec is a Principal string.
+	if paramStr == "" {
+		return NewIdentityFromPrincipal(spec)
+	}
+
+	params, err := parseSpecParams(paramStr)
+	if err != nil {
+		return nil, fmt.Errorf("parsing spec annotations in %q: %w", spec, err)
+	}
+
+	slots := strings.Split(rest, "::")
+
+	switch itype {
+	case identityTypeSigstore:
+		return parseSigstoreSpec(params, slots)
+	case identityTypeKey:
+		return parseKeySpec(params, slots)
+	case identityTypeSpiffe:
+		return parseSpiffeSpec(params, slots)
+	default:
+		return nil, fmt.Errorf("unknown identity type %q in spec %q", itype, spec)
+	}
+}
+
+// NewIdentityFromSlug is a compatibility alias for NewIdentityFromSpec.
+// Retained because legacy callers depended on the rich form (e.g. the
+// "sigstore(regexp)::..." marker that Principal no longer emits).
+//
+// Deprecated: prefer NewIdentityFromSpec; or NewIdentityFromPrincipal for
+// the pure form.
 func NewIdentityFromSlug(slug string) (*Identity, error) {
-	return NewIdentityFromPrincipal(slug)
+	return NewIdentityFromSpec(slug)
 }
 
 // Principal returns the canonical string naming this identity — the
 // security-domain "principal" that uniquely identifies who signed.
 // Matcher semantics (e.g. sigstore Mode=regexp) are NOT encoded in the
-// principal: it is a pure identifier. The bare form round-trips with
-// NewIdentityFromPrincipal; the legacy "sigstore(regexp)::..." form is
-// still accepted by the parser but is no longer emitted here.
+// principal: it is a pure identifier. Round-trips with
+// NewIdentityFromPrincipal.
 func (i *Identity) Principal() string {
 	switch {
 	case i.GetSigstore() != nil:
@@ -107,11 +173,350 @@ func (i *Identity) Principal() string {
 	}
 }
 
-// Slug is a compatibility alias for Principal.
+// Spec returns the rich canonical string carrying both the principal and
+// its matcher semantics. Suitable for CLI flag values like
 //
-// This will be deprecated: use Principal. Retained for existing callers.
+//	--identity=sigstore(identityMatch=regex)::https://accounts.google.com::user@.*\.example\.com
+//
+// When no matchers are set, Spec returns the same string as Principal
+// (with the legacy "(regexp)" marker reintroduced when Mode=regexp on
+// IdentitySigstore). Round-trips with NewIdentityFromSpec.
+//
+// Spec covers the per-variant *_match conveniences and the dominant
+// principal-slot fields. It does NOT encode the outer Matchers slice,
+// IdentityKey.signing_fingerprint(_match), or IdentitySpiffe.trust_roots —
+// callers that need full fidelity should use the proto directly.
+func (i *Identity) Spec() string {
+	switch {
+	case i.GetSigstore() != nil:
+		return sigstoreSpec(i.GetSigstore())
+	case i.GetKey() != nil:
+		return keySpec(i.GetKey())
+	case i.GetSpiffe() != nil:
+		return spiffeSpec(i.GetSpiffe())
+	case i.GetRef() != nil:
+		return fmt.Sprintf("ref:%s", i.GetRef().GetId())
+	default:
+		return ""
+	}
+}
+
+// Slug returns the rich form (alias of Spec).
+//
+// Deprecated: prefer Spec for the rich form, Principal for the pure
+// identifier. Retained for existing callers.
 func (i *Identity) Slug() string {
-	return i.Principal()
+	return i.Spec()
+}
+
+// splitSpecHead extracts the type prefix, the parenthetical annotation
+// body (without parens), and the remaining slot string (without leading
+// "::") from a spec. Returns ("", "", spec, nil) when neither annotation
+// nor "::" is present so that callers can fall through to Principal
+// parsing.
+func splitSpecHead(spec string) (itype, paramStr, rest string, err error) {
+	openParen := strings.Index(spec, "(")
+	doubleColon := strings.Index(spec, "::")
+
+	switch {
+	case openParen >= 0 && (doubleColon < 0 || openParen < doubleColon):
+		closeParen := strings.Index(spec[openParen:], ")")
+		if closeParen < 0 {
+			return "", "", "", fmt.Errorf("unclosed matcher annotation in spec %q", spec)
+		}
+		closeParen += openParen
+		itype = spec[:openParen]
+		paramStr = spec[openParen+1 : closeParen]
+		afterAnnot := spec[closeParen+1:]
+		if !strings.HasPrefix(afterAnnot, "::") {
+			return "", "", "", fmt.Errorf("expected :: after matcher annotation in spec %q", spec)
+		}
+		rest = strings.TrimPrefix(afterAnnot, "::")
+		return itype, paramStr, rest, nil
+	case doubleColon >= 0:
+		itype = spec[:doubleColon]
+		rest = spec[doubleColon+2:]
+		return itype, "", rest, nil
+	default:
+		return "", "", spec, nil
+	}
+}
+
+// parseSpecParams turns "issuerMatch=regex/i,identityMatch=exact" into a
+// map of field-name → kind-annotation. The single-token legacy form
+// "regexp" becomes a key with empty value.
+func parseSpecParams(s string) (map[string]string, error) {
+	out := map[string]string{}
+	for _, raw := range strings.Split(s, ",") {
+		entry := strings.TrimSpace(raw)
+		if entry == "" {
+			return nil, errors.New("empty matcher annotation")
+		}
+		name, val, hasEq := strings.Cut(entry, "=")
+		name = strings.TrimSpace(name)
+		if !hasEq {
+			out[name] = ""
+			continue
+		}
+		out[name] = strings.TrimSpace(val)
+	}
+	return out, nil
+}
+
+// matcherFromAnnotation builds a StringMatcher from a "<kind>[/i]"
+// annotation paired with the slot value to be matched.
+func matcherFromAnnotation(annotation, value string) (*StringMatcher, error) {
+	kind, opts, _ := strings.Cut(annotation, "/")
+	caseInsensitive := false
+	switch opts {
+	case "":
+	case "i":
+		caseInsensitive = true
+	default:
+		return nil, fmt.Errorf("unknown matcher options %q (expected /i)", opts)
+	}
+
+	m := &StringMatcher{CaseInsensitive: caseInsensitive}
+	switch kind {
+	case "exact":
+		m.Kind = &StringMatcher_Exact{Exact: value}
+	case "regex":
+		m.Kind = &StringMatcher_Regex{Regex: value}
+	case "prefix":
+		m.Kind = &StringMatcher_Prefix{Prefix: value}
+	case "glob":
+		m.Kind = &StringMatcher_Glob{Glob: value}
+	default:
+		return nil, fmt.Errorf("unknown matcher kind %q", kind)
+	}
+	return m, nil
+}
+
+func parseSigstoreSpec(params map[string]string, slots []string) (*Identity, error) {
+	if len(slots) != 2 {
+		return nil, fmt.Errorf("sigstore spec requires 2 slots (issuer::identity), got %d", len(slots))
+	}
+	sig := &IdentitySigstore{}
+	for name, kind := range params {
+		switch name {
+		case "regexp":
+			if kind != "" {
+				return nil, fmt.Errorf("legacy sigstore(regexp) marker takes no value, got %q", kind)
+			}
+			mode := SigstoreModeRegexp
+			sig.Mode = &mode
+		case "issuerMatch":
+			m, err := matcherFromAnnotation(kind, slots[0])
+			if err != nil {
+				return nil, fmt.Errorf("issuerMatch: %w", err)
+			}
+			sig.IssuerMatch = m
+		case "identityMatch":
+			m, err := matcherFromAnnotation(kind, slots[1])
+			if err != nil {
+				return nil, fmt.Errorf("identityMatch: %w", err)
+			}
+			sig.IdentityMatch = m
+		default:
+			return nil, fmt.Errorf("unknown sigstore matcher field %q", name)
+		}
+	}
+	if _, ok := params["issuerMatch"]; !ok {
+		sig.Issuer = slots[0]
+	}
+	if _, ok := params["identityMatch"]; !ok {
+		sig.Identity = slots[1]
+	}
+	return &Identity{Sigstore: sig}, nil
+}
+
+func parseKeySpec(params map[string]string, slots []string) (*Identity, error) {
+	if len(slots) != 2 {
+		return nil, fmt.Errorf("key spec requires 2 slots (type::id), got %d", len(slots))
+	}
+	k := &IdentityKey{}
+	for name, kind := range params {
+		switch name {
+		case "typeMatch":
+			m, err := matcherFromAnnotation(kind, slots[0])
+			if err != nil {
+				return nil, fmt.Errorf("typeMatch: %w", err)
+			}
+			k.TypeMatch = m
+		case "idMatch":
+			m, err := matcherFromAnnotation(kind, slots[1])
+			if err != nil {
+				return nil, fmt.Errorf("idMatch: %w", err)
+			}
+			k.IdMatch = m
+		default:
+			return nil, fmt.Errorf("unknown key matcher field %q", name)
+		}
+	}
+	if _, ok := params["typeMatch"]; !ok {
+		k.Type = slots[0]
+	}
+	if _, ok := params["idMatch"]; !ok {
+		k.Id = slots[1]
+	}
+	return &Identity{Key: k}, nil
+}
+
+func parseSpiffeSpec(params map[string]string, slots []string) (*Identity, error) {
+	s := &IdentitySpiffe{}
+	// Single-slot form: spiffe(svidMatch=...)::pattern
+	if len(slots) == 1 {
+		kind, ok := params["svidMatch"]
+		if !ok || len(params) != 1 {
+			return nil, fmt.Errorf("spiffe spec with one slot requires svidMatch annotation only")
+		}
+		m, err := matcherFromAnnotation(kind, slots[0])
+		if err != nil {
+			return nil, fmt.Errorf("svidMatch: %w", err)
+		}
+		s.SvidMatch = m
+		return &Identity{Spiffe: s}, nil
+	}
+	if len(slots) != 2 {
+		return nil, fmt.Errorf("spiffe spec requires 1 or 2 slots, got %d", len(slots))
+	}
+	for name, kind := range params {
+		switch name {
+		case "trustDomainMatch":
+			m, err := matcherFromAnnotation(kind, slots[0])
+			if err != nil {
+				return nil, fmt.Errorf("trustDomainMatch: %w", err)
+			}
+			s.TrustDomainMatch = m
+		case "pathMatch":
+			m, err := matcherFromAnnotation(kind, slots[1])
+			if err != nil {
+				return nil, fmt.Errorf("pathMatch: %w", err)
+			}
+			s.PathMatch = m
+		default:
+			return nil, fmt.Errorf("unknown spiffe matcher field %q in two-slot form", name)
+		}
+	}
+	if s.GetTrustDomainMatch() == nil && s.GetPathMatch() == nil {
+		return nil, errors.New("spiffe spec with two slots requires trustDomainMatch and/or pathMatch")
+	}
+	return &Identity{Spiffe: s}, nil
+}
+
+func sigstoreSpec(s *IdentitySigstore) string {
+	issuerMatch := s.GetIssuerMatch()
+	identityMatch := s.GetIdentityMatch()
+
+	if issuerMatch == nil && identityMatch == nil {
+		if s.GetMode() == SigstoreModeRegexp {
+			return fmt.Sprintf("sigstore(regexp)::%s::%s", s.GetIssuer(), s.GetIdentity())
+		}
+		return fmt.Sprintf("sigstore::%s::%s", s.GetIssuer(), s.GetIdentity())
+	}
+
+	var params []string
+	issuerSlot := s.GetIssuer()
+	if issuerMatch != nil {
+		params = append(params, "issuerMatch="+stringMatcherAnnotation(issuerMatch))
+		issuerSlot = stringMatcherPattern(issuerMatch)
+	}
+	identitySlot := s.GetIdentity()
+	if identityMatch != nil {
+		params = append(params, "identityMatch="+stringMatcherAnnotation(identityMatch))
+		identitySlot = stringMatcherPattern(identityMatch)
+	}
+	return fmt.Sprintf("sigstore(%s)::%s::%s", strings.Join(params, ","), issuerSlot, identitySlot)
+}
+
+func keySpec(k *IdentityKey) string {
+	typeMatch := k.GetTypeMatch()
+	idMatch := k.GetIdMatch()
+	if typeMatch == nil && idMatch == nil {
+		return fmt.Sprintf("key::%s::%s", k.GetType(), k.GetId())
+	}
+
+	var params []string
+	typeSlot := k.GetType()
+	if typeMatch != nil {
+		params = append(params, "typeMatch="+stringMatcherAnnotation(typeMatch))
+		typeSlot = stringMatcherPattern(typeMatch)
+	}
+	idSlot := k.GetId()
+	if idMatch != nil {
+		params = append(params, "idMatch="+stringMatcherAnnotation(idMatch))
+		idSlot = stringMatcherPattern(idMatch)
+	}
+	return fmt.Sprintf("key(%s)::%s::%s", strings.Join(params, ","), typeSlot, idSlot)
+}
+
+func spiffeSpec(s *IdentitySpiffe) string {
+	svidMatch := s.GetSvidMatch()
+	tdMatch := s.GetTrustDomainMatch()
+	pathMatch := s.GetPathMatch()
+
+	if svidMatch == nil && tdMatch == nil && pathMatch == nil {
+		return s.GetSvid()
+	}
+	if svidMatch != nil && tdMatch == nil && pathMatch == nil {
+		return fmt.Sprintf("spiffe(svidMatch=%s)::%s",
+			stringMatcherAnnotation(svidMatch), stringMatcherPattern(svidMatch))
+	}
+	var params []string
+	tdSlot := ""
+	if tdMatch != nil {
+		params = append(params, "trustDomainMatch="+stringMatcherAnnotation(tdMatch))
+		tdSlot = stringMatcherPattern(tdMatch)
+	}
+	pathSlot := ""
+	if pathMatch != nil {
+		params = append(params, "pathMatch="+stringMatcherAnnotation(pathMatch))
+		pathSlot = stringMatcherPattern(pathMatch)
+	}
+	return fmt.Sprintf("spiffe(%s)::%s::%s", strings.Join(params, ","), tdSlot, pathSlot)
+}
+
+// stringMatcherAnnotation returns the "<kind>[/i]" annotation string for a
+// StringMatcher, or "" if the matcher is nil or has no kind set.
+func stringMatcherAnnotation(m *StringMatcher) string {
+	if m == nil {
+		return ""
+	}
+	var kind string
+	switch m.GetKind().(type) {
+	case *StringMatcher_Exact:
+		kind = "exact"
+	case *StringMatcher_Regex:
+		kind = "regex"
+	case *StringMatcher_Prefix:
+		kind = "prefix"
+	case *StringMatcher_Glob:
+		kind = "glob"
+	default:
+		return ""
+	}
+	if m.GetCaseInsensitive() {
+		kind += "/i"
+	}
+	return kind
+}
+
+func stringMatcherPattern(m *StringMatcher) string {
+	if m == nil {
+		return ""
+	}
+	switch v := m.GetKind().(type) {
+	case *StringMatcher_Exact:
+		return v.Exact
+	case *StringMatcher_Regex:
+		return v.Regex
+	case *StringMatcher_Prefix:
+		return v.Prefix
+	case *StringMatcher_Glob:
+		return v.Glob
+	default:
+		return ""
+	}
 }
 
 // Validate checks the integrity of the identity and returns an error if

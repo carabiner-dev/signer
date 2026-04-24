@@ -230,34 +230,138 @@ func TestIdentityPrincipalRoundTrip(t *testing.T) {
 	}
 }
 
-// TestIdentityPrincipalLegacyRegexpFormAccepted documents that the parser
-// still accepts the historical "sigstore(regexp)::..." principal form for
-// back-compat, but Principal() now emits the bare form — matcher semantics
-// (Mode=regexp) are not part of the principal identifier.
-func TestIdentityPrincipalLegacyRegexpFormAccepted(t *testing.T) {
+// TestNewIdentityFromPrincipalRejectsAnnotations confirms Principal is
+// strict: parenthetical matcher annotations belong to Spec, not Principal.
+func TestNewIdentityFromPrincipalRejectsAnnotations(t *testing.T) {
 	t.Parallel()
-	id, err := NewIdentityFromPrincipal("sigstore(regexp)::https://.*::.*@example\\.com")
-	require.NoError(t, err)
-	require.NotNil(t, id.GetSigstore())
-	require.Equal(t, SigstoreModeRegexp, id.GetSigstore().GetMode())
-	require.Equal(t, "https://.*", id.GetSigstore().GetIssuer())
-	require.Equal(t, ".*@example\\.com", id.GetSigstore().GetIdentity())
-	require.Equal(t,
-		"sigstore::https://.*::.*@example\\.com",
-		id.Principal(),
-		"Principal() drops the (regexp) marker — matcher semantics aren't part of the identifier")
+	for _, tt := range []string{
+		"sigstore(regexp)::https://.*::.*@example.com",
+		"sigstore(issuerMatch=exact)::https://accounts.google.com::user@example.com",
+		"key(idMatch=glob)::rsa::abc*",
+	} {
+		t.Run(tt, func(t *testing.T) {
+			t.Parallel()
+			_, err := NewIdentityFromPrincipal(tt)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "matcher annotations")
+		})
+	}
 }
 
-func TestIdentitySlugAliasesPrincipal(t *testing.T) {
+func TestIdentitySpecRoundTrip(t *testing.T) {
 	t.Parallel()
-	// Existing callers using the deprecated names must see identical
-	// behavior to the new names.
-	viaPrincipal, err := NewIdentityFromPrincipal("sigstore::https://accounts.google.com::user@example.com")
+	for _, tt := range []struct {
+		name string
+		spec string
+	}{
+		// Pure forms — Spec degrades to Principal.
+		{"sigstore-pure", "sigstore::https://accounts.google.com::user@example.com"},
+		{"key-pure", "key::rsa::1234abcdef"},
+		{"ref-pure", "ref:shared-identity"},
+		{"spiffe-pure", "spiffe://prod.example.org/workload/api"},
+
+		// Legacy sigstore(regexp).
+		{"sigstore-regexp-legacy", "sigstore(regexp)::https://.*::.*@example\\.com"},
+
+		// Rich form — sigstore.
+		{"sigstore-issuer-match", "sigstore(issuerMatch=exact)::https://accounts.google.com::user@example.com"},
+		{"sigstore-identity-match-regex", "sigstore(identityMatch=regex)::https://accounts.google.com::.*@example\\.com"},
+		{"sigstore-both-match", "sigstore(issuerMatch=exact,identityMatch=regex)::https://accounts.google.com::.*@example\\.com"},
+		{"sigstore-case-insensitive", "sigstore(identityMatch=regex/i)::https://accounts.google.com::user@EXAMPLE\\.com"},
+
+		// Rich form — key.
+		{"key-id-match-glob", "key(idMatch=glob)::rsa::abc*"},
+		{"key-type-match-prefix", "key(typeMatch=prefix)::ed::1234abcdef"},
+
+		// Rich form — spiffe.
+		{"spiffe-svid-match-regex", "spiffe(svidMatch=regex)::^spiffe://prod\\..*/workload$"},
+		{"spiffe-trust-domain-match", "spiffe(trustDomainMatch=exact)::prod.example.org::"},
+		{"spiffe-both-components", "spiffe(trustDomainMatch=exact,pathMatch=glob)::prod.example.org::/api/*"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			id, err := NewIdentityFromSpec(tt.spec)
+			require.NoError(t, err, "parsing")
+			require.Equal(t, tt.spec, id.Spec(), "round-trip")
+		})
+	}
+}
+
+func TestNewIdentityFromSpecPopulatesMatcherFields(t *testing.T) {
+	t.Parallel()
+	id, err := NewIdentityFromSpec("sigstore(issuerMatch=exact,identityMatch=regex/i)::https://accounts.google.com::.*@example\\.com")
 	require.NoError(t, err)
-	viaSlug, err := NewIdentityFromSlug("sigstore::https://accounts.google.com::user@example.com")
+	sig := id.GetSigstore()
+	require.NotNil(t, sig)
+
+	require.NotNil(t, sig.GetIssuerMatch())
+	require.IsType(t, &StringMatcher_Exact{}, sig.GetIssuerMatch().GetKind())
+	require.Equal(t, "https://accounts.google.com", sig.GetIssuerMatch().GetExact())
+	require.False(t, sig.GetIssuerMatch().GetCaseInsensitive())
+
+	require.NotNil(t, sig.GetIdentityMatch())
+	require.IsType(t, &StringMatcher_Regex{}, sig.GetIdentityMatch().GetKind())
+	require.Equal(t, ".*@example\\.com", sig.GetIdentityMatch().GetRegex())
+	require.True(t, sig.GetIdentityMatch().GetCaseInsensitive())
+
+	// Slot values flow into the matcher pattern, NOT into the legacy fields.
+	require.Empty(t, sig.GetIssuer(), "legacy issuer must stay empty when issuerMatch is set")
+	require.Empty(t, sig.GetIdentity(), "legacy identity must stay empty when identityMatch is set")
+}
+
+func TestNewIdentityFromSpecMixedLegacyAndMatcher(t *testing.T) {
+	t.Parallel()
+	// One slot annotated, the other inherits the legacy field.
+	id, err := NewIdentityFromSpec("sigstore(issuerMatch=regex)::https://.*::user@example.com")
 	require.NoError(t, err)
-	require.Equal(t, viaPrincipal.Principal(), viaSlug.Principal())
-	require.Equal(t, viaPrincipal.Slug(), viaPrincipal.Principal())
+	sig := id.GetSigstore()
+	require.NotNil(t, sig)
+	require.NotNil(t, sig.GetIssuerMatch())
+	require.Equal(t, "https://.*", sig.GetIssuerMatch().GetRegex())
+	require.Empty(t, sig.GetIssuer())
+	require.Equal(t, "user@example.com", sig.GetIdentity(), "identity slot populates legacy field when not annotated")
+	require.Nil(t, sig.GetIdentityMatch())
+}
+
+func TestNewIdentityFromSpecErrors(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name    string
+		spec    string
+		wantSub string
+	}{
+		{"unclosed-paren", "sigstore(issuerMatch=exact::a::b", "unclosed"},
+		{"unknown-kind", "sigstore(issuerMatch=fuzzy)::a::b", "unknown matcher kind"},
+		{"unknown-field", "sigstore(weirdMatch=exact)::a::b", "unknown sigstore matcher field"},
+		{"bad-options", "sigstore(issuerMatch=exact/x)::a::b", "unknown matcher options"},
+		{"sigstore-wrong-slots", "sigstore(issuerMatch=exact)::only-one-slot", "requires 2 slots"},
+		{"unknown-type", "weirdtype(field=exact)::a::b", "unknown identity type"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := NewIdentityFromSpec(tt.spec)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tt.wantSub)
+		})
+	}
+}
+
+func TestIdentitySlugAliasesSpec(t *testing.T) {
+	t.Parallel()
+	// Old callers used Slug, which carried the rich form (e.g. (regexp)).
+	// The new alias must preserve that behavior.
+	rich := "sigstore(regexp)::https://.*::.*@example\\.com"
+	id, err := NewIdentityFromSlug(rich)
+	require.NoError(t, err)
+	require.Equal(t, rich, id.Slug(), "Slug round-trips rich form")
+	require.Equal(t, id.Spec(), id.Slug(), "Slug aliases Spec")
+
+	// And NewIdentityFromSlug must still accept pure forms.
+	pure := "sigstore::https://accounts.google.com::user@example.com"
+	id2, err := NewIdentityFromSlug(pure)
+	require.NoError(t, err)
+	require.Equal(t, pure, id2.Spec())
+	require.Equal(t, pure, id2.Principal(), "pure form: Spec == Principal")
 }
 
 func TestIdentitySpiffeFromString(t *testing.T) {
