@@ -54,10 +54,15 @@ who signed without carrying match semantics:
 | `Ref`      | `ref:<id>`                                        |
 | `Spiffe`   | `<svid>` — the SPIFFE URI itself                  |
 
-`Identity.Principal()` emits it; `NewIdentityFromPrincipal(s)` parses.
+`Identity.Principal()` emits it; `NewIdentityFromPrincipal(s)` parses
+strictly (matcher annotations rejected). When you need the rich form
+that also encodes matcher semantics, use `Identity.Spec()` /
+`NewIdentityFromSpec` — see [principals.md](principals.md) for the
+full grammar.
 
 The deprecated names `Slug()` / `NewIdentityFromSlug` are compat
-aliases and still work; prefer `Principal` going forward.
+aliases for `Spec` / `NewIdentityFromSpec` and still work; prefer the
+explicit names going forward.
 
 ## The matcher layer (new, canonical)
 
