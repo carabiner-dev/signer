@@ -91,27 +91,44 @@ func TestE2ESPIFFESignAndVerify(t *testing.T) {
 	require.Equal(t, "spiffe://test.local/workload",
 		result.VerifiedIdentity.SubjectAlternativeName.SubjectAlternativeName)
 
-	// Policy matching via the api/v1 layer.
+	// Identity matching via the api/v1 layer.
 	sv := api.SignatureVerificationFromResult(result)
 	require.True(t, sv.GetVerified())
 
 	require.True(t, sv.MatchesIdentity(&api.Identity{
 		Spiffe: &api.IdentitySpiffe{
-			TrustDomain: "test.local",
-			Path:        "/workload",
+			Svid: "spiffe://test.local/workload",
 		},
-	}), "policy matching the issued SVID should succeed")
-
-	require.False(t, sv.MatchesIdentity(&api.Identity{
-		Spiffe: &api.IdentitySpiffe{
-			TrustDomain: "other.example",
-		},
-	}), "policy with wrong trust domain should not match")
+	}), "exact SVID pin should match the issued SVID")
 
 	require.True(t, sv.MatchesIdentity(&api.Identity{
 		Spiffe: &api.IdentitySpiffe{
-			TrustDomain: "test.local",
-			PathRegex:   `^/work.*$`,
+			TrustDomainMatch: &api.StringMatcher{
+				Kind: &api.StringMatcher_Exact{Exact: "test.local"},
+			},
+			PathMatch: &api.StringMatcher{
+				Kind: &api.StringMatcher_Exact{Exact: "/workload"},
+			},
 		},
-	}), "regex policy should match")
+	}), "trust-domain + path component match should succeed")
+
+	require.False(t, sv.MatchesIdentity(&api.Identity{
+		Spiffe: &api.IdentitySpiffe{
+			TrustDomainMatch: &api.StringMatcher{
+				Kind: &api.StringMatcher_Exact{Exact: "other.example"},
+			},
+		},
+	}), "wrong trust domain should not match")
+
+	require.True(t, sv.MatchesIdentity(&api.Identity{
+		Spiffe: &api.IdentitySpiffe{
+			TrustDomainMatch: &api.StringMatcher{
+				Kind: &api.StringMatcher_Exact{Exact: "test.local"},
+			},
+			PathMatch: &api.StringMatcher{
+				// matchString anchors regex to the full input.
+				Kind: &api.StringMatcher_Regex{Regex: `/work.*`},
+			},
+		},
+	}), "regex path match should succeed")
 }
