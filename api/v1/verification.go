@@ -4,11 +4,13 @@
 package v1
 
 import (
+	"path"
 	"regexp"
 	"strings"
 
 	"github.com/carabiner-dev/attestation"
 	"github.com/sigstore/sigstore-go/pkg/verify"
+	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -166,59 +168,103 @@ func (sv *SignatureVerification) MatchesSigstoreIdentity(id *IdentitySigstore) b
 // produced by a SPIFFE workload matching the supplied identity. Matching
 // rules:
 //
-//   - TrustDomain (required): compared exactly against the signer's trust
-//     domain. An empty TrustDomain in the policy is rejected since a
-//     wildcard match across trust domains is almost never the intent.
-//   - Path (optional): when set, the signer's SPIFFE path must match
-//     exactly. Mutually exclusive with PathRegex.
-//   - PathRegex (optional): when set, compiled and applied to the signer's
-//     SPIFFE path. Mutually exclusive with Path.
+//   - Svid (optional, exact): when set, the signer's svid must match this
+//     URI exactly.
+//   - SvidMatch (optional): StringMatcher applied to the full signer
+//     svid URI.
+//   - TrustDomainMatch / PathMatch (optional): StringMatchers applied to
+//     the trust-domain / path components parsed from the signer's svid
+//     at eval time. If the signer's svid doesn't parse as a valid SPIFFE
+//     ID, these matchers fail closed.
 //   - TrustRoots is not consulted here — it is policy configuration used
 //     by the verifier to validate the chain, not an attribute of the
 //     signer.
 //
-// If both Path and PathRegex are set the policy is treated as malformed
-// and no match is returned.
+// All conditions that are set must pass (AND semantics). At least one
+// constraint must be specified; an identity with none of svid, svid_match,
+// trust_domain_match, or path_match set matches nothing.
 func (sv *SignatureVerification) MatchesSpiffeIdentity(id *IdentitySpiffe) bool {
-	if id.GetTrustDomain() == "" {
-		return false
-	}
-	if id.GetPath() != "" && id.GetPathRegex() != "" {
+	hasConstraint := id.GetSvid() != "" ||
+		id.GetSvidMatch() != nil ||
+		id.GetTrustDomainMatch() != nil ||
+		id.GetPathMatch() != nil
+	if !hasConstraint {
 		return false
 	}
 
-	// PathRegex is anchored — see anchoredRegex comment in
-	// MatchesSigstoreIdentity for rationale.
-	var pathRegex *regexp.Regexp
-	if id.GetPathRegex() != "" {
-		re, err := regexp.Compile(anchoredRegex(id.GetPathRegex()))
-		if err != nil {
-			return false
-		}
-		pathRegex = re
-	}
+	needsParsed := id.GetTrustDomainMatch() != nil || id.GetPathMatch() != nil
 
 	for _, signer := range sv.GetIdentities() {
 		signerSpiffe := signer.GetSpiffe()
 		if signerSpiffe == nil {
 			continue
 		}
-		if signerSpiffe.GetTrustDomain() != id.GetTrustDomain() {
+		signerSvid := signerSpiffe.GetSvid()
+
+		if want := id.GetSvid(); want != "" && signerSvid != want {
 			continue
 		}
-		switch {
-		case id.GetPath() != "":
-			if signerSpiffe.GetPath() != id.GetPath() {
+		if m := id.GetSvidMatch(); m != nil && !matchString(m, signerSvid) {
+			continue
+		}
+
+		if needsParsed {
+			parsed, err := spiffeid.FromString(signerSvid)
+			if err != nil {
 				continue
 			}
-		case pathRegex != nil:
-			if !pathRegex.MatchString(signerSpiffe.GetPath()) {
+			if m := id.GetTrustDomainMatch(); m != nil && !matchString(m, parsed.TrustDomain().Name()) {
+				continue
+			}
+			if m := id.GetPathMatch(); m != nil && !matchString(m, parsed.Path()) {
 				continue
 			}
 		}
+
 		return true
 	}
 	return false
+}
+
+// matchString evaluates a StringMatcher against value. An unset matcher
+// matches any value (caller-controlled guard).
+func matchString(m *StringMatcher, value string) bool {
+	if m == nil {
+		return true
+	}
+	switch kind := m.GetKind().(type) {
+	case *StringMatcher_Exact:
+		if m.GetCaseInsensitive() {
+			return strings.EqualFold(kind.Exact, value)
+		}
+		return kind.Exact == value
+	case *StringMatcher_Regex:
+		pattern := anchoredRegex(kind.Regex)
+		if m.GetCaseInsensitive() {
+			pattern = "(?i)" + pattern
+		}
+		re, err := regexp.Compile(pattern)
+		if err != nil {
+			return false
+		}
+		return re.MatchString(value)
+	case *StringMatcher_Prefix:
+		if m.GetCaseInsensitive() {
+			return strings.HasPrefix(strings.ToLower(value), strings.ToLower(kind.Prefix))
+		}
+		return strings.HasPrefix(value, kind.Prefix)
+	case *StringMatcher_Glob:
+		target := value
+		pattern := kind.Glob
+		if m.GetCaseInsensitive() {
+			target = strings.ToLower(target)
+			pattern = strings.ToLower(pattern)
+		}
+		ok, err := path.Match(pattern, target)
+		return err == nil && ok
+	default:
+		return false
+	}
 }
 
 // MatchesKeyIdentity returns true if one of the verified signatures was
