@@ -25,6 +25,7 @@ import (
 	"github.com/carabiner-dev/signer/bundle/bundlefakes"
 	"github.com/carabiner-dev/signer/dsse"
 	"github.com/carabiner-dev/signer/dsse/dssefakes"
+	"github.com/carabiner-dev/signer/key"
 	"github.com/carabiner-dev/signer/options"
 )
 
@@ -89,7 +90,7 @@ func TestSignStatement(t *testing.T) {
 			h := newTestHarness()
 			tt.setup(h)
 			sut := h.signer(t)
-			res, err := sut.SignStatement([]byte(attData))
+			res, err := sut.SignStatementBundle([]byte(attData))
 			if tt.mustErr {
 				require.Error(t, err)
 				return
@@ -126,7 +127,7 @@ func TestSignMessage(t *testing.T) {
 			h := newTestHarness()
 			tt.setup(h)
 			sut := h.signer(t)
-			res, err := sut.SignMessage([]byte(testData))
+			res, err := sut.SignMessageBundle([]byte(testData))
 			if tt.mustErr {
 				require.Error(t, err)
 				return
@@ -163,7 +164,9 @@ func TestSignEnvelope(t *testing.T) {
 				dsseSigner: dsseSigner,
 			}
 
-			err := signer.SignEnvelope(&sdsse.Envelope{})
+			// Pass a stub key so the no-keys validation doesn't
+			// short-circuit before the fake's stubbed errors fire.
+			err := signer.SignEnvelope(&sdsse.Envelope{}, options.WithKey(stubPrivateKey{}))
 			if tt.mustErr {
 				require.Error(t, err)
 				return
@@ -205,7 +208,10 @@ func TestSignStatementToDSSE(t *testing.T) {
 				dsseSigner: dsseSigner,
 			}
 
-			_, err := signer.SignStatementToDSSE([]byte("test"))
+			// Pass a stub key so the new "keys required" validation
+			// in SignMessageToDSSE doesn't short-circuit before the
+			// fake signer's stubbed errors fire.
+			_, err := signer.SignStatementToDSSE([]byte("test"), options.WithKey(stubPrivateKey{}))
 			if tt.mustErr {
 				require.Error(t, err)
 				return
@@ -214,6 +220,12 @@ func TestSignStatementToDSSE(t *testing.T) {
 		})
 	}
 }
+
+// stubPrivateKey is a no-op PrivateKeyProvider used in tests where the
+// underlying dsse signer is mocked and never reaches the key material.
+type stubPrivateKey struct{}
+
+func (stubPrivateKey) PrivateKey() (*key.Private, error) { return nil, nil }
 
 // TestSignAndVerifyMocked exercises the full sign → verify flow using mocked
 // sigstore interactions. This runs on all PRs including forks where real
@@ -235,7 +247,7 @@ func TestSignAndVerifyMocked(t *testing.T) {
 		bundleSigner: fakeBundleSigner,
 	}
 
-	bndl, err := s.SignStatement(statementData)
+	bndl, err := s.SignStatementBundle(statementData)
 	require.NoError(t, err)
 	require.NotNil(t, bndl)
 
@@ -282,7 +294,7 @@ func TestSigningStateReuse(t *testing.T) {
 
 	// Sign three statements with the same signer
 	for i := range 3 {
-		bndl, err := s.SignStatement(statementData)
+		bndl, err := s.SignStatementBundle(statementData)
 		require.NoError(t, err, "signing attempt %d", i+1)
 		require.NotNil(t, bndl)
 	}
@@ -301,7 +313,7 @@ func TestSigningStateReuse(t *testing.T) {
 // DER-encoded x509.Certificate.
 func mintTestCert(t *testing.T, cn string) *x509.Certificate {
 	t.Helper()
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 	template := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
@@ -311,7 +323,7 @@ func mintTestCert(t *testing.T, cn string) *x509.Certificate {
 		KeyUsage:              x509.KeyUsageDigitalSignature,
 		BasicConstraintsValid: true,
 	}
-	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &priv.PublicKey, priv)
 	require.NoError(t, err)
 	cert, err := x509.ParseCertificate(der)
 	require.NoError(t, err)
@@ -354,7 +366,7 @@ func TestSignStatementAttachesIntermediates(t *testing.T) {
 		bundleSigner: fakeBundleSigner,
 	}
 
-	bndl, err := s.SignStatement(statementData)
+	bndl, err := s.SignStatementBundle(statementData)
 	require.NoError(t, err)
 	require.NotNil(t, bndl)
 
@@ -398,7 +410,7 @@ func TestSignStatementLeavesLeafOnlyBundleUntouched(t *testing.T) {
 		bundleSigner: fakeBundleSigner,
 	}
 
-	bndl, err := s.SignStatement(statementData)
+	bndl, err := s.SignStatementBundle(statementData)
 	require.NoError(t, err)
 
 	leafContent, ok := bndl.GetVerificationMaterial().GetContent().(*protobundle.VerificationMaterial_Certificate)
