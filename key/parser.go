@@ -23,6 +23,10 @@ type Parser struct{}
 
 type KeyParseOptions struct {
 	Scheme Scheme
+	// Passphrase decrypts encrypted GPG private keys. Plain-text PEM
+	// private keys ignore this field. Empty + encrypted key + parser
+	// invocation is an error.
+	Passphrase string
 }
 
 type FnOpt func(*KeyParseOptions)
@@ -31,6 +35,14 @@ type FnOpt func(*KeyParseOptions)
 func WithScheme(scheme Scheme) FnOpt {
 	return func(kpo *KeyParseOptions) {
 		kpo.Scheme = scheme
+	}
+}
+
+// WithPassphrase supplies a passphrase used to decrypt encrypted
+// private keys (currently only GPG-armored encrypted keys).
+func WithPassphrase(passphrase string) FnOpt {
+	return func(kpo *KeyParseOptions) {
+		kpo.Passphrase = passphrase
 	}
 }
 
@@ -96,6 +108,113 @@ func (p *Parser) ParsePublicKeyProvider(pubKeyData []byte, funcs ...FnOpt) (Publ
 
 	// Neither worked, return the PEM error as it's the most common format
 	return nil, fmt.Errorf("parsing public key: %w", pemErr)
+}
+
+// ParsePrivateKeyProvider parses private key data and returns a
+// PrivateKeyProvider. Supports:
+//
+//   - PEM-encoded PKCS#8, PKCS#1 (RSA), and SEC1 (EC) private keys.
+//     Returned as *Private.
+//   - OpenPGP private keys (ASCII-armored or binary), encrypted or
+//     plain. Encrypted keys require WithPassphrase. Returned as
+//     *GPGPrivate to preserve OpenPGP entity metadata.
+//
+// Tries OpenPGP first because GPG armored data is also valid PEM in
+// some sense; the GPG parser correctly rejects non-OpenPGP PEM input
+// and we fall back to PEM parsing.
+func (p *Parser) ParsePrivateKeyProvider(privKeyData []byte, funcs ...FnOpt) (PrivateKeyProvider, error) {
+	opts := KeyParseOptions{}
+	for _, f := range funcs {
+		f(&opts)
+	}
+
+	// Try OpenPGP first.
+	gpgKeys, gpgErr := ParseGPGPrivateKey(privKeyData, []byte(opts.Passphrase))
+	if gpgErr == nil && len(gpgKeys) > 0 {
+		return gpgKeys[0], nil
+	}
+
+	// Fall back to PEM private-key formats.
+	priv, pemErr := parsePrivateKeyBytes(privKeyData)
+	if pemErr != nil {
+		// Surface the PEM error as the primary diagnostic — that's
+		// the dominant format. The GPG attempt is best-effort.
+		return nil, fmt.Errorf("parsing private key: %w", pemErr)
+	}
+
+	if opts.Scheme != "" {
+		priv.Scheme = opts.Scheme
+	}
+	return priv, nil
+}
+
+// parsePrivateKeyBytes parses a PEM-encoded private key. Supports
+// PKCS#8 ("PRIVATE KEY" or "ENCRYPTED PRIVATE KEY"), PKCS#1
+// ("RSA PRIVATE KEY"), and SEC1 ("EC PRIVATE KEY") blocks. Infers
+// Type, Scheme, and HashType from the parsed crypto key, mirroring
+// parseKeyBytes' public-key inference.
+func parsePrivateKeyBytes(privKeyData []byte) (*Private, error) {
+	blk, _ := pem.Decode(privKeyData)
+	if blk == nil || blk.Bytes == nil {
+		return nil, errors.New("unable to decode PEM block from private key data")
+	}
+
+	var (
+		raw any
+		err error
+	)
+	switch blk.Type {
+	case "PRIVATE KEY":
+		raw, err = x509.ParsePKCS8PrivateKey(blk.Bytes)
+	case "RSA PRIVATE KEY":
+		raw, err = x509.ParsePKCS1PrivateKey(blk.Bytes)
+	case "EC PRIVATE KEY":
+		raw, err = x509.ParseECPrivateKey(blk.Bytes)
+	default:
+		// Best-effort: attempt PKCS#8 for unknown headers — a
+		// caller-generated armoring with a non-canonical Type still
+		// often contains PKCS#8 inside.
+		raw, err = x509.ParsePKCS8PrivateKey(blk.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("unsupported PEM block type %q for private key", blk.Type)
+		}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("parsing PEM private key (%s): %w", blk.Type, err)
+	}
+
+	priv := &Private{
+		Data: string(privKeyData),
+		Key:  raw,
+	}
+	switch pk := raw.(type) {
+	case *rsa.PrivateKey:
+		priv.Type = RSA
+		priv.HashType = crypto.SHA256
+		priv.Scheme = RsaPkcs1v15
+	case *ecdsa.PrivateKey:
+		priv.Type = ECDSA
+		switch pk.Curve.Params().Name {
+		case elliptic.P224().Params().Name:
+			priv.HashType = crypto.SHA224
+			priv.Scheme = EcdsaSha2nistP224
+		case elliptic.P256().Params().Name:
+			priv.HashType = crypto.SHA256
+			priv.Scheme = EcdsaSha2nistP256
+		case elliptic.P384().Params().Name:
+			priv.HashType = crypto.SHA384
+			priv.Scheme = EcdsaSha2nistP384
+		case elliptic.P521().Params().Name:
+			priv.HashType = crypto.SHA512
+			priv.Scheme = EcdsaSha2nistP521
+		}
+	case ed25519.PrivateKey:
+		priv.Type = ED25519
+		priv.Scheme = Ed25519
+	default:
+		return nil, fmt.Errorf("unsupported private key type %T", raw)
+	}
+	return priv, nil
 }
 
 // parseKeyBytes is the parser function. It's a helper to expose it to tests.
