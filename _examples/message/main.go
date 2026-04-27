@@ -22,7 +22,7 @@ func main() {
 	s := signer.NewSigner()
 
 	// Sign a string and wrap it in a bundle
-	bundle, err := s.SignMessage([]byte(data))
+	bundle, err := s.SignMessageBundle([]byte(data))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
