@@ -120,6 +120,24 @@ func (k *KeysSign) AddKeys(providers ...key.PrivateKeyProvider) {
 	k.extraKeys = append(k.extraKeys, providers...)
 }
 
+// BuildSigner returns a *Signer wired for the key backend: Backend
+// set to BackendKey and Keys populated from ParseSigningKeys. Errors
+// when no keys are configured (a key-backend signer with no keys
+// can't sign).
+func (k *KeysSign) BuildSigner() (*Signer, error) {
+	keys, err := k.ParseSigningKeys()
+	if err != nil {
+		return nil, err
+	}
+	if len(keys) == 0 {
+		return nil, errors.New("KeysSign.BuildSigner: no signing keys configured")
+	}
+	target := DefaultSigner
+	target.Backend = BackendKey
+	target.Keys = keys
+	return &target, nil
+}
+
 // ParseSigningKeys reads and parses every entry in PrivateKeyPaths
 // and returns the resulting providers prepended with AddKeys-supplied
 // extras. Encrypted GPG keys are decrypted using the passphrase read

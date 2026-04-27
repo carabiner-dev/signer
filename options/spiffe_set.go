@@ -365,6 +365,24 @@ func (s *SpiffeSignSet) BuildCredentialProvider() (*spiffe.CredentialProvider, e
 	return s.Sign.BuildCredentialProvider()
 }
 
+// BuildSigner returns a *Signer wired for the SPIFFE backend: Backend
+// set to BackendSpiffe. Callers must additionally call
+// BuildCredentialProvider and assign the result to
+// signer.Signer.Credentials before signing — the SPIFFE backend
+// cannot construct credentials from Options alone. Validates the set
+// before returning.
+func (s *SpiffeSignSet) BuildSigner() (*Signer, error) {
+	if s == nil || s.Sign == nil {
+		return nil, errors.New("SpiffeSignSet: nil; construct via DefaultSpiffeSignSet")
+	}
+	if err := s.Sign.Validate(); err != nil {
+		return nil, err
+	}
+	target := DefaultSigner
+	target.Backend = BackendSpiffe
+	return &target, nil
+}
+
 // SpiffeVerifySet bundles a SpiffeCommon and a SpiffeVerify sharing
 // the same flag prefix.
 type SpiffeVerifySet struct {
