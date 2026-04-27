@@ -54,6 +54,24 @@ func (k *KeysVerify) ApplyToVerifier(target *Verifier) error {
 	return nil
 }
 
+// Active reports whether the user has configured this set with any
+// public keys via the --key flag. Active=false means the bundled
+// VerifierSet skips this child during Validate / ApplyToVerifier so
+// a CLI verifying a sigstore- or SPIFFE-only bundle isn't forced to
+// pass --key.
+//
+// Programmatically-added keys (via the embedded keys.Options.AddKeys)
+// are not visible here because the upstream extraKeys field is
+// unexported. Callers who only use AddKeys should construct the
+// verifier directly via BuildVerifier rather than relying on the
+// bundled VerifierSet's active-child filtering.
+func (k *KeysVerify) Active() bool {
+	if k == nil || k.Options == nil {
+		return false
+	}
+	return len(k.PublicKeyPaths) > 0
+}
+
 // BuildVerifier returns a *Verifier populated from the resolved
 // public-key configuration. Empty key configuration is allowed and
 // yields a Verifier whose PubKeys slice is empty — callers that

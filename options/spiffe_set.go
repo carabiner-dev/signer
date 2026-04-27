@@ -446,6 +446,19 @@ func (s *SpiffeVerifySet) ApplyToVerifier(target *Verifier) error {
 	return s.Verify.ApplyToVerifier(target)
 }
 
+// Active reports whether the user has configured a SPIFFE trust
+// bundle from any source: --spiffe-trust-bundle flag, the
+// SPIFFE_TRUST_BUNDLE env var, or programmatic TrustBundlePEM.
+// Inactive sets contribute nothing to the bundled VerifierSet so
+// CLIs verifying sigstore-only bundles aren't forced to set SPIFFE
+// trust material.
+func (s *SpiffeVerifySet) Active() bool {
+	if s == nil || s.Verify == nil {
+		return false
+	}
+	return s.Verify.EffectiveTrustBundlePath() != "" || len(s.Verify.TrustBundlePEM) > 0
+}
+
 // BuildVerifier returns a *Verifier populated from the resolved SPIFFE
 // configuration. Mirrors SpiffeSignSet.BuildSigner on the verify side.
 func (s *SpiffeVerifySet) BuildVerifier() (*Verifier, error) {

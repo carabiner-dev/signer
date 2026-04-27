@@ -544,6 +544,16 @@ func (s *SigstoreVerifySet) ApplyToVerifier(target *Verifier) error {
 	return s.Verify.ApplyToVerifier(target)
 }
 
+// Active reports whether the bundled VerifierSet should consult this
+// child. Sigstore is the always-on verification baseline — even with
+// no user flags, the embedded sigstore.DefaultRoots make
+// SigstoreVerifySet ready to verify, so Active is true whenever the
+// set is non-nil. Returning false here would suppress sigstore
+// verification entirely, which is rarely what callers want.
+func (s *SigstoreVerifySet) Active() bool {
+	return s != nil && s.Verify != nil && s.Common != nil
+}
+
 // BuildVerifier returns a *Verifier populated from the resolved
 // sigstore-roots configuration. Mirrors SigstoreSignSet.BuildSigner
 // on the verify side.
