@@ -27,7 +27,7 @@ runtime types in the top-level `signer` package.
 
 | Set | Selects vs. composes | Notes |
 | --- | --- | --- |
-| `SignerSet`   | selects via `--backend=key\|sigstore\|spiffe` | exactly one backend signs at a time |
+| `SignerSet`   | selects via `--signing-backend=key\|sigstore\|spiffe` | exactly one backend signs at a time |
 | `VerifierSet` | composes Active children                       | a bundle may have been signed any way; the verifier wants trust material for every accepted path |
 
 `Active()` — only the verify side has it — returns true when the user
@@ -44,7 +44,7 @@ prefixes).
 
 ### `KeysSign` — `options.DefaultKeysSign()`
 
-Used standalone (rare) or via `SignerSet` when `--backend=key`.
+Used standalone (rare) or via `SignerSet` when `--signing-backend=key`.
 
 | Flag | Short | Repeatable | Description |
 | --- | --- | --- | --- |
@@ -138,14 +138,14 @@ configured: the flag, the env var, or programmatic `TrustBundlePEM`.
 
 ### `SignerSet` — `options.DefaultSignerSet()`
 
-Registers `--backend` plus every per-backend sign set's flags so the
+Registers `--signing-backend` plus every per-backend sign set's flags so the
 full CLI surface shows up in `--help`. `Validate` and `BuildSigner`
-dispatch on `--backend`; non-selected children contribute their flags
+dispatch on `--signing-backend`; non-selected children contribute their flags
 to help text but are otherwise inert.
 
 | Flag | Description | Default |
 | --- | --- | --- |
-| `--backend` | signing backend (`key`, `sigstore`, `spiffe`) | `sigstore` |
+| `--signing-backend` | signing backend (`key`, `sigstore`, `spiffe`) | `sigstore` |
 
 ### `VerifierSet` — `options.DefaultVerifierSet()`
 
@@ -173,7 +173,7 @@ import (
 )
 
 func main() {
-    signSet := options.DefaultSignerSet()      // --backend=sigstore by default
+    signSet := options.DefaultSignerSet()      // --signing-backend=sigstore by default
     verifySet := options.DefaultVerifierSet()
 
     cmd := &cobra.Command{
@@ -225,8 +225,8 @@ Run with any of:
 
 ```sh
 mytool                                      # sigstore (default)
-mytool --backend=key --signing-key=priv.pem --key=pub.pem
-mytool --backend=spiffe \
+mytool --signing-backend=key --signing-key=priv.pem --key=pub.pem
+mytool --signing-backend=spiffe \
        --spiffe-socket=unix:///run/spire/sockets/api.sock \
        --spiffe-trust-bundle=/etc/spire/bundle.pem
 ```
@@ -236,7 +236,7 @@ Or rely on env-var fallbacks for SPIFFE:
 ```sh
 export SPIFFE_ENDPOINT_SOCKET=unix:///run/spire/sockets/api.sock
 export SPIFFE_TRUST_BUNDLE=/etc/spire/bundle.pem
-mytool --backend=spiffe
+mytool --signing-backend=spiffe
 ```
 
 A complete working example lives at
@@ -244,7 +244,7 @@ A complete working example lives at
 
 ## Bypassing the bundled sets
 
-If `--backend` is overkill (e.g. a tool that only ever signs through
+If `--signing-backend` is overkill (e.g. a tool that only ever signs through
 SPIFFE), wire the per-backend set directly:
 
 ```go

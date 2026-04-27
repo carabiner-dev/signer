@@ -14,10 +14,10 @@ import (
 )
 
 // SignerSet is the top-level sign-side OptionsSet that bundles every
-// backend-specific child set behind a single --backend discriminator
-// flag. AddFlags registers --backend plus every child's flags so the
+// backend-specific child set behind a single --signing-backend discriminator
+// flag. AddFlags registers --signing-backend plus every child's flags so the
 // CLI's --help shows the full surface; Validate and BuildSigner act
-// only on the child selected by --backend, so non-selected children
+// only on the child selected by --signing-backend, so non-selected children
 // are inert.
 //
 // Typical use:
@@ -40,7 +40,7 @@ import (
 // behavior takes over.
 type SignerSet struct {
 	// Backend selects which child set Validate/BuildSigner consult.
-	// Bound to --backend. Empty resolves to BackendSigstore, matching
+	// Bound to --signing-backend. Empty resolves to BackendSigstore, matching
 	// the runtime signer's default.
 	Backend string
 
@@ -67,15 +67,15 @@ func DefaultSignerSet() *SignerSet {
 	}
 }
 
-// Config returns the flag config for the --backend flag itself.
-// Children expose their own Config() and remain the authoritative
-// source for their flag namespaces.
+// Config returns the flag config for the --signing-backend flag
+// itself. Children expose their own Config() and remain the
+// authoritative source for their flag namespaces.
 func (s *SignerSet) Config() *command.OptionsSetConfig {
 	if s.config == nil {
 		s.config = &command.OptionsSetConfig{
 			Flags: map[string]command.FlagConfig{
-				"backend": {
-					Long: "backend",
+				"signing-backend": {
+					Long: "signing-backend",
 					Help: fmt.Sprintf("signing backend (%s | %s | %s)", BackendKey, BackendSigstore, BackendSpiffe),
 				},
 			},
@@ -84,16 +84,16 @@ func (s *SignerSet) Config() *command.OptionsSetConfig {
 	return s.config
 }
 
-// AddFlags registers --backend and every non-nil child's flags. Order
-// is fixed (backend → keys → sigstore → spiffe) so --help output is
-// stable across runs.
+// AddFlags registers --signing-backend and every non-nil child's
+// flags. Order is fixed (signing-backend → keys → sigstore → spiffe)
+// so --help output is stable across runs.
 func (s *SignerSet) AddFlags(cmd *cobra.Command) {
 	cfg := s.Config()
 	cmd.PersistentFlags().StringVar(
 		&s.Backend,
-		cfg.LongFlag("backend"),
+		cfg.LongFlag("signing-backend"),
 		s.Backend,
-		cfg.HelpText("backend"),
+		cfg.HelpText("signing-backend"),
 	)
 	if s.Keys != nil {
 		s.Keys.AddFlags(cmd)
@@ -116,12 +116,12 @@ func (s *SignerSet) resolveBackend() (Backend, error) {
 	case BackendKey, BackendSigstore, BackendSpiffe:
 		return Backend(s.Backend), nil
 	default:
-		return "", fmt.Errorf("SignerSet: unknown --backend %q (valid: %s, %s, %s)",
+		return "", fmt.Errorf("SignerSet: unknown --signing-backend %q (valid: %s, %s, %s)",
 			s.Backend, BackendKey, BackendSigstore, BackendSpiffe)
 	}
 }
 
-// Validate checks --backend is recognized and validates the selected
+// Validate checks --signing-backend is recognized and validates the selected
 // child only. Non-selected children are not consulted, so their flags
 // can be left unset without failing validation. Nil-safe.
 func (s *SignerSet) Validate() error {
@@ -135,17 +135,17 @@ func (s *SignerSet) Validate() error {
 	switch backend {
 	case BackendKey:
 		if s.Keys == nil {
-			return errors.New("SignerSet: --backend=key but Keys is nil")
+			return errors.New("SignerSet: --signing-backend=key but Keys is nil")
 		}
 		return s.Keys.Validate()
 	case BackendSigstore:
 		if s.Sigstore == nil {
-			return errors.New("SignerSet: --backend=sigstore but Sigstore is nil")
+			return errors.New("SignerSet: --signing-backend=sigstore but Sigstore is nil")
 		}
 		return s.Sigstore.Validate()
 	case BackendSpiffe:
 		if s.Spiffe == nil {
-			return errors.New("SignerSet: --backend=spiffe but Spiffe is nil")
+			return errors.New("SignerSet: --signing-backend=spiffe but Spiffe is nil")
 		}
 		return s.Spiffe.Validate()
 	default:
@@ -153,7 +153,7 @@ func (s *SignerSet) Validate() error {
 	}
 }
 
-// BuildSigner dispatches on --backend and returns the populated
+// BuildSigner dispatches on --signing-backend and returns the populated
 // *Signer for that backend. SPIFFE callers must additionally call
 // BuildCredentialProvider and assign the result to
 // signer.Signer.Credentials before any Sign* call.
@@ -168,17 +168,17 @@ func (s *SignerSet) BuildSigner() (*Signer, error) {
 	switch backend {
 	case BackendKey:
 		if s.Keys == nil {
-			return nil, errors.New("SignerSet: --backend=key but Keys is nil")
+			return nil, errors.New("SignerSet: --signing-backend=key but Keys is nil")
 		}
 		return s.Keys.BuildSigner()
 	case BackendSigstore:
 		if s.Sigstore == nil {
-			return nil, errors.New("SignerSet: --backend=sigstore but Sigstore is nil")
+			return nil, errors.New("SignerSet: --signing-backend=sigstore but Sigstore is nil")
 		}
 		return s.Sigstore.BuildSigner()
 	case BackendSpiffe:
 		if s.Spiffe == nil {
-			return nil, errors.New("SignerSet: --backend=spiffe but Spiffe is nil")
+			return nil, errors.New("SignerSet: --signing-backend=spiffe but Spiffe is nil")
 		}
 		return s.Spiffe.BuildSigner()
 	default:
@@ -203,7 +203,7 @@ func (s *SignerSet) BuildCredentialProvider() (*spiffe.CredentialProvider, error
 		return nil, nil
 	}
 	if s.Spiffe == nil {
-		return nil, errors.New("SignerSet: --backend=spiffe but Spiffe is nil")
+		return nil, errors.New("SignerSet: --signing-backend=spiffe but Spiffe is nil")
 	}
 	return s.Spiffe.BuildCredentialProvider()
 }

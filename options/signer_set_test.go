@@ -18,7 +18,7 @@ func TestSignerSetAddFlags(t *testing.T) {
 	set.AddFlags(cmd)
 
 	for _, name := range []string{
-		"backend",
+		"signing-backend",
 		"signing-key",
 		"signing-key-passphrase-env",
 		"sigstore-roots",
@@ -36,7 +36,7 @@ func TestSignerSetValidateUnknownBackend(t *testing.T) {
 	set.Backend = "carrier-pigeon"
 	err := set.Validate()
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "unknown --backend")
+	require.Contains(t, err.Error(), "unknown --signing-backend")
 }
 
 func TestSignerSetValidateKeyBackend(t *testing.T) {
