@@ -123,8 +123,11 @@ func (s *SignerSet) resolveBackend() (Backend, error) {
 
 // Validate checks --backend is recognized and validates the selected
 // child only. Non-selected children are not consulted, so their flags
-// can be left unset without failing validation.
+// can be left unset without failing validation. Nil-safe.
 func (s *SignerSet) Validate() error {
+	if s == nil {
+		return errors.New("SignerSet: nil; construct via DefaultSignerSet")
+	}
 	backend, err := s.resolveBackend()
 	if err != nil {
 		return err
@@ -155,6 +158,9 @@ func (s *SignerSet) Validate() error {
 // BuildCredentialProvider and assign the result to
 // signer.Signer.Credentials before any Sign* call.
 func (s *SignerSet) BuildSigner() (*Signer, error) {
+	if s == nil {
+		return nil, errors.New("SignerSet: nil; construct via DefaultSignerSet")
+	}
 	backend, err := s.resolveBackend()
 	if err != nil {
 		return nil, err
@@ -186,6 +192,9 @@ func (s *SignerSet) BuildSigner() (*Signer, error) {
 // supplied provider — sigstore lazy-builds from Options on first
 // signing call; key has no credentials concept.
 func (s *SignerSet) BuildCredentialProvider() (*spiffe.CredentialProvider, error) {
+	if s == nil {
+		return nil, errors.New("SignerSet: nil; construct via DefaultSignerSet")
+	}
 	backend, err := s.resolveBackend()
 	if err != nil {
 		return nil, err
