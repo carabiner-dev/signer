@@ -12,7 +12,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const testWorkloadPath = "/workload"
+const (
+	testWorkloadPath    = "/workload"
+	testTrustBundlePath = "/tmp/bundle.pem"
+	testTrustDomain     = "prod.example.org"
+)
 
 func TestSpiffeCommonValidate(t *testing.T) {
 	t.Parallel()
@@ -24,7 +28,7 @@ func TestSpiffeCommonValidate(t *testing.T) {
 
 	t.Run("valid-trust-domain", func(t *testing.T) {
 		t.Parallel()
-		c := &SpiffeCommon{TrustDomain: "prod.example.org"}
+		c := &SpiffeCommon{TrustDomain: testTrustDomain}
 		require.NoError(t, c.Validate())
 	})
 
@@ -157,12 +161,12 @@ func TestSpiffeVerifyValidate(t *testing.T) {
 	t.Run("trust-bundle-flag-satisfies", func(t *testing.T) {
 		t.Setenv("SPIFFE_TRUST_BUNDLE", "")
 		v := DefaultSpiffeVerify(nil)
-		v.TrustBundlePath = "/tmp/bundle.pem"
+		v.TrustBundlePath = testTrustBundlePath
 		require.NoError(t, v.Validate())
 	})
 
 	t.Run("trust-bundle-env-satisfies", func(t *testing.T) {
-		t.Setenv("SPIFFE_TRUST_BUNDLE", "/tmp/bundle.pem")
+		t.Setenv("SPIFFE_TRUST_BUNDLE", testTrustBundlePath)
 		v := DefaultSpiffeVerify(nil)
 		require.NoError(t, v.Validate())
 	})
@@ -175,7 +179,7 @@ func TestSpiffeVerifyValidate(t *testing.T) {
 	})
 
 	t.Run("path-and-regex-mutually-exclusive", func(t *testing.T) {
-		t.Setenv("SPIFFE_TRUST_BUNDLE", "/tmp/bundle.pem")
+		t.Setenv("SPIFFE_TRUST_BUNDLE", testTrustBundlePath)
 		v := DefaultSpiffeVerify(nil)
 		v.Path = testWorkloadPath
 		v.PathRegex = "^/work.*$"
@@ -185,7 +189,7 @@ func TestSpiffeVerifyValidate(t *testing.T) {
 	})
 
 	t.Run("malformed-path-regex", func(t *testing.T) {
-		t.Setenv("SPIFFE_TRUST_BUNDLE", "/tmp/bundle.pem")
+		t.Setenv("SPIFFE_TRUST_BUNDLE", testTrustBundlePath)
 		v := DefaultSpiffeVerify(nil)
 		v.PathRegex = "[unclosed"
 		err := v.Validate()
@@ -194,7 +198,7 @@ func TestSpiffeVerifyValidate(t *testing.T) {
 	})
 
 	t.Run("nil-common-fails", func(t *testing.T) {
-		t.Setenv("SPIFFE_TRUST_BUNDLE", "/tmp/bundle.pem")
+		t.Setenv("SPIFFE_TRUST_BUNDLE", testTrustBundlePath)
 		v := &SpiffeVerify{}
 		err := v.Validate()
 		require.Error(t, err)
@@ -208,13 +212,13 @@ func TestSpiffeVerifyApplyTo(t *testing.T) {
 	t.Run("populates-all-fields", func(t *testing.T) {
 		t.Setenv("SPIFFE_TRUST_BUNDLE", "")
 		v := DefaultSpiffeVerify(nil)
-		v.TrustDomain = "prod.example.org"
+		v.TrustDomain = testTrustDomain
 		v.TrustBundlePath = "/path/to/bundle.pem"
 		v.Path = testWorkloadPath
 		target := &Verification{}
 		require.NoError(t, v.ApplyTo(target))
 		require.Equal(t, "/path/to/bundle.pem", target.TrustRootsPath)
-		require.Equal(t, "prod.example.org", target.ExpectedTrustDomain)
+		require.Equal(t, testTrustDomain, target.ExpectedTrustDomain)
 		require.Equal(t, testWorkloadPath, target.ExpectedPath)
 	})
 

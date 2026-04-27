@@ -46,11 +46,11 @@ func (k *KeysVerify) ApplyToVerifier(target *Verifier) error {
 	if k == nil || k.Options == nil {
 		return errors.New("KeysVerify: nil; construct via DefaultKeysVerify")
 	}
-	parsed, err := k.Options.ParseKeys()
+	parsed, err := k.ParseKeys()
 	if err != nil {
 		return fmt.Errorf("KeysVerify.ApplyToVerifier: %w", err)
 	}
-	target.Verification.PubKeys = parsed
+	target.PubKeys = parsed
 	return nil
 }
 

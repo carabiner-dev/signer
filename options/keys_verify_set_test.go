@@ -77,7 +77,7 @@ func TestKeysVerifyApplyToVerifier(t *testing.T) {
 
 		var v Verifier
 		require.NoError(t, k.ApplyToVerifier(&v))
-		require.Len(t, v.Verification.PubKeys, 2)
+		require.Len(t, v.PubKeys, 2)
 	})
 
 	t.Run("empty-paths-yields-empty-pubkeys", func(t *testing.T) {
@@ -85,7 +85,7 @@ func TestKeysVerifyApplyToVerifier(t *testing.T) {
 		k := DefaultKeysVerify()
 		var v Verifier
 		require.NoError(t, k.ApplyToVerifier(&v))
-		require.Empty(t, v.Verification.PubKeys)
+		require.Empty(t, v.PubKeys)
 	})
 
 	t.Run("nil-target-errors", func(t *testing.T) {
@@ -123,7 +123,7 @@ func TestKeysVerifyBuildVerifier(t *testing.T) {
 	v, err := k.BuildVerifier()
 	require.NoError(t, err)
 	require.NotNil(t, v)
-	require.Len(t, v.Verification.PubKeys, 1)
+	require.Len(t, v.PubKeys, 1)
 }
 
 func TestSigstoreVerifySetApplyToVerifier(t *testing.T) {
@@ -146,7 +146,7 @@ func TestSigstoreVerifySetApplyToVerifier(t *testing.T) {
 
 		var v Verifier
 		require.NoError(t, set.ApplyToVerifier(&v))
-		require.Equal(t, []byte(`{"roots":[]}`), v.SigstoreRootsData)
+		require.JSONEq(t, `{"roots":[]}`, string(v.SigstoreRootsData))
 	})
 
 	t.Run("nil-target-errors", func(t *testing.T) {
@@ -177,15 +177,15 @@ func TestSpiffeVerifySetApplyToVerifier(t *testing.T) {
 	t.Run("populates-shared-verification", func(t *testing.T) {
 		t.Setenv("SPIFFE_TRUST_BUNDLE", "")
 		set := DefaultSpiffeVerifySet("spiffe")
-		set.Verify.TrustDomain = "prod.example.org"
-		set.Verify.TrustBundlePath = "/tmp/bundle.pem"
+		set.Verify.TrustDomain = testTrustDomain
+		set.Verify.TrustBundlePath = testTrustBundlePath
 		set.Verify.Path = "/workload"
 
 		var v Verifier
 		require.NoError(t, set.ApplyToVerifier(&v))
-		require.Equal(t, "prod.example.org", v.Verification.ExpectedTrustDomain)
-		require.Equal(t, "/tmp/bundle.pem", v.Verification.TrustRootsPath)
-		require.Equal(t, "/workload", v.Verification.ExpectedPath)
+		require.Equal(t, testTrustDomain, v.ExpectedTrustDomain)
+		require.Equal(t, testTrustBundlePath, v.TrustRootsPath)
+		require.Equal(t, "/workload", v.ExpectedPath)
 	})
 
 	t.Run("nil-target-errors", func(t *testing.T) {
@@ -202,10 +202,10 @@ func TestSpiffeVerifySetApplyToVerifier(t *testing.T) {
 }
 
 func TestSpiffeVerifySetBuildVerifier(t *testing.T) {
-	t.Setenv("SPIFFE_TRUST_BUNDLE", "/tmp/bundle.pem")
+	t.Setenv("SPIFFE_TRUST_BUNDLE", testTrustBundlePath)
 	set := DefaultSpiffeVerifySet("spiffe")
 	v, err := set.BuildVerifier()
 	require.NoError(t, err)
 	require.NotNil(t, v)
-	require.Equal(t, "/tmp/bundle.pem", v.Verification.TrustRootsPath)
+	require.Equal(t, testTrustBundlePath, v.TrustRootsPath)
 }

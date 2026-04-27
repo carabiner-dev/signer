@@ -52,7 +52,7 @@ func TestVerifierSetActive(t *testing.T) {
 	t.Run("spiffe-active-via-flag", func(t *testing.T) {
 		t.Setenv("SPIFFE_TRUST_BUNDLE", "")
 		set := DefaultVerifierSet()
-		set.Spiffe.Verify.TrustBundlePath = "/tmp/bundle.pem"
+		set.Spiffe.Verify.TrustBundlePath = testTrustBundlePath
 		require.True(t, set.Spiffe.Active())
 	})
 
@@ -131,16 +131,16 @@ func TestVerifierSetApplyToVerifier(t *testing.T) {
 		set := DefaultVerifierSet()
 		set.Keys.PublicKeyPaths = []string{writeECPublicKey(t)}
 		set.Sigstore.Common.RootsData = []byte(`{"roots":[]}`)
-		set.Spiffe.Verify.TrustBundlePath = "/tmp/bundle.pem"
-		set.Spiffe.Verify.TrustDomain = "prod.example.org"
+		set.Spiffe.Verify.TrustBundlePath = testTrustBundlePath
+		set.Spiffe.Verify.TrustDomain = testTrustDomain
 
 		var v Verifier
 		require.NoError(t, set.ApplyToVerifier(&v))
 
-		require.Len(t, v.Verification.PubKeys, 1)
-		require.Equal(t, []byte(`{"roots":[]}`), v.SigstoreRootsData)
-		require.Equal(t, "/tmp/bundle.pem", v.Verification.TrustRootsPath)
-		require.Equal(t, "prod.example.org", v.Verification.ExpectedTrustDomain)
+		require.Len(t, v.PubKeys, 1)
+		require.JSONEq(t, `{"roots":[]}`, string(v.SigstoreRootsData))
+		require.Equal(t, testTrustBundlePath, v.TrustRootsPath)
+		require.Equal(t, testTrustDomain, v.ExpectedTrustDomain)
 	})
 
 	t.Run("inactive-children-contribute-nothing", func(t *testing.T) {
@@ -149,9 +149,9 @@ func TestVerifierSetApplyToVerifier(t *testing.T) {
 		// Only sigstore is active by default.
 		var v Verifier
 		require.NoError(t, set.ApplyToVerifier(&v))
-		require.Empty(t, v.Verification.PubKeys)
-		require.Empty(t, v.Verification.TrustRootsPath)
-		require.Empty(t, v.Verification.ExpectedTrustDomain)
+		require.Empty(t, v.PubKeys)
+		require.Empty(t, v.TrustRootsPath)
+		require.Empty(t, v.ExpectedTrustDomain)
 	})
 
 	t.Run("nil-target-errors", func(t *testing.T) {
@@ -170,7 +170,7 @@ func TestVerifierSetBuildVerifier(t *testing.T) {
 	v, err := set.BuildVerifier()
 	require.NoError(t, err)
 	require.NotNil(t, v)
-	require.Len(t, v.Verification.PubKeys, 1)
+	require.Len(t, v.PubKeys, 1)
 	// DefaultVerifier carries the embedded sigstore roots — the bundled
 	// builder must preserve them so the runtime still has trust material
 	// for the always-on sigstore baseline.
