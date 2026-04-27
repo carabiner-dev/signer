@@ -341,23 +341,6 @@ func TestSigstoreSignValidate(t *testing.T) {
 	})
 }
 
-func TestSigstoreVerifyAddFlags(t *testing.T) {
-	t.Parallel()
-
-	v := DefaultSigstoreVerify(nil)
-	cmd := &cobra.Command{Use: "test"}
-	v.AddFlags(cmd)
-
-	for _, name := range []string{
-		"require-ctlog",
-		"require-tlog",
-		"require-observer-timestamp",
-		"require-signed-timestamps",
-	} {
-		require.NotNil(t, cmd.PersistentFlags().Lookup(name), "flag %s must be registered", name)
-	}
-}
-
 func TestSigstoreVerifyValidate(t *testing.T) {
 	t.Parallel()
 
@@ -373,44 +356,6 @@ func TestSigstoreVerifyValidate(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "SigstoreCommon is nil")
 	})
-
-	t.Run("all-toggles-off-fails", func(t *testing.T) {
-		t.Parallel()
-		v := DefaultSigstoreVerify(nil)
-		v.RequireCTlog = false
-		v.RequireTlog = false
-		v.RequireObserverTimestamp = false
-		v.RequireSignedTimestamps = false
-		err := v.Validate()
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "at least one verification method")
-	})
-
-	t.Run("any-one-toggle-on-passes", func(t *testing.T) {
-		t.Parallel()
-		v := DefaultSigstoreVerify(nil)
-		v.RequireCTlog = false
-		v.RequireTlog = false
-		v.RequireObserverTimestamp = false
-		v.RequireSignedTimestamps = true
-		require.NoError(t, v.Validate())
-	})
-}
-
-func TestSigstoreVerifyVerifierConfig(t *testing.T) {
-	t.Parallel()
-	v := &SigstoreVerify{
-		SigstoreCommon:           DefaultSigstoreCommon(),
-		RequireCTlog:             true,
-		RequireTlog:              false,
-		RequireObserverTimestamp: true,
-		RequireSignedTimestamps:  false,
-	}
-	cfg := v.VerifierConfig()
-	require.True(t, cfg.RequireCTlog)
-	require.False(t, cfg.RequireTlog)
-	require.True(t, cfg.RequireObserverTimestamp)
-	require.False(t, cfg.RequireSignedTimestamps)
 }
 
 // TestSigstoreCommonSharedBetweenSignAndVerify documents the recommended
@@ -500,15 +445,7 @@ func TestSigstoreVerifySet(t *testing.T) {
 		cmd := &cobra.Command{Use: "test"}
 		set.AddFlags(cmd)
 
-		for _, name := range []string{
-			"sigstore-roots",
-			"sigstore-require-ctlog",
-			"sigstore-require-tlog",
-			"sigstore-require-observer-timestamp",
-			"sigstore-require-signed-timestamps",
-		} {
-			require.NotNil(t, cmd.PersistentFlags().Lookup(name), "flag %s must be registered", name)
-		}
+		require.NotNil(t, cmd.PersistentFlags().Lookup("sigstore-roots"), "flag sigstore-roots must be registered")
 	})
 
 	t.Run("validate-default-passes", func(t *testing.T) {

@@ -391,93 +391,60 @@ func (s *SigstoreSignSet) BuildSigner() (*Signer, error) {
 }
 
 // SigstoreVerify is the OptionsSet for the verification side of a
-// sigstore workflow. It exposes verifier-policy toggles that apply
-// uniformly to whichever instance(s) the bundle verifier ends up
-// trying.
+// sigstore workflow. The require-CTlog/Tlog/observer-timestamp/
+// signed-timestamps policy is per-instance configuration that lives
+// in sigstore-roots.json and is read by the bundle verifier directly
+// — it's not a user-tunable knob, so this set carries no toggle
+// flags. It exists primarily so SigstoreVerifySet has a verify-side
+// counterpart to SigstoreSign and so SigstoreCommon's --roots flag
+// flows through to the runtime.
 type SigstoreVerify struct {
 	*SigstoreCommon
-
-	RequireCTlog             bool
-	RequireTlog              bool
-	RequireObserverTimestamp bool
-	RequireSignedTimestamps  bool
 
 	config *command.OptionsSetConfig
 }
 
 var _ command.OptionsSet = (*SigstoreVerify)(nil)
 
-// DefaultSigstoreVerify builds a SigstoreVerify with the standard
-// verifier policy (CTlog + Tlog + observer-timestamp required).
-// Pass nil for common to allocate a fresh one.
+// DefaultSigstoreVerify builds a SigstoreVerify sharing the supplied
+// common. Pass nil for common to allocate a fresh one.
 func DefaultSigstoreVerify(common *SigstoreCommon) *SigstoreVerify {
 	if common == nil {
 		common = DefaultSigstoreCommon()
 	}
-	return &SigstoreVerify{
-		SigstoreCommon:           common,
-		RequireCTlog:             true,
-		RequireTlog:              true,
-		RequireObserverTimestamp: true,
-	}
+	return &SigstoreVerify{SigstoreCommon: common}
 }
 
-// Config returns the flag configuration for SigstoreVerify.
+// Config returns the flag configuration for SigstoreVerify. Currently
+// empty — SigstoreCommon owns the only verify-side flag (--roots).
+// Kept so SigstoreVerify implements command.OptionsSet uniformly with
+// the rest of the family.
 func (v *SigstoreVerify) Config() *command.OptionsSetConfig {
 	if v.config == nil {
 		v.config = &command.OptionsSetConfig{
-			Flags: map[string]command.FlagConfig{
-				"require-ctlog":              {Long: "require-ctlog", Help: "verify the certificate in the Certificate Transparency log"},
-				"require-tlog":               {Long: "require-tlog", Help: "verify the signature in the Rekor transparency log"},
-				"require-observer-timestamp": {Long: "require-observer-timestamp", Help: "require an observer timestamp on the signature"},
-				"require-signed-timestamps":  {Long: "require-signed-timestamps", Help: "require signed timestamps on the signature"},
-			},
+			Flags: map[string]command.FlagConfig{},
 		}
 	}
 	return v.config
 }
 
-// AddFlags registers SigstoreVerify flags on cmd.
+// AddFlags is a no-op. SigstoreCommon registers --roots; SigstoreVerify
+// has no flags of its own.
 func (v *SigstoreVerify) AddFlags(cmd *cobra.Command) {
-	cfg := v.Config()
-	pf := cmd.PersistentFlags()
-	pf.BoolVar(&v.RequireCTlog, cfg.LongFlag("require-ctlog"), v.RequireCTlog, cfg.HelpText("require-ctlog"))
-	pf.BoolVar(&v.RequireTlog, cfg.LongFlag("require-tlog"), v.RequireTlog, cfg.HelpText("require-tlog"))
-	pf.BoolVar(&v.RequireObserverTimestamp, cfg.LongFlag("require-observer-timestamp"), v.RequireObserverTimestamp, cfg.HelpText("require-observer-timestamp"))
-	pf.BoolVar(&v.RequireSignedTimestamps, cfg.LongFlag("require-signed-timestamps"), v.RequireSignedTimestamps, cfg.HelpText("require-signed-timestamps"))
+	_ = v.Config()
 }
 
-// Validate ensures the embedded SigstoreCommon is populated, the roots
-// file loads cleanly, and at least one verification method is required.
+// Validate ensures the embedded SigstoreCommon is populated and the
+// roots configuration loads cleanly.
 func (v *SigstoreVerify) Validate() error {
 	if v.SigstoreCommon == nil {
 		return errors.New("SigstoreVerify: SigstoreCommon is nil")
 	}
-	if err := v.SigstoreCommon.Validate(); err != nil {
-		return err
-	}
-	if !v.RequireCTlog && !v.RequireTlog && !v.RequireObserverTimestamp && !v.RequireSignedTimestamps {
-		return errors.New("at least one verification method must be required (ctlog, tlog, observer-timestamp, signed-timestamps)")
-	}
-	return nil
-}
-
-// VerifierConfig returns a sigstore.VerifierConfig populated from the
-// require-* toggles. Suitable for handing to the bundle verifier.
-func (v *SigstoreVerify) VerifierConfig() sigstore.VerifierConfig {
-	return sigstore.VerifierConfig{
-		RequireCTlog:             v.RequireCTlog,
-		RequireTlog:              v.RequireTlog,
-		RequireObserverTimestamp: v.RequireObserverTimestamp,
-		RequireSignedTimestamps:  v.RequireSignedTimestamps,
-	}
+	return v.SigstoreCommon.Validate()
 }
 
 // ApplyToVerifier writes the sigstore-roots configuration onto target
-// so signer.NewVerifier(...) consumes it. The require-* toggles are
-// not wired into the runtime today (the bundle verifier reads its
-// VerifierConfig from the parsed roots file, not from this struct);
-// they're surfaced here for future wiring.
+// so signer.NewVerifier(...) consumes it.
 func (v *SigstoreVerify) ApplyToVerifier(target *Verifier) error {
 	if target == nil {
 		return errors.New("SigstoreVerify.ApplyToVerifier: target is nil")

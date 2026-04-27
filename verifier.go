@@ -5,6 +5,7 @@ package signer
 
 import (
 	"fmt"
+	"os"
 
 	sdsse "github.com/sigstore/protobuf-specs/gen/pb-go/dsse"
 	sbundle "github.com/sigstore/sigstore-go/pkg/bundle"
@@ -25,7 +26,20 @@ func NewVerifier(fnOpts ...options.VerifierOptFunc) *Verifier {
 		f(&opts)
 	}
 
-	bundleOpts := []bundle.BundleOptsFunc{bundle.WithSigstoreRootsData(opts.SigstoreRootsData)}
+	rootsData := opts.SigstoreRootsData
+	if opts.SigstoreRootsPath != "" {
+		loaded, err := os.ReadFile(opts.SigstoreRootsPath)
+		if err != nil {
+			// Match the bundle.New contract for trust-material init:
+			// log and fall through to the embedded default rather than
+			// blow up the verifier at construction time.
+			logrus.Errorf("reading sigstore roots from %q: %v", opts.SigstoreRootsPath, err)
+		} else {
+			rootsData = loaded
+		}
+	}
+
+	bundleOpts := []bundle.BundleOptsFunc{bundle.WithSigstoreRootsData(rootsData)}
 	if opts.TrustRootsPEM != nil || opts.TrustRootsPath != "" {
 		sv, err := spiffeverifier.NewVerifierFromOptions(&opts.SpiffeVerification)
 		if err != nil {
