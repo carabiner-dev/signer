@@ -109,6 +109,10 @@ func (v *Verifier) VerifyParsedDSSE(env *sdsse.Envelope, keys []key.PublicKeyPro
 		}
 	}
 
+	if len(keys) == 0 {
+		keys = opts.PubKeys
+	}
+
 	// Build the key verifier to check the envelope signatures
 	keyVerifier, err := v.dsseVerifier.BuildKeyVerifier(&v.Options)
 	if err != nil {
