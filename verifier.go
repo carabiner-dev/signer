@@ -4,6 +4,7 @@
 package signer
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -18,6 +19,21 @@ import (
 	"github.com/carabiner-dev/signer/options"
 	spiffeverifier "github.com/carabiner-dev/signer/spiffe/verifier"
 )
+
+// NewVerifierFromSet builds a *Verifier from a VerifierSet. Equivalent
+// to BuildVerifier + NewVerifier with the resolved options applied,
+// in one call. Lives in this package (not options/) because options/
+// cannot import signer/.
+func NewVerifierFromSet(set *options.VerifierSet) (*Verifier, error) {
+	if set == nil {
+		return nil, errors.New("NewVerifierFromSet: set is nil")
+	}
+	opts, err := set.BuildVerifier()
+	if err != nil {
+		return nil, err
+	}
+	return NewVerifier(func(o *options.Verifier) { *o = *opts }), nil
+}
 
 // NewVerifier creates a new verifier with default options and verifiers
 func NewVerifier(fnOpts ...options.VerifierOptFunc) *Verifier {

@@ -19,6 +19,35 @@ import (
 	"github.com/carabiner-dev/signer/sigstore"
 )
 
+// NewSignerFromSet builds a fully-armed *Signer from a SignerSet.
+// Equivalent to: BuildSigner + BuildCredentialProvider + NewSigner +
+// field assignment, in one call. Lives in this package (not options/)
+// because options/ cannot import signer/ — see the package-level
+// comments on SignerSet for the import-cycle reasoning.
+//
+// The caller is responsible for closing the returned Signer when done
+// (via Signer.Close) so any Workload API stream lazily opened by the
+// SPIFFE backend is released.
+func NewSignerFromSet(set *options.SignerSet) (*Signer, error) {
+	if set == nil {
+		return nil, errors.New("NewSignerFromSet: set is nil")
+	}
+	opts, err := set.BuildSigner()
+	if err != nil {
+		return nil, err
+	}
+	creds, err := set.BuildCredentialProvider()
+	if err != nil {
+		return nil, err
+	}
+	s := NewSigner()
+	s.Options = *opts
+	if creds != nil {
+		s.Credentials = creds
+	}
+	return s, nil
+}
+
 // NewSigner creates a new signer and initializes it with the default sigstore
 // roots embedded in the package.
 func NewSigner() *Signer {
@@ -275,6 +304,21 @@ func (s *Signer) SignEnvelope(envelope *sdsse.Envelope, funcs ...options.SignOpt
 
 	if err := s.dsseSigner.Sign(envelope, keys); err != nil {
 		return fmt.Errorf("signing envelope: %w", err)
+	}
+	return nil
+}
+
+// Close releases resources held by the Signer's credentials. It's a
+// no-op when Credentials is nil or doesn't hold any closeable
+// resources; today only the SPIFFE credential provider has anything
+// to release (the Workload API stream lazily opened on first sign).
+// Safe to call multiple times.
+func (s *Signer) Close() error {
+	if s == nil || s.Credentials == nil {
+		return nil
+	}
+	if c, ok := s.Credentials.(io.Closer); ok {
+		return c.Close()
 	}
 	return nil
 }
