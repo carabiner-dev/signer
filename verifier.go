@@ -15,7 +15,7 @@ import (
 	"github.com/carabiner-dev/signer/dsse"
 	"github.com/carabiner-dev/signer/key"
 	"github.com/carabiner-dev/signer/options"
-	"github.com/carabiner-dev/signer/spiffe"
+	spiffeverifier "github.com/carabiner-dev/signer/spiffe/verifier"
 )
 
 // NewVerifier creates a new verifier with default options and verifiers
@@ -27,7 +27,7 @@ func NewVerifier(fnOpts ...options.VerifierOptFunc) *Verifier {
 
 	bundleOpts := []bundle.BundleOptsFunc{bundle.WithSigstoreRootsData(opts.SigstoreRootsData)}
 	if opts.TrustRootsPEM != nil || opts.TrustRootsPath != "" {
-		sv, err := spiffe.NewVerifierFromOptions(&opts.SpiffeVerification)
+		sv, err := spiffeverifier.NewVerifierFromOptions(&opts.SpiffeVerification)
 		if err != nil {
 			// Initialization errors are logged but not fatal, matching the
 			// bundle.New contract for the sigstore-roots option.

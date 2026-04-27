@@ -1,7 +1,14 @@
 // SPDX-FileCopyrightText: Copyright 2026 Carabiner Systems, Inc
 // SPDX-License-Identifier: Apache-2.0
 
-package spiffe
+// Package verifier validates SPIFFE-signed bundles against a pinned
+// SPIRE trust root and enforces SPIFFE identity matchers on the SVID
+// leaf. It lives in its own subpackage (sibling to the sign-side
+// signer/spiffe credential provider) so that it can import
+// signer/options without promoting the sign-side package into the
+// same cycle — allowing options/spiffe_set.go to import
+// signer/spiffe cleanly.
+package verifier
 
 import (
 	"crypto"
