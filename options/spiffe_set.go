@@ -298,6 +298,16 @@ func (v *SpiffeVerify) Validate() error {
 	return nil
 }
 
+// ApplyToVerifier populates the SPIFFE verification fields on a
+// Verifier options struct via the embedded Verification. Mirror of
+// SigstoreVerify.ApplyToVerifier and KeysVerify.ApplyToVerifier.
+func (v *SpiffeVerify) ApplyToVerifier(target *Verifier) error {
+	if target == nil {
+		return errors.New("SpiffeVerify.ApplyToVerifier: target is nil")
+	}
+	return v.ApplyTo(&target.Verification)
+}
+
 // ApplyTo populates the SpiffeVerification fields on a Verification
 // options struct so the verifier sees the resolved SPIFFE config.
 // Reads the env-var fallback for the trust-bundle path so downstream
@@ -426,4 +436,22 @@ func (s *SpiffeVerifySet) ApplyTo(target *Verification) error {
 		return errors.New("SpiffeVerifySet: nil; construct via DefaultSpiffeVerifySet")
 	}
 	return s.Verify.ApplyTo(target)
+}
+
+// ApplyToVerifier delegates to SpiffeVerify.ApplyToVerifier. Nil-safe.
+func (s *SpiffeVerifySet) ApplyToVerifier(target *Verifier) error {
+	if s == nil || s.Verify == nil {
+		return errors.New("SpiffeVerifySet: nil; construct via DefaultSpiffeVerifySet")
+	}
+	return s.Verify.ApplyToVerifier(target)
+}
+
+// BuildVerifier returns a *Verifier populated from the resolved SPIFFE
+// configuration. Mirrors SpiffeSignSet.BuildSigner on the verify side.
+func (s *SpiffeVerifySet) BuildVerifier() (*Verifier, error) {
+	target := DefaultVerifier
+	if err := s.ApplyToVerifier(&target); err != nil {
+		return nil, err
+	}
+	return &target, nil
 }

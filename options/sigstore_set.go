@@ -473,6 +473,25 @@ func (v *SigstoreVerify) VerifierConfig() sigstore.VerifierConfig {
 	}
 }
 
+// ApplyToVerifier writes the sigstore-roots configuration onto target
+// so signer.NewVerifier(...) consumes it. The require-* toggles are
+// not wired into the runtime today (the bundle verifier reads its
+// VerifierConfig from the parsed roots file, not from this struct);
+// they're surfaced here for future wiring.
+func (v *SigstoreVerify) ApplyToVerifier(target *Verifier) error {
+	if target == nil {
+		return errors.New("SigstoreVerify.ApplyToVerifier: target is nil")
+	}
+	if v.SigstoreCommon == nil {
+		return errors.New("SigstoreVerify: SigstoreCommon is nil")
+	}
+	target.SigstoreRootsPath = v.RootsPath
+	if len(v.RootsData) > 0 {
+		target.SigstoreRootsData = v.RootsData
+	}
+	return nil
+}
+
 // SigstoreVerifySet bundles a SigstoreCommon and a SigstoreVerify
 // sharing the same flag prefix. Mirror of SigstoreSignSet for the
 // verify side.
@@ -515,4 +534,23 @@ func (s *SigstoreVerifySet) Validate() error {
 		return errors.New("SigstoreVerifySet: nil; construct via DefaultSigstoreVerifySet")
 	}
 	return s.Verify.Validate()
+}
+
+// ApplyToVerifier delegates to SigstoreVerify.ApplyToVerifier. Nil-safe.
+func (s *SigstoreVerifySet) ApplyToVerifier(target *Verifier) error {
+	if s == nil || s.Verify == nil {
+		return errors.New("SigstoreVerifySet: nil; construct via DefaultSigstoreVerifySet")
+	}
+	return s.Verify.ApplyToVerifier(target)
+}
+
+// BuildVerifier returns a *Verifier populated from the resolved
+// sigstore-roots configuration. Mirrors SigstoreSignSet.BuildSigner
+// on the verify side.
+func (s *SigstoreVerifySet) BuildVerifier() (*Verifier, error) {
+	target := DefaultVerifier
+	if err := s.ApplyToVerifier(&target); err != nil {
+		return nil, err
+	}
+	return &target, nil
 }
