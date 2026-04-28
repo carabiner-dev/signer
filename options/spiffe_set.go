@@ -249,13 +249,22 @@ type SpiffeVerify struct {
 	// with Path.
 	PathRegex string
 
+	// SkipSVIDValidity disables enforcement of the leaf SVID's
+	// NotBefore/NotAfter dates. Default (false) is the safe
+	// behavior. Set true to validate the chain on cryptographic
+	// shape only — useful for archival verification of bundles whose
+	// SVIDs have rotated past their TTL, when the caller trusts the
+	// PKI chain alone. Bound to --<prefix>-skip-svid-validity.
+	SkipSVIDValidity bool
+
 	config *command.OptionsSetConfig
 }
 
 var _ command.OptionsSet = (*SpiffeVerify)(nil)
 
 // DefaultSpiffeVerify builds a SpiffeVerify sharing the supplied
-// common. Pass nil to allocate a fresh one.
+// common. Pass nil to allocate a fresh one. Defaults to enforcing
+// SVID validity dates; callers opt out by setting SkipSVIDValidity.
 func DefaultSpiffeVerify(common *SpiffeCommon) *SpiffeVerify {
 	if common == nil {
 		common = DefaultSpiffeCommon()
@@ -280,6 +289,10 @@ func (v *SpiffeVerify) Config() *command.OptionsSetConfig {
 					Long: "path-regex",
 					Help: "regex the SVID path must match (anchored; mutually exclusive with --spiffe-path)",
 				},
+				"skip-svid-validity": {
+					Long: "skip-svid-validity",
+					Help: "skip the leaf SVID's NotBefore/NotAfter check during chain validation; validates the cryptographic chain only (default off — date checks enforced)",
+				},
 			},
 		}
 	}
@@ -294,6 +307,7 @@ func (v *SpiffeVerify) AddFlags(cmd *cobra.Command) {
 	pf.StringVar(&v.TrustBundlePath, cfg.LongFlag("trust-bundle"), v.TrustBundlePath, cfg.HelpText("trust-bundle"))
 	pf.StringVar(&v.Path, cfg.LongFlag("path"), v.Path, cfg.HelpText("path"))
 	pf.StringVar(&v.PathRegex, cfg.LongFlag("path-regex"), v.PathRegex, cfg.HelpText("path-regex"))
+	pf.BoolVar(&v.SkipSVIDValidity, cfg.LongFlag("skip-svid-validity"), v.SkipSVIDValidity, cfg.HelpText("skip-svid-validity"))
 }
 
 // EffectiveTrustBundlePath returns the explicit TrustBundlePath when
@@ -356,6 +370,7 @@ func (v *SpiffeVerify) ApplyTo(target *Verification) error {
 	target.ExpectedTrustDomain = v.TrustDomain
 	target.ExpectedPath = v.Path
 	target.ExpectedPathRegex = v.PathRegex
+	target.SkipSVIDValidity = v.SkipSVIDValidity
 	return nil
 }
 
