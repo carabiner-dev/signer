@@ -55,12 +55,11 @@ var _ command.OptionsSet = (*SignerSet)(nil)
 
 // DefaultSignerSet builds a SignerSet with every child constructed
 // under its conventional flag prefix ("sigstore", "spiffe"; KeysSign
-// uses its own --signing-key namespace). The default Backend is
-// BackendSigstore — empty resolves the same way the runtime signer
-// does, but the explicit value is what shows up in --help.
+// uses its own --signing-key namespace). Backend is left empty so
+// resolveBackend can auto-detect from the populated child flags;
+// users who want a specific backend can override --signing-backend.
 func DefaultSignerSet() *SignerSet {
 	return &SignerSet{
-		Backend:  string(BackendSigstore),
 		Keys:     DefaultKeysSign(),
 		Sigstore: DefaultSigstoreSignSet("sigstore"),
 		Spiffe:   DefaultSpiffeSignSet("spiffe"),
@@ -76,7 +75,8 @@ func (s *SignerSet) Config() *command.OptionsSetConfig {
 			Flags: map[string]command.FlagConfig{
 				"signing-backend": {
 					Long: "signing-backend",
-					Help: fmt.Sprintf("signing backend (%s | %s | %s)", BackendKey, BackendSigstore, BackendSpiffe),
+					Help: fmt.Sprintf("signing backend (%s | %s | %s) default %s",
+						BackendKey, BackendSigstore, BackendSpiffe, BackendSigstore),
 				},
 			},
 		}
@@ -106,18 +106,36 @@ func (s *SignerSet) AddFlags(cmd *cobra.Command) {
 	}
 }
 
-// resolveBackend returns the Backend value to dispatch on, defaulting
-// empty to BackendSigstore (matching signer.Signer's own resolution).
+// resolveBackend returns the Backend value to dispatch on. Explicit
+// --signing-backend wins; otherwise auto-detect from the populated
+// child flags. Env-var fallbacks (e.g. SPIFFE_ENDPOINT_SOCKET) do
+// NOT trigger auto-detect — only explicit flag values do — so users
+// don't get surprise SPIFFE-signed bundles on hosts where SPIRE
+// happens to be installed. Set --signing-backend explicitly to opt
+// into env-driven configuration.
 func (s *SignerSet) resolveBackend() (Backend, error) {
-	if s.Backend == "" {
-		return BackendSigstore, nil
+	if s.Backend != "" {
+		switch Backend(s.Backend) {
+		case BackendKey, BackendSigstore, BackendSpiffe:
+			return Backend(s.Backend), nil
+		default:
+			return "", fmt.Errorf("SignerSet: unknown --signing-backend %q (valid: %s, %s, %s)",
+				s.Backend, BackendKey, BackendSigstore, BackendSpiffe)
+		}
 	}
-	switch Backend(s.Backend) {
-	case BackendKey, BackendSigstore, BackendSpiffe:
-		return Backend(s.Backend), nil
+
+	keyConfigured := s.Keys != nil && len(s.Keys.PrivateKeyPaths) > 0
+	spiffeConfigured := s.Spiffe != nil && s.Spiffe.Sign != nil && s.Spiffe.Sign.SocketPath != ""
+
+	switch {
+	case keyConfigured && spiffeConfigured:
+		return "", errors.New("SignerSet: both --signing-key and --spiffe-socket are set; pass --signing-backend explicitly to disambiguate")
+	case keyConfigured:
+		return BackendKey, nil
+	case spiffeConfigured:
+		return BackendSpiffe, nil
 	default:
-		return "", fmt.Errorf("SignerSet: unknown --signing-backend %q (valid: %s, %s, %s)",
-			s.Backend, BackendKey, BackendSigstore, BackendSpiffe)
+		return BackendSigstore, nil
 	}
 }
 

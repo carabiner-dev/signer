@@ -65,18 +65,15 @@ func (bs *DefaultSigner) VerifyAttestationContent(_ *options.Signer, data []byte
 }
 
 // BuildBundleOptions assembles the sign.BundleOptions used by SignBundle. The
-// certificate provider is supplied by the given CredentialProvider; TSA and
-// Rekor endpoints come from the sigstore signing config carried in the options.
+// certificate provider is supplied by the given CredentialProvider. TSA and
+// Rekor endpoints, when requested, come from the sigstore signing config —
+// SigningConfig is only required when those features are turned on, so SPIFFE
+// (which carries no sigstore config and never wants TSA/Rekor today) flows
+// through with no sigstore data leaking into the bundle.
 func (bs *DefaultSigner) BuildBundleOptions(opts *options.Signer, cp CredentialProvider) (*sign.BundleOptions, error) {
 	if cp == nil {
 		return nil, errors.New("credential provider not set")
 	}
-
-	if opts.SigningConfig == nil {
-		return nil, fmt.Errorf("signing config not set")
-	}
-
-	signingConfig := opts.SigningConfig
 
 	bundleOptions := sign.BundleOptions{}
 	certProvider, cpOpts := cp.CertificateProvider()
@@ -84,9 +81,12 @@ func (bs *DefaultSigner) BuildBundleOptions(opts *options.Signer, cp CredentialP
 	bundleOptions.CertificateProviderOptions = cpOpts
 
 	if opts.Timestamp {
+		if opts.SigningConfig == nil {
+			return nil, fmt.Errorf("signing config not set; required when Timestamp is enabled")
+		}
 		tsaURLs, err := root.SelectServices(
-			signingConfig.TimestampAuthorityURLs(),
-			signingConfig.TimestampAuthorityURLsConfig(), []uint32{1}, time.Now(),
+			opts.SigningConfig.TimestampAuthorityURLs(),
+			opts.SigningConfig.TimestampAuthorityURLsConfig(), []uint32{1}, time.Now(),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("fetching time stamp authority URLs: %w", err)
@@ -109,7 +109,10 @@ func (bs *DefaultSigner) BuildBundleOptions(opts *options.Signer, cp CredentialP
 	}
 
 	if opts.AppendToRekor {
-		for _, rekorURL := range signingConfig.RekorLogURLs() {
+		if opts.SigningConfig == nil {
+			return nil, fmt.Errorf("signing config not set; required when AppendToRekor is enabled")
+		}
+		for _, rekorURL := range opts.SigningConfig.RekorLogURLs() {
 			rekorOpts := &sign.RekorOptions{
 				BaseURL: rekorURL.URL,
 				Timeout: 90 * time.Second,

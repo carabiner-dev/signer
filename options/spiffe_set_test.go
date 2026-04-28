@@ -16,6 +16,7 @@ const (
 	testWorkloadPath    = "/workload"
 	testTrustBundlePath = "/tmp/bundle.pem"
 	testTrustDomain     = "prod.example.org"
+	testSpiffeSocket    = "unix:///tmp/sock"
 )
 
 func TestSpiffeCommonValidate(t *testing.T) {
@@ -117,7 +118,7 @@ func TestSpiffeSignValidate(t *testing.T) {
 	})
 
 	t.Run("env-satisfies-validation", func(t *testing.T) {
-		t.Setenv("SPIFFE_ENDPOINT_SOCKET", "unix:///tmp/sock")
+		t.Setenv("SPIFFE_ENDPOINT_SOCKET", testSpiffeSocket)
 		s := DefaultSpiffeSign(nil)
 		require.NoError(t, s.Validate())
 	})
@@ -125,12 +126,12 @@ func TestSpiffeSignValidate(t *testing.T) {
 	t.Run("flag-satisfies-validation", func(t *testing.T) {
 		t.Setenv("SPIFFE_ENDPOINT_SOCKET", "")
 		s := DefaultSpiffeSign(nil)
-		s.SocketPath = "unix:///tmp/sock"
+		s.SocketPath = testSpiffeSocket
 		require.NoError(t, s.Validate())
 	})
 
 	t.Run("nil-common-fails", func(t *testing.T) {
-		t.Setenv("SPIFFE_ENDPOINT_SOCKET", "unix:///tmp/sock")
+		t.Setenv("SPIFFE_ENDPOINT_SOCKET", testSpiffeSocket)
 		s := &SpiffeSign{}
 		err := s.Validate()
 		require.Error(t, err)
@@ -138,7 +139,7 @@ func TestSpiffeSignValidate(t *testing.T) {
 	})
 
 	t.Run("invalid-trust-domain-fails", func(t *testing.T) {
-		t.Setenv("SPIFFE_ENDPOINT_SOCKET", "unix:///tmp/sock")
+		t.Setenv("SPIFFE_ENDPOINT_SOCKET", testSpiffeSocket)
 		s := DefaultSpiffeSign(nil)
 		s.TrustDomain = "not a trust domain!"
 		err := s.Validate()

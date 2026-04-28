@@ -92,7 +92,7 @@ func TestSignerSetValidateSpiffeBackend(t *testing.T) {
 	})
 
 	t.Run("env-satisfies", func(t *testing.T) {
-		t.Setenv("SPIFFE_ENDPOINT_SOCKET", "unix:///tmp/sock")
+		t.Setenv("SPIFFE_ENDPOINT_SOCKET", testSpiffeSocket)
 		set := DefaultSignerSet()
 		set.Backend = string(BackendSpiffe)
 		require.NoError(t, set.Validate())
@@ -107,7 +107,7 @@ func TestSignerSetValidateSpiffeBackend(t *testing.T) {
 	})
 
 	t.Run("nil-spiffe-child-fails", func(t *testing.T) {
-		t.Setenv("SPIFFE_ENDPOINT_SOCKET", "unix:///tmp/sock")
+		t.Setenv("SPIFFE_ENDPOINT_SOCKET", testSpiffeSocket)
 		set := DefaultSignerSet()
 		set.Backend = string(BackendSpiffe)
 		set.Spiffe = nil
@@ -145,6 +145,81 @@ func TestSignerSetSigstoreBackendDefault(t *testing.T) {
 		opts, err := set.BuildSigner()
 		require.NoError(t, err)
 		require.NotNil(t, opts)
+	})
+}
+
+// TestSignerSetAutoDetect verifies the empty-backend hybrid: explicit
+// --signing-backend wins; otherwise the populated child flags decide,
+// with sigstore as the no-flags fallback. Env vars (e.g.
+// SPIFFE_ENDPOINT_SOCKET) intentionally do not trigger auto-detect.
+func TestSignerSetAutoDetect(t *testing.T) {
+	// No t.Parallel — t.Setenv conflicts with parallel chains.
+
+	t.Run("no-flags-falls-back-to-sigstore", func(t *testing.T) {
+		t.Setenv("SPIFFE_ENDPOINT_SOCKET", "")
+		set := DefaultSignerSet()
+		require.Empty(t, set.Backend)
+
+		backend, err := set.resolveBackend()
+		require.NoError(t, err)
+		require.Equal(t, BackendSigstore, backend)
+	})
+
+	t.Run("signing-key-flag-selects-key", func(t *testing.T) {
+		t.Setenv("SPIFFE_ENDPOINT_SOCKET", "")
+		set := DefaultSignerSet()
+		set.Keys.PrivateKeyPaths = []string{writeECPrivateKey(t)}
+
+		backend, err := set.resolveBackend()
+		require.NoError(t, err)
+		require.Equal(t, BackendKey, backend)
+	})
+
+	t.Run("spiffe-socket-flag-selects-spiffe", func(t *testing.T) {
+		t.Setenv("SPIFFE_ENDPOINT_SOCKET", "")
+		set := DefaultSignerSet()
+		set.Spiffe.Sign.SocketPath = testSpiffeSocket
+
+		backend, err := set.resolveBackend()
+		require.NoError(t, err)
+		require.Equal(t, BackendSpiffe, backend)
+	})
+
+	t.Run("env-only-spiffe-does-not-auto-detect", func(t *testing.T) {
+		// SPIFFE_ENDPOINT_SOCKET set, but --spiffe-socket flag empty.
+		// The flag is the auto-detect signal; env vars require an
+		// explicit --signing-backend=spiffe.
+		t.Setenv("SPIFFE_ENDPOINT_SOCKET", testSpiffeSocket)
+		set := DefaultSignerSet()
+
+		backend, err := set.resolveBackend()
+		require.NoError(t, err)
+		require.Equal(t, BackendSigstore, backend)
+	})
+
+	t.Run("both-flags-set-is-ambiguous", func(t *testing.T) {
+		t.Setenv("SPIFFE_ENDPOINT_SOCKET", "")
+		set := DefaultSignerSet()
+		set.Keys.PrivateKeyPaths = []string{writeECPrivateKey(t)}
+		set.Spiffe.Sign.SocketPath = testSpiffeSocket
+
+		_, err := set.resolveBackend()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "pass --signing-backend explicitly")
+	})
+
+	t.Run("explicit-overrides-auto-detect", func(t *testing.T) {
+		t.Setenv("SPIFFE_ENDPOINT_SOCKET", "")
+		// Both set, but explicit --signing-backend disambiguates and
+		// dispatches without complaint.
+		set := DefaultSignerSet()
+		set.Backend = string(BackendKey)
+		set.Keys.PrivateKeyPaths = []string{writeECPrivateKey(t)}
+		set.Spiffe.Sign.SocketPath = testSpiffeSocket
+
+		backend, err := set.resolveBackend()
+		require.NoError(t, err)
+		require.Equal(t, BackendKey, backend)
 	})
 }
 

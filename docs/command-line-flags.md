@@ -138,14 +138,32 @@ configured: the flag, the env var, or programmatic `TrustBundlePEM`.
 
 ### `SignerSet` — `options.DefaultSignerSet()`
 
-Registers `--signing-backend` plus every per-backend sign set's flags so the
-full CLI surface shows up in `--help`. `Validate` and `BuildSigner`
-dispatch on `--signing-backend`; non-selected children contribute their flags
-to help text but are otherwise inert.
+Registers `--signing-backend` plus every per-backend sign set's flags
+so the full CLI surface shows up in `--help`. `Validate` and
+`BuildSigner` dispatch on the resolved backend; non-selected children
+contribute their flags to help text but are otherwise inert.
 
 | Flag | Description | Default |
 | --- | --- | --- |
-| `--signing-backend` | signing backend (`key`, `sigstore`, `spiffe`) | `sigstore` |
+| `--signing-backend` | signing backend (`key`, `sigstore`, `spiffe`) | auto-detect (see below) |
+
+**Auto-detection.** When `--signing-backend` is unset, the resolved
+backend is inferred from the populated child *flags*:
+
+- `--signing-key` provided → `key`
+- `--spiffe-socket` provided → `spiffe`
+- otherwise → `sigstore`
+
+Only flags trigger auto-detect. Env-var fallbacks (notably
+`SPIFFE_ENDPOINT_SOCKET`, which `--spiffe-socket` falls back to once
+SPIFFE is selected) intentionally do **not** trigger it: a user
+running on a host that happens to have SPIRE installed shouldn't
+silently produce SPIFFE-signed bundles. Set `--signing-backend=spiffe`
+explicitly to opt into env-driven SPIFFE configuration.
+
+If both `--signing-key` and `--spiffe-socket` are set without an
+explicit `--signing-backend`, resolution fails — pass
+`--signing-backend` to disambiguate.
 
 ### `VerifierSet` — `options.DefaultVerifierSet()`
 
@@ -173,7 +191,7 @@ import (
 )
 
 func main() {
-    signSet := options.DefaultSignerSet()      // --signing-backend=sigstore by default
+    signSet := options.DefaultSignerSet()      // backend auto-detected from flags; falls back to sigstore
     verifySet := options.DefaultVerifierSet()
 
     cmd := &cobra.Command{
@@ -224,16 +242,17 @@ func main() {
 Run with any of:
 
 ```sh
-mytool                                      # sigstore (default)
-mytool --signing-backend=key --signing-key=priv.pem --key=pub.pem
-mytool --signing-backend=spiffe \
-       --spiffe-socket=unix:///run/spire/sockets/api.sock \
+# sigstore — no flags at all (auto-detect → sigstore fallback)
+mytool
+
+# key — auto-detected from --signing-key
+mytool --signing-key=priv.pem --key=pub.pem
+
+# spiffe — auto-detected from --spiffe-socket
+mytool --spiffe-socket=unix:///run/spire/sockets/api.sock \
        --spiffe-trust-bundle=/etc/spire/bundle.pem
-```
 
-Or rely on env-var fallbacks for SPIFFE:
-
-```sh
+# explicit override (useful when env vars carry the configuration)
 export SPIFFE_ENDPOINT_SOCKET=unix:///run/spire/sockets/api.sock
 export SPIFFE_TRUST_BUNDLE=/etc/spire/bundle.pem
 mytool --signing-backend=spiffe

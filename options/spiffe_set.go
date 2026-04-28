@@ -127,7 +127,7 @@ func (s *SpiffeSign) Config() *command.OptionsSetConfig {
 			Flags: map[string]command.FlagConfig{
 				"socket": {
 					Long: "socket",
-					Help: "SPIFFE Workload API socket (e.g. unix:///run/spire/sockets/api.sock; env fallback: " + spiffeSocketEnv + ")",
+					Help: "SPIFFE Workload API socket path (env fallback: " + spiffeSocketEnv + ")",
 				},
 			},
 		}
@@ -381,6 +381,12 @@ func (s *SpiffeSignSet) BuildCredentialProvider() (*spiffe.CredentialProvider, e
 // signer.Signer.Credentials before signing — the SPIFFE backend
 // cannot construct credentials from Options alone. Validates the set
 // before returning.
+//
+// The returned Signer carries no sigstore-derived state: SPIFFE
+// bundles are signed entirely from the SVID, so SigningConfig stays
+// nil and Timestamp / AppendToRekor stay at their zero (false)
+// defaults. Anything else would leak sigstore configuration into the
+// SPIFFE bundle.
 func (s *SpiffeSignSet) BuildSigner() (*Signer, error) {
 	if s == nil || s.Sign == nil {
 		return nil, errors.New("SpiffeSignSet: nil; construct via DefaultSpiffeSignSet")
