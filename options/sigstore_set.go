@@ -164,6 +164,13 @@ type SigstoreSign struct {
 	// HideOIDCOptions marks the --oidc-* flags as hidden on the CLI.
 	HideOIDCOptions bool
 
+	// ManagedTimestamp, when true, suppresses registration of the
+	// --<prefix>-timestamp flag in AddFlags. Set by SignerSet so the
+	// bundled --signing-timestamp can be the single user-facing knob;
+	// standalone callers leave this false (default) and get
+	// --sigstore-timestamp under the standard prefix.
+	ManagedTimestamp bool
+
 	config *command.OptionsSetConfig
 }
 
@@ -224,7 +231,9 @@ func (s *SigstoreSign) AddFlags(cmd *cobra.Command) {
 	pf.StringVar(&s.OIDCClientSecret, cfg.LongFlag("oidc-client-secret"), s.OIDCClientSecret, cfg.HelpText("oidc-client-secret"))
 	pf.StringVar(&s.OIDCTokenFile, cfg.LongFlag("oidc-token-file"), s.OIDCTokenFile, cfg.HelpText("oidc-token-file"))
 	pf.BoolVar(&s.RekorAppend, cfg.LongFlag("rekor-append"), s.RekorAppend, cfg.HelpText("rekor-append"))
-	pf.BoolVar(&s.Timestamp, cfg.LongFlag("timestamp"), s.Timestamp, cfg.HelpText("timestamp"))
+	if !s.ManagedTimestamp {
+		pf.BoolVar(&s.Timestamp, cfg.LongFlag("timestamp"), s.Timestamp, cfg.HelpText("timestamp"))
+	}
 	pf.BoolVar(&s.DisableSTS, cfg.LongFlag("disable-sts"), s.DisableSTS, cfg.HelpText("disable-sts"))
 
 	if s.HideOIDCOptions {

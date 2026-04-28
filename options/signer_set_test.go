@@ -19,6 +19,7 @@ func TestSignerSetAddFlags(t *testing.T) {
 
 	for _, name := range []string{
 		"signing-backend",
+		"signing-timestamp",
 		"signing-key",
 		"signing-key-passphrase-env",
 		"sigstore-roots",
@@ -27,6 +28,54 @@ func TestSignerSetAddFlags(t *testing.T) {
 	} {
 		require.NotNil(t, cmd.PersistentFlags().Lookup(name), "flag %q must be registered", name)
 	}
+
+	// --sigstore-timestamp is suppressed when bundled — the bundled
+	// --signing-timestamp is the single user-facing knob.
+	require.Nil(t, cmd.PersistentFlags().Lookup("sigstore-timestamp"),
+		"--sigstore-timestamp must NOT be registered when SigstoreSign.ManagedTimestamp is set by SignerSet")
+}
+
+// TestSignerSetTimestampPropagates asserts the bundled
+// --signing-timestamp value flows into the resolved *options.Signer
+// regardless of backend.
+func TestSignerSetTimestampPropagates(t *testing.T) {
+	t.Parallel()
+
+	t.Run("sigstore-true", func(t *testing.T) {
+		t.Parallel()
+		set := DefaultSignerSet()
+		set.Backend = string(BackendSigstore)
+		set.Timestamp = true
+
+		opts, err := set.BuildSigner()
+		require.NoError(t, err)
+		require.True(t, opts.Timestamp)
+	})
+
+	t.Run("sigstore-false", func(t *testing.T) {
+		t.Parallel()
+		set := DefaultSignerSet()
+		set.Backend = string(BackendSigstore)
+		set.Timestamp = false
+
+		opts, err := set.BuildSigner()
+		require.NoError(t, err)
+		require.False(t, opts.Timestamp,
+			"SignerSet.Timestamp=false must override the per-instance default")
+	})
+
+	t.Run("key-noop", func(t *testing.T) {
+		t.Parallel()
+		set := DefaultSignerSet()
+		set.Backend = string(BackendKey)
+		set.Timestamp = true
+		set.Keys.PrivateKeyPaths = []string{writeECPrivateKey(t)}
+
+		opts, err := set.BuildSigner()
+		require.NoError(t, err)
+		require.True(t, opts.Timestamp,
+			"key backend ignores Timestamp at runtime but the field is still set")
+	})
 }
 
 func TestSignerSetValidateUnknownBackend(t *testing.T) {
