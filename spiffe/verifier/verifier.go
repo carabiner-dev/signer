@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"sync"
 	"time"
 
 	intoto "github.com/in-toto/attestation/go/v1"
@@ -52,20 +53,34 @@ type VerifierOptions struct {
 	// Mutually exclusive with ExpectedPath.
 	ExpectedPathRegex *regexp.Regexp
 
-	// TSATrustedMaterial, when non-nil, is used to validate any RFC 3161
-	// timestamps embedded in the bundle. The earliest verified timestamp
-	// time then drives SVID chain validation (CurrentTime in
-	// x509.VerifyOptions), letting bundles outlive the SVID's TTL.
-	// When the bundle has timestamps but TSATrustedMaterial is nil, or
-	// the validation produces no verified timestamps, chain validation
-	// falls back to time.Now() — current behavior.
-	TSATrustedMaterial root.TrustedMaterial
+	// TSAMaterialLoader, when non-nil, returns a TrustedMaterial used
+	// to validate any RFC 3161 timestamps embedded in the bundle.
+	// Called lazily on the first bundle that actually carries
+	// timestamps; the returned material is cached on the Verifier so
+	// subsequent verifications skip the (potentially network-bound)
+	// fetch. Typically wraps tuf.GetRoot + NewTrustedRootFromJSON
+	// against the embedded sigstore-roots; the SPIFFE verifier itself
+	// stays free of TUF / sigstore-package coupling.
+	//
+	// When this is nil and the bundle carries timestamps, chain
+	// validation falls back to time.Now(). When it's set but the
+	// loader returns an error, verification fails closed — silently
+	// degrading would be a bypass.
+	TSAMaterialLoader func() (root.TrustedMaterial, error)
 }
 
 // Verifier validates SPIFFE-signed bundles against a pinned SPIRE trust root
 // and enforces SPIFFE identity matchers on the SVID leaf.
 type Verifier struct {
 	opts VerifierOptions
+
+	// tsaCache holds the materialized TrustedMaterial returned by
+	// opts.TSAMaterialLoader. tsaOnce makes the load happen at most
+	// once per Verifier; tsaCacheErr stores a load failure so it
+	// surfaces consistently across calls.
+	tsaCache    root.TrustedMaterial
+	tsaCacheErr error
+	tsaOnce     sync.Once
 }
 
 // NewVerifier creates a SPIFFE Verifier. Returns an error if the trust roots
@@ -80,15 +95,30 @@ func NewVerifier(opts VerifierOptions) (*Verifier, error) {
 	return &Verifier{opts: opts}, nil
 }
 
-// SetTSATrustedMaterial wires a TrustedMaterial used to validate any
-// RFC 3161 timestamps in incoming bundles. Typically called by the
-// outer signer.NewVerifier after constructing the SPIFFE verifier
-// from SPIFFE-side options, since the trust material lives in the
-// sigstore-roots configuration which the SPIFFE options don't carry.
-// Nil clears the wiring and reverts the verifier to time.Now()-based
+// SetTSAMaterialLoader wires a lazy loader that returns the
+// TrustedMaterial used to validate any RFC 3161 timestamps in
+// incoming bundles. Typically called by the outer signer.NewVerifier
+// after constructing the SPIFFE verifier, since the trust material
+// lives in the sigstore-roots configuration which the SPIFFE options
+// don't carry. The loader is invoked at most once per Verifier and
+// only when a bundle that needs TSA validation is presented; nil
+// clears the wiring and reverts the verifier to time.Now()-based
 // chain validation.
-func (v *Verifier) SetTSATrustedMaterial(tm root.TrustedMaterial) {
-	v.opts.TSATrustedMaterial = tm
+func (v *Verifier) SetTSAMaterialLoader(loader func() (root.TrustedMaterial, error)) {
+	v.opts.TSAMaterialLoader = loader
+}
+
+// resolveTSAMaterial calls TSAMaterialLoader at most once, caches the
+// result, and returns it on subsequent calls. Returns (nil, nil) when
+// no loader is configured.
+func (v *Verifier) resolveTSAMaterial() (root.TrustedMaterial, error) {
+	if v.opts.TSAMaterialLoader == nil {
+		return nil, nil
+	}
+	v.tsaOnce.Do(func() {
+		v.tsaCache, v.tsaCacheErr = v.opts.TSAMaterialLoader()
+	})
+	return v.tsaCache, v.tsaCacheErr
 }
 
 // NewVerifierFromOptions builds a Verifier from the verification options
@@ -176,7 +206,7 @@ func (v *Verifier) Verify(opts *options.Verification, bndl *sbundle.Bundle) (*ve
 		intermediates.AddCert(c)
 	}
 
-	chainTime, verifiedTimestamps, err := chainValidationTime(bndl, effective.TSATrustedMaterial)
+	chainTime, verifiedTimestamps, err := v.chainValidationTime(bndl)
 	if err != nil {
 		return nil, err
 	}
@@ -261,14 +291,18 @@ func (v *Verifier) effectiveOptions(opts *options.Verification) (VerifierOptions
 
 // chainValidationTime returns the time to use for SVID chain
 // validation along with any RFC 3161 timestamps that verified against
-// tm. If the bundle carries timestamps and tm is non-nil, the
-// timestamps are validated against tm and the earliest verified time
-// is returned. Bundle without timestamps, or with timestamps but no
-// tm, returns the zero time so x509.Verify falls back to time.Now().
-// When the bundle has timestamps but every timestamp fails validation
-// against tm, an error is returned — silently falling back would be
-// a security bypass.
-func chainValidationTime(bndl *sbundle.Bundle, tm root.TrustedMaterial) (time.Time, []*root.Timestamp, error) {
+// the lazily-resolved TSA material. The loader is only invoked when
+// the bundle actually carries timestamps, so a verifier wired with a
+// network-bound loader doesn't pay the cost on bundles that don't
+// need TSA validation.
+//
+// Bundle without timestamps → zero time, x509.Verify falls back to
+// time.Now() (legacy behavior). Bundle with timestamps but no loader
+// configured → also zero time (best-effort fallback). Bundle with
+// timestamps + loader fails → error. Bundle with timestamps + loader
+// succeeds + every timestamp fails to validate → error (fail closed
+// to avoid silent bypass).
+func (v *Verifier) chainValidationTime(bndl *sbundle.Bundle) (time.Time, []*root.Timestamp, error) {
 	signedTimestamps, err := bndl.Timestamps()
 	if err != nil {
 		return time.Time{}, nil, fmt.Errorf("reading bundle timestamps: %w", err)
@@ -276,9 +310,11 @@ func chainValidationTime(bndl *sbundle.Bundle, tm root.TrustedMaterial) (time.Ti
 	if len(signedTimestamps) == 0 {
 		return time.Time{}, nil, nil
 	}
+	tm, err := v.resolveTSAMaterial()
+	if err != nil {
+		return time.Time{}, nil, fmt.Errorf("loading TSA trust material: %w", err)
+	}
 	if tm == nil {
-		// Bundle is timestamped but verifier has no TSA roots wired in.
-		// Fall through to time.Now() — current behavior.
 		return time.Time{}, nil, nil
 	}
 	verified, _, err := verify.VerifySignedTimestamp(bndl, tm)

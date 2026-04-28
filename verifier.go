@@ -16,6 +16,7 @@ import (
 
 	"github.com/carabiner-dev/signer/bundle"
 	"github.com/carabiner-dev/signer/dsse"
+	"github.com/carabiner-dev/signer/internal/tuf"
 	"github.com/carabiner-dev/signer/key"
 	"github.com/carabiner-dev/signer/options"
 	"github.com/carabiner-dev/signer/sigstore"
@@ -65,16 +66,14 @@ func NewVerifier(fnOpts ...options.VerifierOptFunc) *Verifier {
 			// bundle.New contract for the sigstore-roots option.
 			logrus.Errorf("building spiffe verifier: %v", err)
 		} else {
-			// Wire TSA trust material from the embedded sigstore roots so
-			// SVID-signed bundles carrying an RFC 3161 timestamp can be
-			// validated past the SVID's TTL. Best-effort — if the roots
-			// don't carry a usable trusted root we log and let the SPIFFE
-			// verifier fall back to time.Now() chain validation.
-			if tm, terr := tsaTrustedMaterial(rootsData); terr != nil {
-				logrus.Errorf("building TSA trust material for spiffe verifier: %v", terr)
-			} else {
-				sv.SetTSATrustedMaterial(tm)
-			}
+			// Wire a lazy TSA-material loader so SVID-signed bundles
+			// carrying an RFC 3161 timestamp can be validated past the
+			// SVID's TTL. The loader is only invoked when a bundle
+			// actually has timestamps — verifying SPIFFE bundles without
+			// stamps stays purely local. The loader fetches the trusted
+			// root via TUF (cached after first call), matching how the
+			// sigstore verify path resolves it.
+			sv.SetTSAMaterialLoader(tsaMaterialLoader(rootsData))
 			bundleOpts = append(bundleOpts, bundle.WithSpiffeVerifier(sv))
 		}
 	}
@@ -165,22 +164,34 @@ func (v *Verifier) VerifyParsedDSSE(env *sdsse.Envelope, keys []key.PublicKeyPro
 	return v.dsseVerifier.RunVerification(&v.Options, keyVerifier, env, keys)
 }
 
-// tsaTrustedMaterial parses the embedded sigstore-roots data and
-// returns a TrustedMaterial backed by the first instance's trusted
-// root JSON. Used by the SPIFFE verifier to validate RFC 3161
-// timestamps anchored to sigstore's TSA without requiring a TUF fetch
-// at verify time.
-func tsaTrustedMaterial(rootsData []byte) (root.TrustedMaterial, error) {
-	parsed, err := sigstore.ParseRoots(rootsData)
-	if err != nil {
-		return nil, fmt.Errorf("parsing sigstore roots: %w", err)
+// tsaMaterialLoader returns a closure the SPIFFE verifier can call
+// lazily to obtain the TrustedMaterial used for RFC 3161 timestamp
+// validation. The closure parses the supplied sigstore-roots, fetches
+// the trusted root via TUF (cached locally by sigstore-go after the
+// first call), and constructs the TrustedRoot from the proto-JSON the
+// TUF refresh returns. Mirrors the same pattern bundle/verifier.go
+// uses for the sigstore path so behavior and caching are consistent.
+//
+// The closure is invoked at most once per Verifier and only when a
+// bundle that actually carries timestamps is presented, so verifiers
+// that never see TSA-stamped bundles never pay the TUF fetch cost.
+func tsaMaterialLoader(rootsData []byte) func() (root.TrustedMaterial, error) {
+	return func() (root.TrustedMaterial, error) {
+		parsed, err := sigstore.ParseRoots(rootsData)
+		if err != nil {
+			return nil, fmt.Errorf("parsing sigstore roots: %w", err)
+		}
+		if len(parsed.Roots) == 0 {
+			return nil, errors.New("no sigstore instances in roots configuration")
+		}
+		data, err := tuf.GetRoot(&parsed.Roots[0].TufOptions)
+		if err != nil {
+			return nil, fmt.Errorf("fetching trusted root via TUF: %w", err)
+		}
+		tr, err := root.NewTrustedRootFromJSON(data)
+		if err != nil {
+			return nil, fmt.Errorf("parsing trusted root JSON: %w", err)
+		}
+		return tr, nil
 	}
-	if len(parsed.Roots) == 0 || len(parsed.Roots[0].RootData) == 0 {
-		return nil, errors.New("no trusted root data in sigstore roots")
-	}
-	tr, err := root.NewTrustedRootFromJSON(parsed.Roots[0].RootData)
-	if err != nil {
-		return nil, fmt.Errorf("parsing trusted root JSON: %w", err)
-	}
-	return tr, nil
 }
