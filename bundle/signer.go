@@ -17,6 +17,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/carabiner-dev/signer/options"
+	"github.com/carabiner-dev/signer/sigstore"
 )
 
 // BundleSigner abstracts the signer implementation to make it easy to mock
@@ -81,12 +82,23 @@ func (bs *DefaultSigner) BuildBundleOptions(opts *options.Signer, cp CredentialP
 	bundleOptions.CertificateProviderOptions = cpOpts
 
 	if opts.Timestamp {
-		if opts.SigningConfig == nil {
-			return nil, fmt.Errorf("signing config not set; required when Timestamp is enabled")
+		signingConfig := opts.SigningConfig
+		if signingConfig == nil {
+			// Backends that don't carry a sigstore SigningConfig (notably
+			// SPIFFE) still need TSA URLs to satisfy the Timestamp toggle.
+			// Fall back to a TSA-only config synthesized from the embedded
+			// sigstore-roots. Fulcio / OIDC / Rekor URL slices are
+			// intentionally left empty so this fallback only contributes
+			// timestamping, never other sigstore endpoints.
+			sc, err := tsaOnlySigningConfig(opts.SigstoreRootsData)
+			if err != nil {
+				return nil, fmt.Errorf("synthesizing TSA-only signing config: %w", err)
+			}
+			signingConfig = sc
 		}
 		tsaURLs, err := root.SelectServices(
-			opts.SigningConfig.TimestampAuthorityURLs(),
-			opts.SigningConfig.TimestampAuthorityURLsConfig(), []uint32{1}, time.Now(),
+			signingConfig.TimestampAuthorityURLs(),
+			signingConfig.TimestampAuthorityURLsConfig(), []uint32{1}, time.Now(),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("fetching time stamp authority URLs: %w", err)
@@ -123,6 +135,37 @@ func (bs *DefaultSigner) BuildBundleOptions(opts *options.Signer, cp CredentialP
 	}
 
 	return &bundleOptions, nil
+}
+
+// tsaOnlySigningConfig builds a sigstore SigningConfig containing
+// only the TSA URLs from the first parsed instance in rootsData.
+// Fulcio, OIDC, and Rekor URL slices are intentionally left empty so
+// the TSA-only fallback can't accidentally pull in non-TSA sigstore
+// endpoints (e.g. for a SPIFFE-backed signature). Used by
+// BuildBundleOptions when Timestamp is requested but the caller
+// supplied no sigstore SigningConfig of its own.
+func tsaOnlySigningConfig(rootsData []byte) (*root.SigningConfig, error) {
+	parsed, err := sigstore.ParseRoots(rootsData)
+	if err != nil {
+		return nil, fmt.Errorf("parsing sigstore roots: %w", err)
+	}
+	if len(parsed.Roots) == 0 || parsed.Roots[0].SigningConfig == nil {
+		return nil, errors.New("no signing config in sigstore roots")
+	}
+	src := parsed.Roots[0].SigningConfig
+	tsaURLs := src.TimestampAuthorityURLs()
+	if len(tsaURLs) == 0 {
+		return nil, errors.New("no TSA URLs in sigstore roots")
+	}
+	return root.NewSigningConfig(
+		root.SigningConfigMediaType02,
+		nil, // no Fulcio
+		nil, // no OIDC
+		nil, // no Rekor
+		root.ServiceConfiguration{},
+		tsaURLs,
+		src.TimestampAuthorityURLsConfig(),
+	)
 }
 
 // SignBundle signs the DSSE envelop and returns the new bundle

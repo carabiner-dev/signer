@@ -51,8 +51,9 @@ type SignerSet struct {
 	// ManagedTimestamp on the child) when bundled here. BuildSigner
 	// propagates this value into the dispatched child's
 	// *options.Signer.Timestamp, overriding any per-backend default.
-	// SPIFFE consumes this once TSA-for-SPIFFE wiring lands; key
-	// backend ignores it (DSSE envelopes don't carry timestamps).
+	// Applies to sigstore and SPIFFE (whose BuildSigner attaches a
+	// TSA-only SigningConfig); the key backend ignores it because
+	// DSSE envelopes carry no timestamps.
 	Timestamp bool
 
 	Keys     *KeysSign
@@ -70,16 +71,18 @@ var _ command.OptionsSet = (*SignerSet)(nil)
 // resolveBackend can auto-detect from the populated child flags;
 // users who want a specific backend can override --signing-backend.
 func DefaultSignerSet() *SignerSet {
-	sigstore := DefaultSigstoreSignSet("sigstore")
-	// Suppress the per-backend --sigstore-timestamp flag when bundled;
-	// the single --signing-timestamp at this level is the user-facing
-	// knob.
-	sigstore.Sign.ManagedTimestamp = true
+	sigstoreSet := DefaultSigstoreSignSet("sigstore")
+	spiffeSet := DefaultSpiffeSignSet("spiffe")
+	// Suppress the per-backend --sigstore-timestamp / --spiffe-timestamp
+	// flags when bundled; the single --signing-timestamp at this level
+	// is the user-facing knob.
+	sigstoreSet.Sign.ManagedTimestamp = true
+	spiffeSet.Sign.ManagedTimestamp = true
 	return &SignerSet{
 		Timestamp: true,
 		Keys:      DefaultKeysSign(),
-		Sigstore:  sigstore,
-		Spiffe:    DefaultSpiffeSignSet("spiffe"),
+		Sigstore:  sigstoreSet,
+		Spiffe:    spiffeSet,
 	}
 }
 
@@ -97,7 +100,7 @@ func (s *SignerSet) Config() *command.OptionsSetConfig {
 				},
 				"signing-timestamp": {
 					Long: "signing-timestamp",
-					Help: "attach an RFC 3161 timestamp to the signature (sigstore today; SPIFFE once TSA wiring lands)",
+					Help: "attach an RFC 3161 TSA-signed timestamp to the bundle (applies to sigstore and SPIFFE; ignored by the key backend)",
 				},
 			},
 		}

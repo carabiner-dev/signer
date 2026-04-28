@@ -96,7 +96,8 @@ func (c *SpiffeCommon) ParseTrustDomain() (spiffeid.TrustDomain, error) {
 
 // SpiffeSign is the OptionsSet for the signing side of a SPIFFE
 // workflow. It carries the Workload API socket path (with env
-// fallback) used to fetch the X.509-SVID.
+// fallback) used to fetch the X.509-SVID, plus the Timestamp toggle
+// for RFC 3161 TSA stamps.
 type SpiffeSign struct {
 	*SpiffeCommon
 
@@ -106,18 +107,35 @@ type SpiffeSign struct {
 	// Validate fails.
 	SocketPath string
 
+	// Timestamp, when true, attaches an RFC 3161 TSA-signed timestamp
+	// to the bundle. The TSA URL is sourced from the embedded
+	// sigstore-roots.json (the bundle that comes out carries only the
+	// resulting RFC 3161 token, not the rest of the sigstore config).
+	// Bound to --<prefix>-timestamp when ManagedTimestamp is false.
+	Timestamp bool
+
+	// ManagedTimestamp, when true, suppresses registration of the
+	// --<prefix>-timestamp flag. Set by SignerSet so the bundled
+	// --signing-timestamp can be the single user-facing knob;
+	// standalone callers leave this false (default).
+	ManagedTimestamp bool
+
 	config *command.OptionsSetConfig
 }
 
 var _ command.OptionsSet = (*SpiffeSign)(nil)
 
 // DefaultSpiffeSign builds a SpiffeSign sharing the supplied common.
-// Pass nil to allocate a fresh one.
+// Pass nil to allocate a fresh one. Timestamp defaults to true so
+// SVID-signed bundles are durable past SVID expiry by default.
 func DefaultSpiffeSign(common *SpiffeCommon) *SpiffeSign {
 	if common == nil {
 		common = DefaultSpiffeCommon()
 	}
-	return &SpiffeSign{SpiffeCommon: common}
+	return &SpiffeSign{
+		SpiffeCommon: common,
+		Timestamp:    true,
+	}
 }
 
 // Config returns the flag configuration for SpiffeSign.
@@ -129,6 +147,10 @@ func (s *SpiffeSign) Config() *command.OptionsSetConfig {
 					Long: "socket",
 					Help: "SPIFFE Workload API socket path (env fallback: " + spiffeSocketEnv + ")",
 				},
+				"timestamp": {
+					Long: "timestamp",
+					Help: "attach an RFC 3161 TSA-signed timestamp to the bundle (sourced from sigstore.dev TSA)",
+				},
 			},
 		}
 	}
@@ -137,15 +159,25 @@ func (s *SpiffeSign) Config() *command.OptionsSetConfig {
 
 // AddFlags registers SpiffeSign flags. Assumes the caller registers
 // SpiffeCommon's flags separately so --<prefix>-trust-domain is not
-// registered twice.
+// registered twice. The --<prefix>-timestamp flag is suppressed when
+// ManagedTimestamp is true (set by the bundled SignerSet).
 func (s *SpiffeSign) AddFlags(cmd *cobra.Command) {
 	cfg := s.Config()
-	cmd.PersistentFlags().StringVar(
+	pf := cmd.PersistentFlags()
+	pf.StringVar(
 		&s.SocketPath,
 		cfg.LongFlag("socket"),
 		s.SocketPath,
 		cfg.HelpText("socket"),
 	)
+	if !s.ManagedTimestamp {
+		pf.BoolVar(
+			&s.Timestamp,
+			cfg.LongFlag("timestamp"),
+			s.Timestamp,
+			cfg.HelpText("timestamp"),
+		)
+	}
 }
 
 // EffectiveSocketPath returns the explicit SocketPath when set, or
@@ -376,17 +408,21 @@ func (s *SpiffeSignSet) BuildCredentialProvider() (*spiffe.CredentialProvider, e
 }
 
 // BuildSigner returns a *Signer wired for the SPIFFE backend: Backend
-// set to BackendSpiffe. Callers must additionally call
-// BuildCredentialProvider and assign the result to
-// signer.Signer.Credentials before signing — the SPIFFE backend
-// cannot construct credentials from Options alone. Validates the set
-// before returning.
+// set to BackendSpiffe and Timestamp propagated from Sign.Timestamp.
+// Callers must additionally call BuildCredentialProvider and assign
+// the result to signer.Signer.Credentials before signing — the
+// SPIFFE backend cannot construct credentials from Options alone.
+// Validates the set before returning.
 //
-// The returned Signer carries no sigstore-derived state: SPIFFE
-// bundles are signed entirely from the SVID, so SigningConfig stays
-// nil and Timestamp / AppendToRekor stay at their zero (false)
-// defaults. Anything else would leak sigstore configuration into the
-// SPIFFE bundle.
+// SigningConfig is left nil; the bundle layer
+// (bundle.DefaultSigner.BuildBundleOptions) synthesizes a TSA-only
+// SigningConfig at sign time when Timestamp is true, sourcing the
+// TSA URLs from the embedded sigstore-roots. Keeping that synthesis
+// out of the OptionsSet layer keeps SpiffeSignSet purely about
+// flag-binding.
+//
+// AppendToRekor is left zero — SPIFFE-signed bundles never go to
+// Rekor.
 func (s *SpiffeSignSet) BuildSigner() (*Signer, error) {
 	if s == nil || s.Sign == nil {
 		return nil, errors.New("SpiffeSignSet: nil; construct via DefaultSpiffeSignSet")
@@ -396,6 +432,7 @@ func (s *SpiffeSignSet) BuildSigner() (*Signer, error) {
 	}
 	target := DefaultSigner
 	target.Backend = BackendSpiffe
+	target.Timestamp = s.Sign.Timestamp
 	return &target, nil
 }
 

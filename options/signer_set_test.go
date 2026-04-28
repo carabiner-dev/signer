@@ -29,10 +29,12 @@ func TestSignerSetAddFlags(t *testing.T) {
 		require.NotNil(t, cmd.PersistentFlags().Lookup(name), "flag %q must be registered", name)
 	}
 
-	// --sigstore-timestamp is suppressed when bundled — the bundled
-	// --signing-timestamp is the single user-facing knob.
-	require.Nil(t, cmd.PersistentFlags().Lookup("sigstore-timestamp"),
-		"--sigstore-timestamp must NOT be registered when SigstoreSign.ManagedTimestamp is set by SignerSet")
+	// Per-backend timestamp flags are suppressed when bundled — the
+	// shared --signing-timestamp is the single user-facing knob.
+	for _, name := range []string{"sigstore-timestamp", "spiffe-timestamp"} {
+		require.Nil(t, cmd.PersistentFlags().Lookup(name),
+			"--%s must NOT be registered when bundled (ManagedTimestamp set by SignerSet)", name)
+	}
 }
 
 // TestSignerSetTimestampPropagates asserts the bundled
@@ -75,6 +77,35 @@ func TestSignerSetTimestampPropagates(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, opts.Timestamp,
 			"key backend ignores Timestamp at runtime but the field is still set")
+	})
+
+	t.Run("spiffe-true-propagates", func(t *testing.T) {
+		t.Parallel()
+		set := DefaultSignerSet()
+		set.Backend = string(BackendSpiffe)
+		set.Timestamp = true
+		// Set socket via field to avoid t.Setenv (incompatible with the
+		// parent t.Parallel chain).
+		set.Spiffe.Sign.SocketPath = testSpiffeSocket
+
+		opts, err := set.BuildSigner()
+		require.NoError(t, err)
+		require.True(t, opts.Timestamp)
+		require.Nil(t, opts.SigningConfig,
+			"options layer should not carry SigningConfig; bundle layer fills it in lazily")
+	})
+
+	t.Run("spiffe-false-overrides-per-set-default", func(t *testing.T) {
+		t.Parallel()
+		set := DefaultSignerSet()
+		set.Backend = string(BackendSpiffe)
+		set.Timestamp = false
+		set.Spiffe.Sign.SocketPath = testSpiffeSocket
+
+		opts, err := set.BuildSigner()
+		require.NoError(t, err)
+		require.False(t, opts.Timestamp,
+			"SignerSet.Timestamp=false must override SPIFFE per-set default")
 	})
 }
 
