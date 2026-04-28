@@ -53,6 +53,18 @@ type VerifierOptions struct {
 	// Mutually exclusive with ExpectedPath.
 	ExpectedPathRegex *regexp.Regexp
 
+	// SkipSVIDValidity disables enforcement of the leaf SVID's
+	// NotBefore/NotAfter dates. Default (false) is the safe
+	// behavior: chain validation runs at either the TSA-verified
+	// timestamp or time.Now(). Set true to run chain validation at
+	// leaf.NotBefore — guaranteed valid for the leaf, and (assuming a
+	// well-formed chain where issuers were valid at issuance time)
+	// for the rest of the chain — so verification reduces to the
+	// cryptographic chain check alone. Setting this true also
+	// short-circuits TSA validation since there's no time check left
+	// to anchor the timestamp to.
+	SkipSVIDValidity bool
+
 	// TSAMaterialLoader, when non-nil, returns a TrustedMaterial used
 	// to validate any RFC 3161 timestamps embedded in the bundle.
 	// Called lazily on the first bundle that actually carries
@@ -129,7 +141,11 @@ func NewVerifierFromOptions(opts *options.SpiffeVerification) (*Verifier, error)
 	if err != nil {
 		return nil, fmt.Errorf("loading spiffe trust roots: %w", err)
 	}
-	vOpts := VerifierOptions{TrustRoots: pool, ExpectedPath: opts.ExpectedPath}
+	vOpts := VerifierOptions{
+		TrustRoots:       pool,
+		ExpectedPath:     opts.ExpectedPath,
+		SkipSVIDValidity: opts.SkipSVIDValidity,
+	}
 	if opts.ExpectedTrustDomain != "" {
 		td, err := spiffeid.TrustDomainFromString(opts.ExpectedTrustDomain)
 		if err != nil {
@@ -206,9 +222,23 @@ func (v *Verifier) Verify(opts *options.Verification, bndl *sbundle.Bundle) (*ve
 		intermediates.AddCert(c)
 	}
 
-	chainTime, verifiedTimestamps, err := v.chainValidationTime(bndl)
-	if err != nil {
-		return nil, err
+	var (
+		chainTime          time.Time
+		verifiedTimestamps []*root.Timestamp
+	)
+	if effective.SkipSVIDValidity {
+		// SVID-validity enforcement is off: validate the chain on
+		// crypto only, using a time guaranteed to be valid for the
+		// leaf. leaf.NotBefore is the issuance time, which a
+		// well-formed chain (issuers valid when issuing) accepts.
+		// TSA validation is intentionally skipped — there's no
+		// time check left to anchor.
+		chainTime = leaf.NotBefore
+	} else {
+		chainTime, verifiedTimestamps, err = v.chainValidationTime(bndl)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if _, err := leaf.Verify(x509.VerifyOptions{

@@ -42,6 +42,16 @@ type SpiffeVerification struct {
 	// ExpectedPathRegex, when non-empty, requires a regex match on the SVID's
 	// SPIFFE path component. Mutually exclusive with ExpectedPath.
 	ExpectedPathRegex string
+
+	// SkipSVIDValidity disables enforcement of the leaf SVID's
+	// NotBefore/NotAfter dates during chain validation. Default
+	// (false) is the safe behavior: the verifier checks the leaf is
+	// time-valid against either an RFC 3161 timestamp from the bundle
+	// or time.Now(). Set true to validate the chain using the leaf's
+	// NotBefore as the reference time, so the chain is checked purely
+	// on its cryptographic shape — useful for archival verification
+	// of bundles whose SVIDs have rotated.
+	SkipSVIDValidity bool
 }
 
 // WithExpectedIdentity serts the ExpectedIssuer and ExptectedSan options

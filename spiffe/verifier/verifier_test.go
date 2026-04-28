@@ -230,6 +230,82 @@ func TestVerifierAcceptsPathRegex(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// newExpiredTestPKI builds a CA + SVID where the leaf NotAfter is in
+// the past. Used to exercise VerifySVIDValidity=false.
+func newExpiredTestPKI(t *testing.T, path string) *testPKI {
+	t.Helper()
+
+	rootKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	rootTpl := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "test-spire-root"},
+		NotBefore:             time.Now().Add(-2 * time.Hour),
+		NotAfter:              time.Now().Add(2 * time.Hour),
+		IsCA:                  true,
+		KeyUsage:              x509.KeyUsageCertSign,
+		BasicConstraintsValid: true,
+	}
+	rootDER, err := x509.CreateCertificate(rand.Reader, rootTpl, rootTpl, &rootKey.PublicKey, rootKey)
+	require.NoError(t, err)
+	rt, err := x509.ParseCertificate(rootDER)
+	require.NoError(t, err)
+
+	leafKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	id := spiffeid.RequireFromPath(spiffeid.RequireTrustDomainFromString("example.org"), path)
+	leafTpl := &x509.Certificate{
+		SerialNumber: big.NewInt(2),
+		Subject:      pkix.Name{CommonName: "svid"},
+		// Already expired by the time this test runs.
+		NotBefore:             time.Now().Add(-2 * time.Hour),
+		NotAfter:              time.Now().Add(-time.Hour),
+		KeyUsage:              x509.KeyUsageDigitalSignature,
+		BasicConstraintsValid: true,
+		URIs:                  []*url.URL{id.URL()},
+	}
+	leafDER, err := x509.CreateCertificate(rand.Reader, leafTpl, rt, &leafKey.PublicKey, rootKey)
+	require.NoError(t, err)
+	leaf, err := x509.ParseCertificate(leafDER)
+	require.NoError(t, err)
+
+	return &testPKI{root: rt, leaf: leaf, leafKey: leafKey}
+}
+
+// TestVerifierSkipSVIDValidityToggle confirms the SkipSVIDValidity
+// switch lets a caller validate a SPIFFE bundle whose SVID has already
+// expired — chain crypto remains intact, so the bundle is still
+// trustworthy if the caller is willing to skip the time check.
+func TestVerifierSkipSVIDValidityToggle(t *testing.T) {
+	t.Parallel()
+	pki := newExpiredTestPKI(t, "/workload")
+	bndl := makeSignedBundle(t, pki, testPayload)
+
+	t.Run("default-rejects-expired-svid", func(t *testing.T) {
+		t.Parallel()
+		v, err := NewVerifier(VerifierOptions{
+			TrustRoots: pki.rootPool(),
+			// SkipSVIDValidity left false — safe default.
+		})
+		require.NoError(t, err)
+		_, err = v.Verify(nil, bndl)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "chain verification failed")
+	})
+
+	t.Run("skip-accepts-expired-svid", func(t *testing.T) {
+		t.Parallel()
+		v, err := NewVerifier(VerifierOptions{
+			TrustRoots:       pki.rootPool(),
+			SkipSVIDValidity: true,
+		})
+		require.NoError(t, err)
+		res, err := v.Verify(nil, bndl)
+		require.NoError(t, err)
+		require.NotNil(t, res)
+	})
+}
+
 func TestVerifierRejectsUntrustedRoot(t *testing.T) {
 	t.Parallel()
 	signer := newTestPKI(t, "/workload")
