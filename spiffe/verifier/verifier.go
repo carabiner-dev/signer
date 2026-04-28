@@ -21,10 +21,12 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"time"
 
 	intoto "github.com/in-toto/attestation/go/v1"
 	sbundle "github.com/sigstore/sigstore-go/pkg/bundle"
 	"github.com/sigstore/sigstore-go/pkg/fulcio/certificate"
+	"github.com/sigstore/sigstore-go/pkg/root"
 	"github.com/sigstore/sigstore-go/pkg/verify"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -49,6 +51,15 @@ type VerifierOptions struct {
 	// ExpectedPathRegex, when non-nil, must match the SVID's SPIFFE path.
 	// Mutually exclusive with ExpectedPath.
 	ExpectedPathRegex *regexp.Regexp
+
+	// TSATrustedMaterial, when non-nil, is used to validate any RFC 3161
+	// timestamps embedded in the bundle. The earliest verified timestamp
+	// time then drives SVID chain validation (CurrentTime in
+	// x509.VerifyOptions), letting bundles outlive the SVID's TTL.
+	// When the bundle has timestamps but TSATrustedMaterial is nil, or
+	// the validation produces no verified timestamps, chain validation
+	// falls back to time.Now() — current behavior.
+	TSATrustedMaterial root.TrustedMaterial
 }
 
 // Verifier validates SPIFFE-signed bundles against a pinned SPIRE trust root
@@ -67,6 +78,17 @@ func NewVerifier(opts VerifierOptions) (*Verifier, error) {
 		return nil, errors.New("spiffe verifier: ExpectedPath and ExpectedPathRegex are mutually exclusive")
 	}
 	return &Verifier{opts: opts}, nil
+}
+
+// SetTSATrustedMaterial wires a TrustedMaterial used to validate any
+// RFC 3161 timestamps in incoming bundles. Typically called by the
+// outer signer.NewVerifier after constructing the SPIFFE verifier
+// from SPIFFE-side options, since the trust material lives in the
+// sigstore-roots configuration which the SPIFFE options don't carry.
+// Nil clears the wiring and reverts the verifier to time.Now()-based
+// chain validation.
+func (v *Verifier) SetTSATrustedMaterial(tm root.TrustedMaterial) {
+	v.opts.TSATrustedMaterial = tm
 }
 
 // NewVerifierFromOptions builds a Verifier from the verification options
@@ -131,6 +153,12 @@ func loadTrustRoots(opts *options.SpiffeVerification) (*x509.CertPool, error) {
 // *verify.VerificationResult on success (sigstore-specific fields like
 // transparency-log entries are left zero; SPIFFE signatures don't produce
 // them).
+//
+// If the bundle carries RFC 3161 timestamps and TSATrustedMaterial is
+// configured on the verifier, the earliest verified timestamp's time is
+// used as x509.VerifyOptions.CurrentTime so SVID-signed bundles remain
+// verifiable past the SVID's TTL. With timestamps but no
+// TSATrustedMaterial, chain validation falls back to time.Now().
 func (v *Verifier) Verify(opts *options.Verification, bndl *sbundle.Bundle) (*verify.VerificationResult, error) {
 	effective, err := v.effectiveOptions(opts)
 	if err != nil {
@@ -148,11 +176,17 @@ func (v *Verifier) Verify(opts *options.Verification, bndl *sbundle.Bundle) (*ve
 		intermediates.AddCert(c)
 	}
 
+	chainTime, verifiedTimestamps, err := chainValidationTime(bndl, effective.TSATrustedMaterial)
+	if err != nil {
+		return nil, err
+	}
+
 	if _, err := leaf.Verify(x509.VerifyOptions{
 		Roots:         effective.TrustRoots,
 		Intermediates: intermediates,
 		// Accept any EKU — SPIRE SVIDs typically don't set a code-signing EKU.
-		KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
+		KeyUsages:   []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
+		CurrentTime: chainTime, // zero falls back to time.Now() inside x509.Verify
 	}); err != nil {
 		return nil, fmt.Errorf("chain verification failed: %w", err)
 	}
@@ -169,7 +203,16 @@ func (v *Verifier) Verify(opts *options.Verification, bndl *sbundle.Bundle) (*ve
 		return nil, fmt.Errorf("verifying dsse signature: %w", err)
 	}
 
-	return buildResult(bndl, leaf, id), nil
+	result := buildResult(bndl, leaf, id)
+	for _, ts := range verifiedTimestamps {
+		result.VerifiedTimestamps = append(result.VerifiedTimestamps,
+			verify.TimestampVerificationResult{
+				Type:      "TimestampAuthority",
+				URI:       ts.URI,
+				Timestamp: ts.Time,
+			})
+	}
+	return result, nil
 }
 
 // effectiveOptions overlays per-call *options.Verification on top of the
@@ -214,6 +257,44 @@ func (v *Verifier) effectiveOptions(opts *options.Verification) (VerifierOptions
 		eff.ExpectedPath = ""
 	}
 	return eff, nil
+}
+
+// chainValidationTime returns the time to use for SVID chain
+// validation along with any RFC 3161 timestamps that verified against
+// tm. If the bundle carries timestamps and tm is non-nil, the
+// timestamps are validated against tm and the earliest verified time
+// is returned. Bundle without timestamps, or with timestamps but no
+// tm, returns the zero time so x509.Verify falls back to time.Now().
+// When the bundle has timestamps but every timestamp fails validation
+// against tm, an error is returned — silently falling back would be
+// a security bypass.
+func chainValidationTime(bndl *sbundle.Bundle, tm root.TrustedMaterial) (time.Time, []*root.Timestamp, error) {
+	signedTimestamps, err := bndl.Timestamps()
+	if err != nil {
+		return time.Time{}, nil, fmt.Errorf("reading bundle timestamps: %w", err)
+	}
+	if len(signedTimestamps) == 0 {
+		return time.Time{}, nil, nil
+	}
+	if tm == nil {
+		// Bundle is timestamped but verifier has no TSA roots wired in.
+		// Fall through to time.Now() — current behavior.
+		return time.Time{}, nil, nil
+	}
+	verified, _, err := verify.VerifySignedTimestamp(bndl, tm)
+	if err != nil {
+		return time.Time{}, nil, fmt.Errorf("validating bundle timestamps: %w", err)
+	}
+	if len(verified) == 0 {
+		return time.Time{}, nil, errors.New("bundle has timestamps but none verified against the TSA trust material")
+	}
+	earliest := verified[0].Time
+	for _, ts := range verified[1:] {
+		if ts.Time.Before(earliest) {
+			earliest = ts.Time
+		}
+	}
+	return earliest, verified, nil
 }
 
 func matchIdentity(opts VerifierOptions, id spiffeid.ID) error {

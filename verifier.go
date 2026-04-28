@@ -10,6 +10,7 @@ import (
 
 	sdsse "github.com/sigstore/protobuf-specs/gen/pb-go/dsse"
 	sbundle "github.com/sigstore/sigstore-go/pkg/bundle"
+	"github.com/sigstore/sigstore-go/pkg/root"
 	"github.com/sigstore/sigstore-go/pkg/verify"
 	"github.com/sirupsen/logrus"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/carabiner-dev/signer/dsse"
 	"github.com/carabiner-dev/signer/key"
 	"github.com/carabiner-dev/signer/options"
+	"github.com/carabiner-dev/signer/sigstore"
 	spiffeverifier "github.com/carabiner-dev/signer/spiffe/verifier"
 )
 
@@ -63,6 +65,16 @@ func NewVerifier(fnOpts ...options.VerifierOptFunc) *Verifier {
 			// bundle.New contract for the sigstore-roots option.
 			logrus.Errorf("building spiffe verifier: %v", err)
 		} else {
+			// Wire TSA trust material from the embedded sigstore roots so
+			// SVID-signed bundles carrying an RFC 3161 timestamp can be
+			// validated past the SVID's TTL. Best-effort — if the roots
+			// don't carry a usable trusted root we log and let the SPIFFE
+			// verifier fall back to time.Now() chain validation.
+			if tm, terr := tsaTrustedMaterial(rootsData); terr != nil {
+				logrus.Errorf("building TSA trust material for spiffe verifier: %v", terr)
+			} else {
+				sv.SetTSATrustedMaterial(tm)
+			}
 			bundleOpts = append(bundleOpts, bundle.WithSpiffeVerifier(sv))
 		}
 	}
@@ -151,4 +163,24 @@ func (v *Verifier) VerifyParsedDSSE(env *sdsse.Envelope, keys []key.PublicKeyPro
 
 	// Verify and return the results
 	return v.dsseVerifier.RunVerification(&v.Options, keyVerifier, env, keys)
+}
+
+// tsaTrustedMaterial parses the embedded sigstore-roots data and
+// returns a TrustedMaterial backed by the first instance's trusted
+// root JSON. Used by the SPIFFE verifier to validate RFC 3161
+// timestamps anchored to sigstore's TSA without requiring a TUF fetch
+// at verify time.
+func tsaTrustedMaterial(rootsData []byte) (root.TrustedMaterial, error) {
+	parsed, err := sigstore.ParseRoots(rootsData)
+	if err != nil {
+		return nil, fmt.Errorf("parsing sigstore roots: %w", err)
+	}
+	if len(parsed.Roots) == 0 || len(parsed.Roots[0].RootData) == 0 {
+		return nil, errors.New("no trusted root data in sigstore roots")
+	}
+	tr, err := root.NewTrustedRootFromJSON(parsed.Roots[0].RootData)
+	if err != nil {
+		return nil, fmt.Errorf("parsing trusted root JSON: %w", err)
+	}
+	return tr, nil
 }
