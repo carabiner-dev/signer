@@ -156,11 +156,11 @@ func (k *KeysSign) ParseSigningKeys() ([]key.PrivateKeyProvider, error) {
 	for _, p := range k.PrivateKeyPaths {
 		data, err := os.ReadFile(p)
 		if err != nil {
-			return nil, fmt.Errorf("reading signing key file %q: %w", p, err)
+			return nil, fmt.Errorf("reading signing key file %s: %w", p, err)
 		}
 		provider, err := parser.ParsePrivateKeyProvider(data, fnOpts...)
 		if err != nil {
-			return nil, fmt.Errorf("parsing signing key %q: %w", p, err)
+			return nil, fmt.Errorf("parsing signing key %s: %w", p, err)
 		}
 		out = append(out, provider)
 	}
