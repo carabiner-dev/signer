@@ -44,6 +44,18 @@ type SignerSet struct {
 	// the runtime signer's default.
 	Backend string
 
+	// Timestamp controls whether the resulting bundle carries an RFC
+	// 3161 timestamp. Bound to --signing-timestamp; the flag is the
+	// single user-facing knob across backends so each per-backend
+	// child has its own --<prefix>-timestamp suppressed (via
+	// ManagedTimestamp on the child) when bundled here. BuildSigner
+	// propagates this value into the dispatched child's
+	// *options.Signer.Timestamp, overriding any per-backend default.
+	// Applies to sigstore and SPIFFE (whose BuildSigner attaches a
+	// TSA-only SigningConfig); the key backend ignores it because
+	// DSSE envelopes carry no timestamps.
+	Timestamp bool
+
 	Keys     *KeysSign
 	Sigstore *SigstoreSignSet
 	Spiffe   *SpiffeSignSet
@@ -59,10 +71,18 @@ var _ command.OptionsSet = (*SignerSet)(nil)
 // resolveBackend can auto-detect from the populated child flags;
 // users who want a specific backend can override --signing-backend.
 func DefaultSignerSet() *SignerSet {
+	sigstoreSet := DefaultSigstoreSignSet("sigstore")
+	spiffeSet := DefaultSpiffeSignSet("spiffe")
+	// Suppress the per-backend --sigstore-timestamp / --spiffe-timestamp
+	// flags when bundled; the single --signing-timestamp at this level
+	// is the user-facing knob.
+	sigstoreSet.Sign.ManagedTimestamp = true
+	spiffeSet.Sign.ManagedTimestamp = true
 	return &SignerSet{
-		Keys:     DefaultKeysSign(),
-		Sigstore: DefaultSigstoreSignSet("sigstore"),
-		Spiffe:   DefaultSpiffeSignSet("spiffe"),
+		Timestamp: true,
+		Keys:      DefaultKeysSign(),
+		Sigstore:  sigstoreSet,
+		Spiffe:    spiffeSet,
 	}
 }
 
@@ -78,6 +98,10 @@ func (s *SignerSet) Config() *command.OptionsSetConfig {
 					Help: fmt.Sprintf("signing backend (%s | %s | %s) default %s",
 						BackendKey, BackendSigstore, BackendSpiffe, BackendSigstore),
 				},
+				"signing-timestamp": {
+					Long: "signing-timestamp",
+					Help: "Add an RFC 3161 TSA-signed timestamp (sigstore/SPIFFE)",
+				},
 			},
 		}
 	}
@@ -89,11 +113,18 @@ func (s *SignerSet) Config() *command.OptionsSetConfig {
 // so --help output is stable across runs.
 func (s *SignerSet) AddFlags(cmd *cobra.Command) {
 	cfg := s.Config()
-	cmd.PersistentFlags().StringVar(
+	pf := cmd.PersistentFlags()
+	pf.StringVar(
 		&s.Backend,
 		cfg.LongFlag("signing-backend"),
 		s.Backend,
 		cfg.HelpText("signing-backend"),
+	)
+	pf.BoolVar(
+		&s.Timestamp,
+		cfg.LongFlag("signing-timestamp"),
+		s.Timestamp,
+		cfg.HelpText("signing-timestamp"),
 	)
 	if s.Keys != nil {
 		s.Keys.AddFlags(cmd)
@@ -183,25 +214,35 @@ func (s *SignerSet) BuildSigner() (*Signer, error) {
 	if err != nil {
 		return nil, err
 	}
+	var target *Signer
 	switch backend {
 	case BackendKey:
 		if s.Keys == nil {
 			return nil, errors.New("SignerSet: --signing-backend=key but Keys is nil")
 		}
-		return s.Keys.BuildSigner()
+		target, err = s.Keys.BuildSigner()
 	case BackendSigstore:
 		if s.Sigstore == nil {
 			return nil, errors.New("SignerSet: --signing-backend=sigstore but Sigstore is nil")
 		}
-		return s.Sigstore.BuildSigner()
+		target, err = s.Sigstore.BuildSigner()
 	case BackendSpiffe:
 		if s.Spiffe == nil {
 			return nil, errors.New("SignerSet: --signing-backend=spiffe but Spiffe is nil")
 		}
-		return s.Spiffe.BuildSigner()
+		target, err = s.Spiffe.BuildSigner()
 	default:
 		return nil, fmt.Errorf("SignerSet: unhandled backend %q", backend)
 	}
+	if err != nil {
+		return nil, err
+	}
+	// The bundled --signing-timestamp wins over per-backend defaults.
+	// For BackendKey this is a no-op (DSSE envelopes carry no
+	// timestamp); for BackendSpiffe it lights up once TSA-for-SPIFFE
+	// wiring lands.
+	target.Timestamp = s.Timestamp
+	return target, nil
 }
 
 // BuildCredentialProvider returns the *spiffe.CredentialProvider

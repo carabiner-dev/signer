@@ -10,13 +10,16 @@ import (
 
 	sdsse "github.com/sigstore/protobuf-specs/gen/pb-go/dsse"
 	sbundle "github.com/sigstore/sigstore-go/pkg/bundle"
+	"github.com/sigstore/sigstore-go/pkg/root"
 	"github.com/sigstore/sigstore-go/pkg/verify"
 	"github.com/sirupsen/logrus"
 
 	"github.com/carabiner-dev/signer/bundle"
 	"github.com/carabiner-dev/signer/dsse"
+	"github.com/carabiner-dev/signer/internal/tuf"
 	"github.com/carabiner-dev/signer/key"
 	"github.com/carabiner-dev/signer/options"
+	"github.com/carabiner-dev/signer/sigstore"
 	spiffeverifier "github.com/carabiner-dev/signer/spiffe/verifier"
 )
 
@@ -63,6 +66,14 @@ func NewVerifier(fnOpts ...options.VerifierOptFunc) *Verifier {
 			// bundle.New contract for the sigstore-roots option.
 			logrus.Errorf("building spiffe verifier: %v", err)
 		} else {
+			// Wire a lazy TSA-material loader so SVID-signed bundles
+			// carrying an RFC 3161 timestamp can be validated past the
+			// SVID's TTL. The loader is only invoked when a bundle
+			// actually has timestamps — verifying SPIFFE bundles without
+			// stamps stays purely local. The loader fetches the trusted
+			// root via TUF (cached after first call), matching how the
+			// sigstore verify path resolves it.
+			sv.SetTSAMaterialLoader(tsaMaterialLoader(rootsData))
 			bundleOpts = append(bundleOpts, bundle.WithSpiffeVerifier(sv))
 		}
 	}
@@ -151,4 +162,36 @@ func (v *Verifier) VerifyParsedDSSE(env *sdsse.Envelope, keys []key.PublicKeyPro
 
 	// Verify and return the results
 	return v.dsseVerifier.RunVerification(&v.Options, keyVerifier, env, keys)
+}
+
+// tsaMaterialLoader returns a closure the SPIFFE verifier can call
+// lazily to obtain the TrustedMaterial used for RFC 3161 timestamp
+// validation. The closure parses the supplied sigstore-roots, fetches
+// the trusted root via TUF (cached locally by sigstore-go after the
+// first call), and constructs the TrustedRoot from the proto-JSON the
+// TUF refresh returns. Mirrors the same pattern bundle/verifier.go
+// uses for the sigstore path so behavior and caching are consistent.
+//
+// The closure is invoked at most once per Verifier and only when a
+// bundle that actually carries timestamps is presented, so verifiers
+// that never see TSA-stamped bundles never pay the TUF fetch cost.
+func tsaMaterialLoader(rootsData []byte) func() (root.TrustedMaterial, error) {
+	return func() (root.TrustedMaterial, error) {
+		parsed, err := sigstore.ParseRoots(rootsData)
+		if err != nil {
+			return nil, fmt.Errorf("parsing sigstore roots: %w", err)
+		}
+		if len(parsed.Roots) == 0 {
+			return nil, errors.New("no sigstore instances in roots configuration")
+		}
+		data, err := tuf.GetRoot(&parsed.Roots[0].TufOptions)
+		if err != nil {
+			return nil, fmt.Errorf("fetching trusted root via TUF: %w", err)
+		}
+		tr, err := root.NewTrustedRootFromJSON(data)
+		if err != nil {
+			return nil, fmt.Errorf("parsing trusted root JSON: %w", err)
+		}
+		return tr, nil
+	}
 }

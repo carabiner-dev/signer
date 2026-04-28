@@ -71,6 +71,7 @@ func TestSpiffeSignAddFlags(t *testing.T) {
 		cmd := &cobra.Command{Use: "test"}
 		s.AddFlags(cmd)
 		require.NotNil(t, cmd.PersistentFlags().Lookup("socket"))
+		require.NotNil(t, cmd.PersistentFlags().Lookup("timestamp"))
 	})
 
 	t.Run("flag-prefix-applies", func(t *testing.T) {
@@ -80,6 +81,52 @@ func TestSpiffeSignAddFlags(t *testing.T) {
 		cmd := &cobra.Command{Use: "test"}
 		s.AddFlags(cmd)
 		require.NotNil(t, cmd.PersistentFlags().Lookup("spiffe-socket"))
+		require.NotNil(t, cmd.PersistentFlags().Lookup("spiffe-timestamp"))
+	})
+
+	t.Run("managed-timestamp-suppresses-flag", func(t *testing.T) {
+		t.Parallel()
+		s := DefaultSpiffeSign(nil)
+		s.Config().FlagPrefix = "spiffe"
+		s.ManagedTimestamp = true
+		cmd := &cobra.Command{Use: "test"}
+		s.AddFlags(cmd)
+		require.NotNil(t, cmd.PersistentFlags().Lookup("spiffe-socket"),
+			"socket flag must still register when timestamp is managed externally")
+		require.Nil(t, cmd.PersistentFlags().Lookup("spiffe-timestamp"),
+			"--spiffe-timestamp must be suppressed when ManagedTimestamp=true")
+	})
+
+	t.Run("default-timestamp-is-true", func(t *testing.T) {
+		t.Parallel()
+		require.True(t, DefaultSpiffeSign(nil).Timestamp,
+			"SPIFFE bundles default to TSA-stamped so they outlive SVID expiry")
+	})
+}
+
+// TestSpiffeSignSetBuildSignerTimestamp confirms BuildSigner only
+// propagates Timestamp into the resulting *options.Signer; SigningConfig
+// stays nil. The TSA-only SigningConfig is synthesized at sign time
+// by bundle.DefaultSigner.BuildBundleOptions, not by the OptionsSet.
+func TestSpiffeSignSetBuildSignerTimestamp(t *testing.T) {
+	t.Setenv("SPIFFE_ENDPOINT_SOCKET", testSpiffeSocket)
+
+	t.Run("default-true-no-signing-config", func(t *testing.T) {
+		set := DefaultSpiffeSignSet("spiffe")
+		opts, err := set.BuildSigner()
+		require.NoError(t, err)
+		require.True(t, opts.Timestamp)
+		require.Nil(t, opts.SigningConfig,
+			"options layer must not carry sigstore SigningConfig; bundle layer synthesizes it")
+	})
+
+	t.Run("explicit-false", func(t *testing.T) {
+		set := DefaultSpiffeSignSet("spiffe")
+		set.Sign.Timestamp = false
+		opts, err := set.BuildSigner()
+		require.NoError(t, err)
+		require.False(t, opts.Timestamp)
+		require.Nil(t, opts.SigningConfig)
 	})
 }
 

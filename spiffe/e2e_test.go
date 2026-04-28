@@ -132,3 +132,69 @@ func TestE2ESPIFFESignAndVerify(t *testing.T) {
 		},
 	}), "regex path match should succeed")
 }
+
+// TestE2ESPIFFESignAndVerifyWithTimestamp exercises the TSA-stamped
+// SPIFFE pipeline: sign with --signing-timestamp on, then verify
+// against the SPIRE upstream root *and* sigstore's TSA. Verifies both
+// that the bundle carries an RFC 3161 TimeStampToken and that the
+// SPIFFE verifier reports verified timestamps in the result.
+//
+// Requires `make spire-up` AND outbound network reachability to
+// timestamp.sigstore.dev. Skipped without env vars; the t.Logf branch
+// records when network failure means we couldn't validate the path.
+func TestE2ESPIFFESignAndVerifyWithTimestamp(t *testing.T) {
+	socketAddr := os.Getenv("SPIFFE_ENDPOINT_SOCKET")
+	bundlePath := os.Getenv("SPIFFE_TRUST_BUNDLE")
+	if socketAddr == "" || bundlePath == "" {
+		t.Skip("SPIFFE_ENDPOINT_SOCKET / SPIFFE_TRUST_BUNDLE unset — run `make spire-up` first")
+	}
+
+	// Build the signer through the bundled SignerSet path with TSA on
+	// (default for SPIFFE in DefaultSignerSet).
+	set := options.DefaultSignerSet()
+	set.Backend = string(options.BackendSpiffe)
+	set.Spiffe.Sign.SocketPath = socketAddr
+	require.True(t, set.Timestamp, "DefaultSignerSet should default Timestamp=true")
+
+	s, err := signerlib.NewSignerFromSet(set)
+	require.NoError(t, err, "building signer from set")
+	t.Cleanup(func() {
+		if cerr := s.Close(); cerr != nil {
+			t.Logf("closing signer: %v", cerr)
+		}
+	})
+
+	statement := []byte(`{` +
+		`"_type":"https://in-toto.io/Statement/v1",` +
+		`"subject":[{"name":"e2e-tsa","digest":{"sha256":"0000000000000000000000000000000000000000000000000000000000000000"}}],` +
+		`"predicateType":"https://example.com/p/v1",` +
+		`"predicate":{}` +
+		`}`)
+	bndl, err := s.SignStatementBundle(statement)
+	if err != nil {
+		// TSA POST may have failed (network / sigstore.dev availability).
+		// Skip rather than fail to keep the test useful in offline CI.
+		t.Skipf("signing with TSA failed (may be a network issue): %v", err)
+	}
+
+	// Bundle should carry the RFC 3161 TimeStampToken.
+	require.NotNil(t, bndl.GetVerificationMaterial())
+	require.NotNil(t, bndl.GetVerificationMaterial().GetTimestampVerificationData(),
+		"TSA-stamped bundle must carry timestamp verification data")
+	require.NotEmpty(t, bndl.GetVerificationMaterial().GetTimestampVerificationData().GetRfc3161Timestamps(),
+		"TSA-stamped bundle must carry at least one RFC 3161 token")
+
+	// Verify — the SPIFFE verifier should validate the TSA token
+	// against the embedded sigstore TSA root, populate
+	// VerifiedTimestamps, and use the verified time for SVID chain
+	// validation (proven indirectly: verification succeeds).
+	verifier := signerlib.NewVerifier(func(v *options.Verifier) {
+		v.TrustRootsPath = bundlePath
+	})
+	result, err := verifier.VerifyParsedBundle(bndl)
+	require.NoError(t, err, "verifying TSA-stamped bundle")
+	require.NotNil(t, result)
+	require.NotEmpty(t, result.VerifiedTimestamps,
+		"SPIFFE verifier must report at least one verified TSA timestamp")
+	require.Equal(t, "TimestampAuthority", result.VerifiedTimestamps[0].Type)
+}
