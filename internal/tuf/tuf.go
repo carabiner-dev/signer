@@ -8,10 +8,23 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	"github.com/sigstore/sigstore-go/pkg/tuf"
 	"github.com/theupdateframework/go-tuf/v2/metadata/fetcher"
 	"sigs.k8s.io/release-utils/version"
+)
+
+// TUF metadata initialization is brittle on transient filesystem
+// contention: on Windows the atomic rename of the freshly-created
+// temp metadata file fails when antivirus / indexer briefly locks it
+// ("Access is denied"), and on slow disks any platform can hit a
+// short window where the rename or initial fetch fails. The
+// failure mode is recoverable on retry, so we bound a few attempts
+// here rather than blow up the verifier on a sub-second I/O blip.
+const (
+	tufInitMaxAttempts  = 3
+	tufInitInitialDelay = 250 * time.Millisecond
 )
 
 // TufOptions captures the TUF options handled by bind
@@ -22,7 +35,11 @@ type TufOptions struct {
 	RootData    []byte `json:"root-data"`
 }
 
-// GetClient returns a TUF client configured with the options
+// GetClient returns a TUF client configured with the options. The
+// underlying tuf.New call is retried with exponential backoff on
+// transient errors (see the tufInit* constants for rationale); the
+// last error is returned after exhausting attempts so legitimate
+// configuration problems still surface.
 func GetClient(opts *TufOptions) (*tuf.Client, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -41,11 +58,22 @@ func GetClient(opts *TufOptions) (*tuf.Client, error) {
 		Fetcher:                   Defaultfetcher(),
 	}
 
-	client, err := tuf.New(tufOpts)
-	if err != nil {
-		return nil, fmt.Errorf("creating TUF client: %w", err)
+	var (
+		client  *tuf.Client
+		lastErr error
+		delay   = tufInitInitialDelay
+	)
+	for attempt := 1; attempt <= tufInitMaxAttempts; attempt++ {
+		client, lastErr = tuf.New(tufOpts)
+		if lastErr == nil {
+			return client, nil
+		}
+		if attempt < tufInitMaxAttempts {
+			time.Sleep(delay)
+			delay *= 2
+		}
 	}
-	return client, nil
+	return nil, fmt.Errorf("creating TUF client (after %d attempts): %w", tufInitMaxAttempts, lastErr)
 }
 
 // GetRoot fetches the trusted root from the configured URL or from
