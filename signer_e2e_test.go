@@ -28,7 +28,7 @@ func TestSignAndVerifyE2E(t *testing.T) {
 	s := NewSigner()
 	statementData, err := os.ReadFile("bundle/testdata/statement.json")
 	require.NoError(t, err)
-	bndl, err := s.SignStatement(statementData)
+	bndl, err := s.SignStatementBundle(statementData)
 	require.NoError(t, err)
 	require.NotNil(t, bndl)
 

@@ -9,19 +9,79 @@ import (
 
 	"github.com/sigstore/sigstore/pkg/oauthflow"
 
+	"github.com/carabiner-dev/signer/key"
 	"github.com/carabiner-dev/signer/sigstore"
+)
+
+// Backend selects which signing backend the Signer uses. Three
+// independent implementations:
+//
+//   - BackendSigstore: a Fulcio-issued cert + DSSE + optional
+//     Rekor/TSA, produced as a sigstore bundle. signingState
+//     auto-builds a sigstore.CredentialProvider from this Options
+//     struct on first use when Signer.Credentials is nil.
+//   - BackendSpiffe: an X.509-SVID + DSSE produced as a sigstore
+//     bundle, including the SPIRE upstream intermediates. Requires
+//     Signer.Credentials to be pre-populated with a
+//     *spiffe.CredentialProvider — signingState cannot build SPIFFE
+//     credentials from Options alone.
+//   - BackendKey: raw private-key signing producing a bare DSSE
+//     envelope (no cert chain, no Rekor, no TSA). Uses Signer.Options.Keys.
+//
+// At the polymorphic layer (Signer.SignStatement / Signer.SignMessage),
+// Sigstore and Spiffe both yield *BundleArtifact; Key yields
+// *EnvelopeArtifact.
+//
+// Specialized methods on Signer behave as follows w.r.t. this field:
+//
+//   - SignStatementBundle / SignMessageBundle work for either bundle
+//     backend (Sigstore or Spiffe) — they read Backend via
+//     signingState to know which CredentialProvider to use, and error
+//     if Backend is Key.
+//   - SignStatementToDSSE / SignMessageToDSSE work regardless of
+//     Backend; they only need keys (via per-call options.WithKey or
+//     Signer.Options.Keys).
+type Backend string
+
+const (
+	// BackendSigstore signs through Fulcio + sigstore-go.
+	// Default when Backend is left unset.
+	BackendSigstore Backend = "sigstore"
+
+	// BackendKey signs against raw private keys held in Signer.Keys,
+	// producing a bare DSSE envelope.
+	BackendKey Backend = "key"
+
+	// BackendSpiffe signs with an X.509-SVID from the SPIFFE Workload
+	// API. The signer.Signer's Credentials must be set to a
+	// *spiffe.CredentialProvider — the runtime cannot yet build SPIFFE
+	// credentials from Options alone.
+	BackendSpiffe Backend = "spiffe"
 )
 
 var DefaultSigner = Signer{
 	SigstoreRootsData: sigstore.DefaultRoots, // Embedded data from the rootsfile
 }
 
-// Signer
+// Signer is the stateful sign-side configuration for the top-level
+// signer.Signer. It selects the backend and carries the material that
+// backend needs.
 type Signer struct {
 	Sigstore
 	Token             *oauthflow.OIDCIDToken
 	SigstoreRootsData []byte
-	parsedRoots       bool
+
+	// Backend selects which signing path the polymorphic Sign methods
+	// take. Empty defaults to BackendBundle.
+	Backend Backend
+
+	// Keys are the private keys the key backend will sign with. Only
+	// consulted when Backend == BackendKey AND no per-call
+	// options.WithKey(...) is supplied. Per-call WithKey replaces (does
+	// not augment) these keys for the single invocation that passes it.
+	Keys []key.PrivateKeyProvider
+
+	parsedRoots bool
 }
 
 // ParseRoots parses the root information and assigns the instance data in

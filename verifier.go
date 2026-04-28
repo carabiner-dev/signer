@@ -4,7 +4,9 @@
 package signer
 
 import (
+	"errors"
 	"fmt"
+	"os"
 
 	sdsse "github.com/sigstore/protobuf-specs/gen/pb-go/dsse"
 	sbundle "github.com/sigstore/sigstore-go/pkg/bundle"
@@ -15,8 +17,23 @@ import (
 	"github.com/carabiner-dev/signer/dsse"
 	"github.com/carabiner-dev/signer/key"
 	"github.com/carabiner-dev/signer/options"
-	"github.com/carabiner-dev/signer/spiffe"
+	spiffeverifier "github.com/carabiner-dev/signer/spiffe/verifier"
 )
+
+// NewVerifierFromSet builds a *Verifier from a VerifierSet. Equivalent
+// to BuildVerifier + NewVerifier with the resolved options applied,
+// in one call. Lives in this package (not options/) because options/
+// cannot import signer/.
+func NewVerifierFromSet(set *options.VerifierSet) (*Verifier, error) {
+	if set == nil {
+		return nil, errors.New("NewVerifierFromSet: set is nil")
+	}
+	opts, err := set.BuildVerifier()
+	if err != nil {
+		return nil, err
+	}
+	return NewVerifier(func(o *options.Verifier) { *o = *opts }), nil
+}
 
 // NewVerifier creates a new verifier with default options and verifiers
 func NewVerifier(fnOpts ...options.VerifierOptFunc) *Verifier {
@@ -25,9 +42,22 @@ func NewVerifier(fnOpts ...options.VerifierOptFunc) *Verifier {
 		f(&opts)
 	}
 
-	bundleOpts := []bundle.BundleOptsFunc{bundle.WithSigstoreRootsData(opts.SigstoreRootsData)}
+	rootsData := opts.SigstoreRootsData
+	if opts.SigstoreRootsPath != "" {
+		loaded, err := os.ReadFile(opts.SigstoreRootsPath)
+		if err != nil {
+			// Match the bundle.New contract for trust-material init:
+			// log and fall through to the embedded default rather than
+			// blow up the verifier at construction time.
+			logrus.Errorf("reading sigstore roots from %q: %v", opts.SigstoreRootsPath, err)
+		} else {
+			rootsData = loaded
+		}
+	}
+
+	bundleOpts := []bundle.BundleOptsFunc{bundle.WithSigstoreRootsData(rootsData)}
 	if opts.TrustRootsPEM != nil || opts.TrustRootsPath != "" {
-		sv, err := spiffe.NewVerifierFromOptions(&opts.SpiffeVerification)
+		sv, err := spiffeverifier.NewVerifierFromOptions(&opts.SpiffeVerification)
 		if err != nil {
 			// Initialization errors are logged but not fatal, matching the
 			// bundle.New contract for the sigstore-roots option.
@@ -107,6 +137,10 @@ func (v *Verifier) VerifyParsedDSSE(env *sdsse.Envelope, keys []key.PublicKeyPro
 		if err := fn(&opts); err != nil {
 			return nil, err
 		}
+	}
+
+	if len(keys) == 0 {
+		keys = opts.PubKeys
 	}
 
 	// Build the key verifier to check the envelope signatures

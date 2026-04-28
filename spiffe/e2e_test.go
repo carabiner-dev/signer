@@ -68,7 +68,7 @@ func TestE2ESPIFFESignAndVerify(t *testing.T) {
 		`"predicateType":"https://example.com/p/v1",` +
 		`"predicate":{}` +
 		`}`)
-	bndl, err := signer.SignStatement(statement)
+	bndl, err := signer.SignStatementBundle(statement)
 	require.NoError(t, err, "signing statement")
 	require.NotNil(t, bndl)
 

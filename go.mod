@@ -5,6 +5,7 @@ go 1.25.9
 require (
 	github.com/ProtonMail/go-crypto v1.4.1
 	github.com/carabiner-dev/attestation v0.2.1
+	github.com/carabiner-dev/command v0.3.1
 	github.com/in-toto/attestation v1.2.0
 	github.com/maxbrunsfeld/counterfeiter/v6 v6.12.2
 	github.com/nozzle/throttler v0.0.0-20180817012639-2ea982251481

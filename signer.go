@@ -4,16 +4,12 @@
 package signer
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
 
-	protobundle "github.com/sigstore/protobuf-specs/gen/pb-go/bundle/v1"
-	protocommon "github.com/sigstore/protobuf-specs/gen/pb-go/common/v1"
 	sdsse "github.com/sigstore/protobuf-specs/gen/pb-go/dsse"
 	sbundle "github.com/sigstore/sigstore-go/pkg/bundle"
-	"github.com/sigstore/sigstore-go/pkg/sign"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/encoding/protojson"
 
@@ -22,6 +18,35 @@ import (
 	"github.com/carabiner-dev/signer/options"
 	"github.com/carabiner-dev/signer/sigstore"
 )
+
+// NewSignerFromSet builds a fully-armed *Signer from a SignerSet.
+// Equivalent to: BuildSigner + BuildCredentialProvider + NewSigner +
+// field assignment, in one call. Lives in this package (not options/)
+// because options/ cannot import signer/ — see the package-level
+// comments on SignerSet for the import-cycle reasoning.
+//
+// The caller is responsible for closing the returned Signer when done
+// (via Signer.Close) so any Workload API stream lazily opened by the
+// SPIFFE backend is released.
+func NewSignerFromSet(set *options.SignerSet) (*Signer, error) {
+	if set == nil {
+		return nil, errors.New("NewSignerFromSet: set is nil")
+	}
+	opts, err := set.BuildSigner()
+	if err != nil {
+		return nil, err
+	}
+	creds, err := set.BuildCredentialProvider()
+	if err != nil {
+		return nil, err
+	}
+	s := NewSigner()
+	s.Options = *opts
+	if creds != nil {
+		s.Credentials = creds
+	}
+	return s, nil
+}
 
 // NewSigner creates a new signer and initializes it with the default sigstore
 // roots embedded in the package.
@@ -52,225 +77,215 @@ func NewSigner() *Signer {
 	}
 }
 
+// Signer is a thin orchestrator. It owns the configuration
+// (Options + Credentials + bundle/dsse signers) and resolves the
+// concrete Backend that does the actual signing on each call. The
+// signing logic lives entirely in the Backend implementations
+// (sigstoreBackend / spiffeBackend / keyBackend in backend.go).
 type Signer struct {
 	Options options.Signer
 
-	// Credentials produces the signing keypair and certificate material. When
-	// nil, signingState defaults to a sigstore credential provider built from
-	// Options on the first call.
+	// Credentials supplies the keypair and certificate material for the
+	// bundle backends (sigstore / SPIFFE). Pre-set for SPIFFE; for
+	// sigstore the backend will lazily build a sigstore.CredentialProvider
+	// from Options if this is nil.
+	//
+	// The Signer carries no per-instance signing-key state. To sign with
+	// raw private keys, either configure Options.Backend = BackendKey +
+	// Options.Keys, or pass options.WithKey(...) at the call site.
 	Credentials bundle.CredentialProvider
 
 	bundleSigner bundle.Signer
 	dsseSigner   dsse.Signer
 
-	// Cached bundle options reused across multiple signing operations to
-	// avoid repeating TSA/Rekor service discovery.
-	signingReady bool
-	bundleOpts   *sign.BundleOptions
+	// persistent caches the resolved Backend across calls so the OIDC
+	// flow + Fulcio cert request happen once, not per call. Built
+	// lazily on first sign call. Per-call options.WithKey produces a
+	// transient keyBackend that does NOT replace this cache.
+	persistent Backend
 }
 
-// WriteBundle writes the bundle JSON to
-func (s *Signer) WriteBundle(bndl *sbundle.Bundle, w io.Writer) error {
-	bundleJSON, err := protojson.Marshal(bndl)
-	if err != nil {
-		return fmt.Errorf("marshaling bundle: %w", err)
-	}
-
-	if _, err := w.Write(bundleJSON); err != nil {
-		return fmt.Errorf("writing bundle: %w", err)
-	}
-
-	return nil
-}
-
-// signingState returns the cached keypair and bundle options, initializing them
-// on the first call. This ensures that the OIDC flow, Fulcio certificate request,
-// and keypair generation happen only once even when signing multiple artifacts.
-func (s *Signer) signingState() (sign.Keypair, *sign.BundleOptions, error) {
-	if s.signingReady {
-		return s.Credentials.Keypair(), s.bundleOpts, nil
-	}
-
-	// Verify the defined options:
-	if err := s.Options.Validate(); err != nil {
-		return nil, nil, fmt.Errorf("validating options for signing: %w", err)
-	}
-
-	if s.Credentials == nil {
-		s.Credentials = s.Options.BuildSigstoreCredentials()
-	}
-
-	if err := s.Credentials.Prepare(context.TODO()); err != nil {
-		return nil, nil, fmt.Errorf("preparing signing credentials: %w", err)
-	}
-
-	bundleOpts, err := s.bundleSigner.BuildBundleOptions(&s.Options, s.Credentials)
-	if err != nil {
-		return nil, nil, fmt.Errorf("building options: %w", err)
-	}
-
-	s.bundleOpts = bundleOpts
-	s.signingReady = true
-	return s.Credentials.Keypair(), s.bundleOpts, nil
-}
-
-// SignStatement signs an in-toto attestation using the configured options and
-// returns a sigstore bundle. The signing process will try to obtain the
-// signer identity in this order:
+// SignStatement signs an in-toto attestation and returns a polymorphic
+// SignedArtifact. Resolution rules:
 //
-//  1. Try the configured ambient credentials providers
-//     (currently only the GitHub actions plugin is supported).
-//  2. If a terminal is detected, it will start the sigstore oidc
-//     flow in a browser.
-//  3. If no terminal is detected, it will start the sigstore device
-//     flow.
+//  1. Per-call options.WithKey(...) → transient key backend using the
+//     per-call keys (Signer.Options.Keys ignored for this invocation).
+//  2. Otherwise the persistent backend (lazily built from
+//     Signer.Options.Backend on first call) signs:
+//     BackendSigstore (default) / BackendSpiffe → *BundleArtifact;
+//     BackendKey → *EnvelopeArtifact signed with Signer.Options.Keys.
 //
-// When called multiple times on the same Signer, the keypair, OIDC token,
-// and Fulcio certificate are reused across calls.
-func (s *Signer) SignStatement(data []byte, funcs ...options.SignOptFn) (*sbundle.Bundle, error) {
-	signOpts := options.DefaultSign
-	for _, f := range funcs {
-		if err := f(&signOpts); err != nil {
-			return nil, err
-		}
-	}
-
-	// check that statement is not empty and it is an intoto attestation
-	if err := s.bundleSigner.VerifyAttestationContent(&s.Options, data); err != nil {
-		return nil, fmt.Errorf("verifying content: %w", err)
-	}
-
-	// Wrap the attestation in its DSSE envelope. Note that we override the
-	// payload type as sigstore-go rejects anything that is not in-toto.
-	// (plus we already verified the data to be a statement).
-	// See https://github.com/sigstore/sigstore-go/issues/509
-	content := s.bundleSigner.WrapData("application/vnd.in-toto+json", data)
-
-	keypair, bundleOpts, err := s.signingState()
+// Errors out before signing when the resolved backend's configuration
+// is incomplete (e.g. BackendKey selected but no keys available).
+func (s *Signer) SignStatement(data []byte, funcs ...options.SignOptFn) (SignedArtifact, error) {
+	backend, err := s.resolveBackend(funcs)
 	if err != nil {
 		return nil, err
 	}
-
-	bndl, err := s.bundleSigner.SignBundle(content, keypair, bundleOpts)
-	if err != nil {
-		return nil, fmt.Errorf("singing statement: %w", err)
-	}
-	if err := s.attachIntermediates(bndl); err != nil {
-		return nil, fmt.Errorf("attaching intermediates: %w", err)
-	}
-	return &sbundle.Bundle{
-		Bundle: bndl,
-	}, nil
+	return backend.SignStatement(data, funcs...)
 }
 
-// SignMessage signs a payload as a message digest and returns a sigstore bundle.
-// When called multiple times on the same Signer, the keypair, OIDC token,
-// and Fulcio certificate are reused across calls.
-func (s *Signer) SignMessage(data []byte, funcs ...options.SignOptFn) (*sbundle.Bundle, error) {
-	signOpts := options.DefaultSign
-	for _, f := range funcs {
-		if err := f(&signOpts); err != nil {
-			return nil, err
-		}
-	}
-
-	// Wrap the payload as a message
-	content := s.bundleSigner.BuildMessage(data)
-
-	keypair, bundleOpts, err := s.signingState()
+// SignMessage signs a payload and returns a polymorphic SignedArtifact.
+// Backend resolution follows the same rules as SignStatement. The DSSE
+// path requires options.WithPayloadType.
+func (s *Signer) SignMessage(data []byte, funcs ...options.SignOptFn) (SignedArtifact, error) {
+	backend, err := s.resolveBackend(funcs)
 	if err != nil {
 		return nil, err
 	}
+	return backend.SignMessage(data, funcs...)
+}
 
-	bndl, err := s.bundleSigner.SignBundle(content, keypair, bundleOpts)
+// resolveBackend selects the right Backend for a polymorphic Sign call.
+// Per-call options.WithKey forces a transient keyBackend; otherwise
+// the persistent backend (lazy, cached) is returned.
+func (s *Signer) resolveBackend(funcs []options.SignOptFn) (Backend, error) {
+	so := options.DefaultSign
+	for _, f := range funcs {
+		if err := f(&so); err != nil {
+			return nil, err
+		}
+	}
+	if len(so.Keys) > 0 {
+		return newKeyBackend(s.dsseSigner, so.Keys), nil
+	}
+	return s.persistentBackend()
+}
+
+// persistentBackend returns the cached persistent backend, building it
+// on first call from Signer.Options.Backend.
+func (s *Signer) persistentBackend() (Backend, error) {
+	if s.persistent != nil {
+		return s.persistent, nil
+	}
+
+	backend := s.Options.Backend
+	if backend == "" {
+		backend = options.BackendSigstore
+	}
+
+	switch backend {
+	case options.BackendSigstore:
+		s.persistent = newSigstoreBackend(&s.Options, s.Credentials, s.bundleSigner)
+		return s.persistent, nil
+
+	case options.BackendSpiffe:
+		b, err := newSpiffeBackend(&s.Options, s.Credentials, s.bundleSigner)
+		if err != nil {
+			return nil, err
+		}
+		s.persistent = b
+		return s.persistent, nil
+
+	case options.BackendKey:
+		if len(s.Options.Keys) == 0 {
+			return nil, errors.New("Signer.Options.Backend is BackendKey but Signer.Options.Keys is empty; configure keys or pass options.WithKey(...) per call")
+		}
+		s.persistent = newKeyBackend(s.dsseSigner, s.Options.Keys)
+		return s.persistent, nil
+
+	default:
+		return nil, fmt.Errorf("unknown backend %q", backend)
+	}
+}
+
+// SignStatementBundle signs an in-toto attestation and returns a
+// sigstore bundle. Resolves the persistent backend (sigstore or
+// SPIFFE) and unwraps its artifact. Errors when the configured
+// backend is BackendKey — keys can't produce a bundle.
+//
+// Use the polymorphic SignStatement when you want format-agnostic
+// dispatch.
+func (s *Signer) SignStatementBundle(data []byte, funcs ...options.SignOptFn) (*sbundle.Bundle, error) {
+	backend, err := s.persistentBackend()
 	if err != nil {
-		return nil, fmt.Errorf("singing statement: %w", err)
+		return nil, err
 	}
-	if err := s.attachIntermediates(bndl); err != nil {
-		return nil, fmt.Errorf("attaching intermediates: %w", err)
+	if backend.Name() == options.BackendKey {
+		return nil, errors.New("SignStatementBundle: configured backend is BackendKey; use SignStatement (polymorphic) or SignStatementToDSSE")
 	}
-	return &sbundle.Bundle{
-		Bundle: bndl,
-	}, nil
+	art, err := backend.SignStatement(data, funcs...)
+	if err != nil {
+		return nil, err
+	}
+	ba, ok := art.(*BundleArtifact)
+	if !ok || ba == nil {
+		return nil, fmt.Errorf("backend %q produced a non-bundle artifact (%T)", backend.Name(), art)
+	}
+	return ba.Bundle, nil
 }
 
-// attachIntermediates rewrites the bundle's VerificationMaterial to carry
-// [leaf, ...intermediates] when the credential provider exposes intermediates.
-// When the provider returns an empty chain (the sigstore case) the bundle is
-// left untouched. Called after SignBundle so the leaf DER is already present
-// in VerificationMaterial.Content.
-func (s *Signer) attachIntermediates(bndl *protobundle.Bundle) error {
-	if s.Credentials == nil {
-		return nil
+// SignMessageBundle signs a payload and returns a sigstore bundle.
+// Same dispatch rules as SignStatementBundle.
+func (s *Signer) SignMessageBundle(data []byte, funcs ...options.SignOptFn) (*sbundle.Bundle, error) {
+	backend, err := s.persistentBackend()
+	if err != nil {
+		return nil, err
 	}
-	ints := s.Credentials.Intermediates()
-	if len(ints) == 0 {
-		return nil
+	if backend.Name() == options.BackendKey {
+		return nil, errors.New("SignMessageBundle: configured backend is BackendKey; use SignMessage (polymorphic) or SignMessageToDSSE")
 	}
-	if bndl.GetVerificationMaterial() == nil {
-		return errors.New("bundle has no verification material")
+	art, err := backend.SignMessage(data, funcs...)
+	if err != nil {
+		return nil, err
 	}
-	leaf, ok := bndl.GetVerificationMaterial().GetContent().(*protobundle.VerificationMaterial_Certificate)
-	if !ok || leaf.Certificate == nil {
-		// Already a chain, a public key, or nothing — leave as-is.
-		return nil
+	ba, ok := art.(*BundleArtifact)
+	if !ok || ba == nil {
+		return nil, fmt.Errorf("backend %q produced a non-bundle artifact (%T)", backend.Name(), art)
 	}
-
-	chain := &protocommon.X509CertificateChain{
-		Certificates: make([]*protocommon.X509Certificate, 0, 1+len(ints)),
-	}
-	chain.Certificates = append(chain.Certificates, &protocommon.X509Certificate{
-		RawBytes: leaf.Certificate.GetRawBytes(),
-	})
-	for _, c := range ints {
-		chain.Certificates = append(chain.Certificates, &protocommon.X509Certificate{
-			RawBytes: c.Raw,
-		})
-	}
-	bndl.VerificationMaterial.Content = &protobundle.VerificationMaterial_X509CertificateChain{
-		X509CertificateChain: chain,
-	}
-	// sigstore-go's sbundle.NewBundle rejects X509CertificateChain content at
-	// v0.3 (only single Certificate allowed). v0.2 permits the chain variant,
-	// which is exactly what SPIFFE signing needs to carry intermediates.
-	bndl.MediaType = "application/vnd.dev.sigstore.bundle+json;version=0.2"
-	return nil
+	return ba.Bundle, nil
 }
 
-// SignStatementToDSSE is a convenience method around SignMessageToDSSE that
-// sets the in-toto payload type autmatically
+// SignStatementToDSSE signs an in-toto statement as a bare DSSE
+// envelope. Constructs a transient keyBackend from per-call keys (or
+// Signer.Options.Keys when Backend=BackendKey). Errors when no keys
+// are available.
 func (s *Signer) SignStatementToDSSE(data []byte, funcs ...options.SignOptFn) (*sdsse.Envelope, error) {
+	funcs = append([]options.SignOptFn{}, funcs...)
 	funcs = append(funcs, options.WithPayloadType("https://in-toto.io/Statement/v1"))
 	return s.SignMessageToDSSE(data, funcs...)
 }
 
-// SignMessageToDSSE wraps a payload in a dsse envelope and signs it.
-func (s *Signer) SignMessageToDSSE(message []byte, funcs ...options.SignOptFn) (*sdsse.Envelope, error) {
-	signOpts := options.DefaultSign
+// SignMessageToDSSE signs a payload as a bare DSSE envelope. Requires
+// keys from per-call options.WithKey or Signer.Options.Keys (when
+// Backend=BackendKey).
+func (s *Signer) SignMessageToDSSE(data []byte, funcs ...options.SignOptFn) (*sdsse.Envelope, error) {
+	so := options.DefaultSign
 	for _, f := range funcs {
-		if err := f(&signOpts); err != nil {
+		if err := f(&so); err != nil {
 			return nil, err
 		}
 	}
 
-	if signOpts.PayloadType == "" {
-		return nil, errors.New("payload type not defined")
+	keys := so.Keys
+	if len(keys) == 0 && s.Options.Backend == options.BackendKey {
+		keys = s.Options.Keys
+	}
+	if len(keys) == 0 {
+		return nil, errors.New("no signing keys; pass options.WithKey(...) or set Signer.Options.Backend=BackendKey + Signer.Options.Keys")
 	}
 
-	// Create the new envelope
-	envelope, err := s.dsseSigner.WrapPayload(signOpts.PayloadType, message)
+	backend := newKeyBackend(s.dsseSigner, keys)
+	art, err := backend.SignMessage(data, funcs...)
 	if err != nil {
-		return nil, fmt.Errorf("wrapping payload: %w", err)
+		return nil, err
 	}
-
-	if err := s.dsseSigner.Sign(envelope, signOpts.Keys); err != nil {
-		return nil, fmt.Errorf("signing envelope: %w", err)
+	ea, ok := art.(*EnvelopeArtifact)
+	if !ok || ea == nil {
+		return nil, fmt.Errorf("key backend produced a non-envelope artifact (%T)", art)
 	}
-
-	return envelope, nil
+	return ea.Envelope, nil
 }
 
-// SignEnvelope signs an existing envelope with the specified keys
+// SignEnvelope signs an existing DSSE envelope. Key resolution mirrors
+// the polymorphic Sign methods:
+//
+//   - Per-call options.WithKey(...) wins → those keys sign this
+//     envelope (the configured backend is disregarded for this call).
+//   - Otherwise, if Signer.Options.Backend == BackendKey, the
+//     configured Signer.Options.Keys are used.
+//   - Otherwise → error. Sigstore/SPIFFE backends produce bundles
+//     end-to-end; they don't sign pre-existing standalone envelopes.
 func (s *Signer) SignEnvelope(envelope *sdsse.Envelope, funcs ...options.SignOptFn) error {
 	signOpts := options.DefaultSign
 	for _, f := range funcs {
@@ -279,16 +294,49 @@ func (s *Signer) SignEnvelope(envelope *sdsse.Envelope, funcs ...options.SignOpt
 		}
 	}
 
-	// Call the underlying signer
-	if err := s.dsseSigner.Sign(envelope, signOpts.Keys); err != nil {
-		return fmt.Errorf("signing envelope: %w", err)
+	keys := signOpts.Keys
+	if len(keys) == 0 && s.Options.Backend == options.BackendKey {
+		keys = s.Options.Keys
+	}
+	if len(keys) == 0 {
+		return errors.New("no signing keys; configure Signer.Options.Backend=BackendKey + Signer.Options.Keys, or pass options.WithKey(...) per call")
 	}
 
+	if err := s.dsseSigner.Sign(envelope, keys); err != nil {
+		return fmt.Errorf("signing envelope: %w", err)
+	}
 	return nil
 }
 
-// WriteDSSEEnvelope marshals a DSSE envelope to JSON and writes it to a
-// an io.Writer
+// Close releases resources held by the Signer's credentials. It's a
+// no-op when Credentials is nil or doesn't hold any closeable
+// resources; today only the SPIFFE credential provider has anything
+// to release (the Workload API stream lazily opened on first sign).
+// Safe to call multiple times.
+func (s *Signer) Close() error {
+	if s == nil || s.Credentials == nil {
+		return nil
+	}
+	if c, ok := s.Credentials.(io.Closer); ok {
+		return c.Close()
+	}
+	return nil
+}
+
+// WriteBundle marshals a sigstore bundle to JSON and writes it to w.
+func (s *Signer) WriteBundle(bndl *sbundle.Bundle, w io.Writer) error {
+	bundleJSON, err := protojson.Marshal(bndl)
+	if err != nil {
+		return fmt.Errorf("marshaling bundle: %w", err)
+	}
+	if _, err := w.Write(bundleJSON); err != nil {
+		return fmt.Errorf("writing bundle: %w", err)
+	}
+	return nil
+}
+
+// WriteDSSEEnvelope marshals a DSSE envelope to JSON and writes it to
+// an io.Writer.
 func (s *Signer) WriteDSSEEnvelope(env *sdsse.Envelope, w io.Writer) error {
 	marshaler := protojson.MarshalOptions{
 		Multiline: true,
@@ -298,10 +346,8 @@ func (s *Signer) WriteDSSEEnvelope(env *sdsse.Envelope, w io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("marshaling envelope: %w", err)
 	}
-
 	if _, err := w.Write(data); err != nil {
 		return fmt.Errorf("writing data to writer sink: %w", err)
 	}
-
 	return nil
 }

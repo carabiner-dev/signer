@@ -4,8 +4,7 @@
 package options
 
 import (
-	"crypto"
-
+	"github.com/carabiner-dev/signer/key"
 	"github.com/carabiner-dev/signer/sigstore"
 )
 
@@ -13,7 +12,11 @@ type VerifierOptFunc func(*Verifier)
 
 // KeyVerification options
 type KeyVerification struct {
-	PubKeys []crypto.PublicKey
+	// PubKeys are the public-key providers used as a fallback when the
+	// per-call keys argument to VerifyParsedDSSE is empty. Lets a CLI
+	// wire its --key flag into the verifier once and call VerifyDSSE
+	// without re-passing the keys.
+	PubKeys []key.PublicKeyProvider
 }
 
 // Verifier options
@@ -27,9 +30,6 @@ type Verifier struct {
 
 	// SigstoreRootsData holds raw json with data about the configured roots
 	SigstoreRootsData []byte
-
-	// // Public keys to verify DSSE envelopes
-	// PubKeys []crypto.PublicKey
 }
 
 // DefaultVerifier default options to configure the verifier
