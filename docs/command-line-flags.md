@@ -114,6 +114,7 @@ always-on baseline verifier.
 | --- | --- | --- |
 | `--spiffe-trust-domain` | expected SPIFFE trust domain (e.g. `prod.example.org`) |  |
 | `--spiffe-socket`       | Workload API socket (`unix:///run/spire/sockets/api.sock`) | `SPIFFE_ENDPOINT_SOCKET` |
+| `--spiffe-timestamp`    | attach an RFC 3161 TSA-signed timestamp to the bundle (default `true`); suppressed and replaced by `--signing-timestamp` when bundled via `SignerSet`. See [SPIFFE timestamping](spiffe-timestamping.md) for the full flow. |  |
 
 `BuildSigner()` returns an `*options.Signer` with
 `Backend = BackendSpiffe`. The SPIFFE backend can't lazy-build its
@@ -145,7 +146,8 @@ contribute their flags to help text but are otherwise inert.
 
 | Flag | Description | Default |
 | --- | --- | --- |
-| `--signing-backend` | signing backend (`key`, `sigstore`, `spiffe`) | auto-detect (see below) |
+| `--signing-backend`   | signing backend (`key`, `sigstore`, `spiffe`) | auto-detect (see below) |
+| `--signing-timestamp` | attach an RFC 3161 TSA-signed timestamp to the bundle (applies to sigstore and SPIFFE; ignored by the key backend). When bundled here, this replaces the per-backend `--sigstore-timestamp` and `--spiffe-timestamp` flags. See [SPIFFE timestamping](spiffe-timestamping.md). | `true` |
 
 **Auto-detection.** When `--signing-backend` is unset, the resolved
 backend is inferred from the populated child *flags*:

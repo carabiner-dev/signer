@@ -100,7 +100,7 @@ func (s *SignerSet) Config() *command.OptionsSetConfig {
 				},
 				"signing-timestamp": {
 					Long: "signing-timestamp",
-					Help: "attach an RFC 3161 TSA-signed timestamp to the bundle (applies to sigstore and SPIFFE; ignored by the key backend)",
+					Help: "Add an RFC 3161 TSA-signed timestamp (sigstore/SPIFFE)",
 				},
 			},
 		}
