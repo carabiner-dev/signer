@@ -40,6 +40,12 @@ type TufOptions struct {
 // transient errors (see the tufInit* constants for rationale); the
 // last error is returned after exhausting attempts so legitimate
 // configuration problems still surface.
+//
+// When a valid TUF cache is already present on disk (e.g. pre-baked
+// into an air-gapped image), ForceCache is enabled so sigstore-go
+// uses the local copy and never makes a network call. ForceCache only
+// disables proactive refresh — sigstore-go still re-fetches on its
+// own when metadata has actually expired, so this is safe by default.
 func GetClient(opts *TufOptions) (*tuf.Client, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -47,11 +53,12 @@ func GetClient(opts *TufOptions) (*tuf.Client, error) {
 		home = os.TempDir()
 	}
 
+	cachePath := filepath.Join(home, ".sigstore", "root")
 	tufOpts := &tuf.Options{
 		CacheValidity:             0,
-		ForceCache:                false,
+		ForceCache:                cacheHasMetadata(cachePath, opts.TufRootURL),
 		Root:                      opts.RootData,
-		CachePath:                 filepath.Join(home, ".sigstore", "root"),
+		CachePath:                 cachePath,
 		RepositoryBaseURL:         opts.TufRootURL,
 		DisableLocalCache:         false,
 		DisableConsistentSnapshot: false,
@@ -89,6 +96,28 @@ func GetRoot(opts *TufOptions) ([]byte, error) {
 		return nil, fmt.Errorf("fetching TUF root data: %w", err)
 	}
 	return data, nil
+}
+
+// cacheHasMetadata reports whether the TUF cache at cachePath/<URL-derived
+// subdir> already contains the root.json metadata file. If so, the caller
+// can safely enable ForceCache to keep sigstore-go from re-fetching over
+// the network. A missing root.json means there's nothing to honor, and
+// the default refresh-on-load behavior is correct.
+//
+// repoURL is the same value passed as Options.RepositoryBaseURL; the
+// per-repo subdirectory inside cachePath is derived by sigstore-go's
+// own URLToPath, which we call to stay byte-identical with the path
+// the TUF client will look at.
+func cacheHasMetadata(cachePath, repoURL string) bool {
+	if cachePath == "" || repoURL == "" {
+		return false
+	}
+	rootJSON := filepath.Join(cachePath, tuf.URLToPath(repoURL), "root.json")
+	info, err := os.Stat(rootJSON)
+	if err != nil {
+		return false
+	}
+	return info.Mode().IsRegular() && info.Size() > 0
 }
 
 // Defaultfetcher returns a default TUF fetcher configured with the bind UA
