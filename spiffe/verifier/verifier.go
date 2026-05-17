@@ -11,6 +11,7 @@
 package verifier
 
 import (
+	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
@@ -30,11 +31,20 @@ import (
 	"github.com/sigstore/sigstore-go/pkg/root"
 	"github.com/sigstore/sigstore-go/pkg/verify"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
+	"github.com/spiffe/go-spiffe/v2/workloadapi"
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/carabiner-dev/signer/dsse"
 	"github.com/carabiner-dev/signer/options"
 )
+
+// workloadAPIFetchTimeout bounds the trust-bundle fetch so a hung
+// SPIRE agent doesn't stall verifier construction indefinitely.
+const workloadAPIFetchTimeout = 5 * time.Second
+
+// spiffeEndpointEnv is the canonical SPIFFE Workload API discovery
+// env var, matching the SPIFFE spec and the SPIRE agent defaults.
+const spiffeEndpointEnv = "SPIFFE_ENDPOINT_SOCKET"
 
 // VerifierOptions configures a SPIFFE Verifier.
 type VerifierOptions struct {
@@ -171,6 +181,26 @@ func anchoredRegex(pattern string) string {
 	return "^(?:" + pattern + ")$"
 }
 
+// loadTrustRoots resolves the SPIFFE trust roots from any of three
+// sources, tried in order so an explicit configuration always wins:
+//
+//  1. opts.TrustRootsPath — PEM file on disk
+//  2. opts.TrustRootsPEM — inline PEM bytes
+//  3. SPIFFE Workload API at $SPIFFE_ENDPOINT_SOCKET — fetches the
+//     X.509 bundle for every trust domain the agent reports, matching
+//     how SPIRE delivers trust material to workloads alongside SVIDs.
+//
+// The workload-API fallback is what lets SPIRE-attested workloads
+// verify SVID-signed bundles without any operator-side configuration:
+// if the workload already has the socket mounted (for signing or for
+// the runner gate's subject detector), the same socket gives the
+// verifier its trust material.
+//
+// Returns an error only when none of the three sources is available —
+// "nothing configured at all" stays a deliberate fail rather than a
+// silent open. Workload-API fetch failures (no socket, agent
+// unreachable, etc.) propagate so they're diagnosable instead of
+// silently falling back to "no trust" behavior.
 func loadTrustRoots(opts *options.SpiffeVerification) (*x509.CertPool, error) {
 	var data []byte
 	if opts.TrustRootsPath != "" {
@@ -183,12 +213,46 @@ func loadTrustRoots(opts *options.SpiffeVerification) (*x509.CertPool, error) {
 	if len(opts.TrustRootsPEM) > 0 {
 		data = append(data, opts.TrustRootsPEM...)
 	}
-	if len(data) == 0 {
-		return nil, errors.New("no trust roots configured")
+	if len(data) > 0 {
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(data) {
+			return nil, errors.New("no valid PEM certificates found in trust roots")
+		}
+		return pool, nil
+	}
+
+	if socket := os.Getenv(spiffeEndpointEnv); socket != "" {
+		pool, err := fetchTrustRootsFromWorkloadAPI(socket)
+		if err != nil {
+			return nil, fmt.Errorf("fetching SPIFFE trust roots from workload API at %s: %w", socket, err)
+		}
+		return pool, nil
+	}
+
+	return nil, errors.New("no trust roots configured (set TrustRootsPath/TrustRootsPEM, or SPIFFE_ENDPOINT_SOCKET)")
+}
+
+// fetchTrustRootsFromWorkloadAPI dials the SPIFFE Workload API at the
+// given socket address and returns an x509.CertPool seeded with the
+// trust roots of every trust domain the agent reports. Single shot,
+// bounded by workloadAPIFetchTimeout — a stalled agent must not hang
+// verifier construction.
+func fetchTrustRootsFromWorkloadAPI(socket string) (*x509.CertPool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), workloadAPIFetchTimeout)
+	defer cancel()
+
+	bundles, err := workloadapi.FetchX509Bundles(ctx, workloadapi.WithAddr(socket))
+	if err != nil {
+		return nil, err
 	}
 	pool := x509.NewCertPool()
-	if !pool.AppendCertsFromPEM(data) {
-		return nil, errors.New("no valid PEM certificates found in trust roots")
+	for _, b := range bundles.Bundles() {
+		for _, ca := range b.X509Authorities() {
+			pool.AddCert(ca)
+		}
+	}
+	if len(pool.Subjects()) == 0 { //nolint:staticcheck // Subjects() is fine here; we just need an empty check
+		return nil, errors.New("workload API returned no X.509 authorities")
 	}
 	return pool, nil
 }
