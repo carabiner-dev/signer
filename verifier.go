@@ -59,7 +59,13 @@ func NewVerifier(fnOpts ...options.VerifierOptFunc) *Verifier {
 	}
 
 	bundleOpts := []bundle.BundleOptsFunc{bundle.WithSigstoreRootsData(rootsData)}
-	if opts.TrustRootsPEM != nil || opts.TrustRootsPath != "" {
+	// Wire the SPIFFE verifier whenever there's *some* source of trust
+	// material available — explicit (TrustRootsPath / TrustRootsPEM) or
+	// ambient via the SPIFFE Workload API ($SPIFFE_ENDPOINT_SOCKET).
+	// The third source is what lets workloads attested by a local SPIRE
+	// agent verify SVID-signed bundles without operator-side mounts —
+	// the same socket that issues SVIDs serves the trust bundle.
+	if opts.TrustRootsPEM != nil || opts.TrustRootsPath != "" || os.Getenv("SPIFFE_ENDPOINT_SOCKET") != "" {
 		sv, err := spiffeverifier.NewVerifierFromOptions(&opts.SpiffeVerification)
 		if err != nil {
 			// Initialization errors are logged but not fatal, matching the
