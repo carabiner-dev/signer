@@ -147,8 +147,8 @@ func (s *SpiffeSign) Config() *command.OptionsSetConfig {
 					Long: "socket",
 					Help: "SPIFFE Workload API socket path (env fallback: " + spiffeSocketEnv + ")",
 				},
-				"timestamp": {
-					Long: "timestamp",
+				flagTimestamp: {
+					Long: flagTimestamp,
 					Help: "attach an RFC 3161 TSA-signed timestamp to the bundle (sourced from sigstore.dev TSA)",
 				},
 			},
@@ -173,9 +173,9 @@ func (s *SpiffeSign) AddFlags(cmd *cobra.Command) {
 	if !s.ManagedTimestamp {
 		pf.BoolVar(
 			&s.Timestamp,
-			cfg.LongFlag("timestamp"),
+			cfg.LongFlag(flagTimestamp),
 			s.Timestamp,
-			cfg.HelpText("timestamp"),
+			cfg.HelpText(flagTimestamp),
 		)
 	}
 }

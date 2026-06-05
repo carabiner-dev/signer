@@ -49,6 +49,8 @@ const (
 	EcdsaSha256nistP256 Scheme = "ecdsa-sha256-nistp256"
 	EcdsaSha384nistP384 Scheme = "ecdsa-sha384-nistp384"
 	Ed25519             Scheme = "ed25519"
+
+	pemTypePublicKey = "PUBLIC KEY"
 )
 
 // Public key abstracts a public key data and all its features required to

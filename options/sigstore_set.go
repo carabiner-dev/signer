@@ -182,6 +182,17 @@ var _ command.OptionsSet = (*SigstoreSign)(nil)
 // flag the literal as a hardcoded credential.
 const defaultOIDCClientID = "sigstore"
 
+const (
+	flagInstance         = "instance"
+	flagOIDCClientID     = "oidc-client-id"
+	flagOIDCRedirectURL  = "oidc-redirect-url"  //nolint:gosec // G101: flag name, not a credential
+	flagOIDCClientSecret = "oidc-client-secret" //nolint:gosec // G101: flag name, not a credential
+	flagOIDCTokenFile    = "oidc-token-file"    //nolint:gosec // G101: flag name, not a credential
+	flagRekorAppend      = "rekor-append"
+	flagTimestamp        = "timestamp"
+	flagDisableSTS       = "disable-sts"
+)
+
 // DefaultSigstoreSign builds a SigstoreSign with sensible defaults
 // (OIDC ClientID "sigstore", localhost callback, Rekor and TSA enabled,
 // OIDC flags hidden). Pass nil for common to allocate a fresh one.
@@ -204,14 +215,14 @@ func (s *SigstoreSign) Config() *command.OptionsSetConfig {
 	if s.config == nil {
 		s.config = &command.OptionsSetConfig{
 			Flags: map[string]command.FlagConfig{
-				"instance":           {Long: "instance", Help: "sigstore instance ID to sign against"},
-				"oidc-client-id":     {Long: "oidc-client-id", Help: "OIDC client ID to use when exchanging tokens"},
-				"oidc-redirect-url":  {Long: "oidc-redirect-url", Help: "OIDC redirect URL for the interactive flow"},
-				"oidc-client-secret": {Long: "oidc-client-secret", Help: "OIDC client secret (for confidential clients)"},
-				"oidc-token-file":    {Long: "oidc-token-file", Help: "path to a pre-issued OIDC ID token (non-interactive / CI)"},
-				"rekor-append":       {Long: "rekor-append", Help: "record the signature in the Rekor transparency log"},
-				"timestamp":          {Long: "timestamp", Help: "attach a TSA-signed timestamp to the signature"},
-				"disable-sts":        {Long: "disable-sts", Help: "skip the STS token exchange"},
+				flagInstance:         {Long: flagInstance, Help: "sigstore instance ID to sign against"},
+				flagOIDCClientID:     {Long: flagOIDCClientID, Help: "OIDC client ID to use when exchanging tokens"},
+				flagOIDCRedirectURL:  {Long: flagOIDCRedirectURL, Help: "OIDC redirect URL for the interactive flow"},
+				flagOIDCClientSecret: {Long: flagOIDCClientSecret, Help: "OIDC client secret (for confidential clients)"},
+				flagOIDCTokenFile:    {Long: flagOIDCTokenFile, Help: "path to a pre-issued OIDC ID token (non-interactive / CI)"},
+				flagRekorAppend:      {Long: flagRekorAppend, Help: "record the signature in the Rekor transparency log"},
+				flagTimestamp:        {Long: flagTimestamp, Help: "attach a TSA-signed timestamp to the signature"},
+				flagDisableSTS:       {Long: flagDisableSTS, Help: "skip the STS token exchange"},
 			},
 		}
 	}
@@ -225,19 +236,19 @@ func (s *SigstoreSign) AddFlags(cmd *cobra.Command) {
 	cfg := s.Config()
 	pf := cmd.PersistentFlags()
 
-	pf.StringVar(&s.InstanceName, cfg.LongFlag("instance"), s.InstanceName, s.instanceHelpText(cfg.HelpText("instance")))
-	pf.StringVar(&s.OIDCClientID, cfg.LongFlag("oidc-client-id"), s.OIDCClientID, cfg.HelpText("oidc-client-id"))
-	pf.StringVar(&s.OIDCRedirectURL, cfg.LongFlag("oidc-redirect-url"), s.OIDCRedirectURL, cfg.HelpText("oidc-redirect-url"))
-	pf.StringVar(&s.OIDCClientSecret, cfg.LongFlag("oidc-client-secret"), s.OIDCClientSecret, cfg.HelpText("oidc-client-secret"))
-	pf.StringVar(&s.OIDCTokenFile, cfg.LongFlag("oidc-token-file"), s.OIDCTokenFile, cfg.HelpText("oidc-token-file"))
-	pf.BoolVar(&s.RekorAppend, cfg.LongFlag("rekor-append"), s.RekorAppend, cfg.HelpText("rekor-append"))
+	pf.StringVar(&s.InstanceName, cfg.LongFlag(flagInstance), s.InstanceName, s.instanceHelpText(cfg.HelpText(flagInstance)))
+	pf.StringVar(&s.OIDCClientID, cfg.LongFlag(flagOIDCClientID), s.OIDCClientID, cfg.HelpText(flagOIDCClientID))
+	pf.StringVar(&s.OIDCRedirectURL, cfg.LongFlag(flagOIDCRedirectURL), s.OIDCRedirectURL, cfg.HelpText(flagOIDCRedirectURL))
+	pf.StringVar(&s.OIDCClientSecret, cfg.LongFlag(flagOIDCClientSecret), s.OIDCClientSecret, cfg.HelpText(flagOIDCClientSecret))
+	pf.StringVar(&s.OIDCTokenFile, cfg.LongFlag(flagOIDCTokenFile), s.OIDCTokenFile, cfg.HelpText(flagOIDCTokenFile))
+	pf.BoolVar(&s.RekorAppend, cfg.LongFlag(flagRekorAppend), s.RekorAppend, cfg.HelpText(flagRekorAppend))
 	if !s.ManagedTimestamp {
-		pf.BoolVar(&s.Timestamp, cfg.LongFlag("timestamp"), s.Timestamp, cfg.HelpText("timestamp"))
+		pf.BoolVar(&s.Timestamp, cfg.LongFlag(flagTimestamp), s.Timestamp, cfg.HelpText(flagTimestamp))
 	}
-	pf.BoolVar(&s.DisableSTS, cfg.LongFlag("disable-sts"), s.DisableSTS, cfg.HelpText("disable-sts"))
+	pf.BoolVar(&s.DisableSTS, cfg.LongFlag(flagDisableSTS), s.DisableSTS, cfg.HelpText(flagDisableSTS))
 
 	if s.HideOIDCOptions {
-		for _, id := range []string{"oidc-client-id", "oidc-redirect-url", "oidc-client-secret", "oidc-token-file"} {
+		for _, id := range []string{flagOIDCClientID, flagOIDCRedirectURL, flagOIDCClientSecret, flagOIDCTokenFile} {
 			_ = pf.MarkHidden(cfg.LongFlag(id)) //nolint:errcheck // safe: flag was just registered above
 		}
 	}

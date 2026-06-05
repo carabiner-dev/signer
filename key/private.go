@@ -91,7 +91,7 @@ func (p *Private) PublicKey() (*Public, error) {
 		}
 
 		pemEncoded := pem.EncodeToMemory(&pem.Block{
-			Type:  "PUBLIC KEY",
+			Type:  pemTypePublicKey,
 			Bytes: publicKeyBytes,
 		})
 
@@ -117,7 +117,7 @@ func (p *Private) PublicKey() (*Public, error) {
 		}
 
 		pemEncoded := pem.EncodeToMemory(&pem.Block{
-			Type:  "PUBLIC KEY",
+			Type:  pemTypePublicKey,
 			Bytes: marshaledKey,
 		})
 

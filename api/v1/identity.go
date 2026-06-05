@@ -733,7 +733,7 @@ func IdentitySpiffeFromCert(leaf *x509.Certificate) (*IdentitySpiffe, error) {
 		return nil, errors.New("leaf certificate is nil")
 	}
 	for _, uri := range leaf.URIs {
-		if uri.Scheme != "spiffe" {
+		if uri.Scheme != identityTypeSpiffe {
 			continue
 		}
 		return IdentitySpiffeFromString(uri.String())
