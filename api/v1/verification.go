@@ -345,7 +345,7 @@ func resolveIdentityField(signer *Identity, field string) (string, bool) {
 		return "", false
 	}
 	switch variant {
-	case "sigstore":
+	case identityTypeSigstore:
 		ss := signer.GetSigstore()
 		if ss == nil {
 			return "", false
@@ -356,7 +356,7 @@ func resolveIdentityField(signer *Identity, field string) (string, bool) {
 		case "identity":
 			return ss.GetIdentity(), true
 		}
-	case "key":
+	case identityTypeKey:
 		k := signer.GetKey()
 		if k == nil {
 			return "", false
@@ -369,7 +369,7 @@ func resolveIdentityField(signer *Identity, field string) (string, bool) {
 		case "signing_fingerprint":
 			return k.GetSigningFingerprint(), true
 		}
-	case "spiffe":
+	case identityTypeSpiffe:
 		sp := signer.GetSpiffe()
 		if sp == nil {
 			return "", false

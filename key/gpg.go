@@ -535,13 +535,13 @@ func marshalCryptoPublicKey(pub crypto.PublicKey) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		return pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der}), nil
+		return pem.EncodeToMemory(&pem.Block{Type: pemTypePublicKey, Bytes: der}), nil
 	case ed25519.PublicKey:
 		der, err := x509.MarshalPKIXPublicKey(k)
 		if err != nil {
 			return nil, err
 		}
-		return pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der}), nil
+		return pem.EncodeToMemory(&pem.Block{Type: pemTypePublicKey, Bytes: der}), nil
 	default:
 		return nil, fmt.Errorf("unsupported public key type: %T", pub)
 	}

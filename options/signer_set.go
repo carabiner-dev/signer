@@ -65,6 +65,11 @@ type SignerSet struct {
 
 var _ command.OptionsSet = (*SignerSet)(nil)
 
+const (
+	flagSigningBackend   = "signing-backend"
+	flagSigningTimestamp = "signing-timestamp"
+)
+
 // DefaultSignerSet builds a SignerSet with every child constructed
 // under its conventional flag prefix ("sigstore", "spiffe"; KeysSign
 // uses its own --signing-key namespace). Backend is left empty so
@@ -93,13 +98,13 @@ func (s *SignerSet) Config() *command.OptionsSetConfig {
 	if s.config == nil {
 		s.config = &command.OptionsSetConfig{
 			Flags: map[string]command.FlagConfig{
-				"signing-backend": {
-					Long: "signing-backend",
+				flagSigningBackend: {
+					Long: flagSigningBackend,
 					Help: fmt.Sprintf("signing backend (%s | %s | %s) default %s",
 						BackendKey, BackendSigstore, BackendSpiffe, BackendSigstore),
 				},
-				"signing-timestamp": {
-					Long: "signing-timestamp",
+				flagSigningTimestamp: {
+					Long: flagSigningTimestamp,
 					Help: "Add an RFC 3161 TSA-signed timestamp (sigstore/SPIFFE)",
 				},
 			},
@@ -116,15 +121,15 @@ func (s *SignerSet) AddFlags(cmd *cobra.Command) {
 	pf := cmd.PersistentFlags()
 	pf.StringVar(
 		&s.Backend,
-		cfg.LongFlag("signing-backend"),
+		cfg.LongFlag(flagSigningBackend),
 		s.Backend,
-		cfg.HelpText("signing-backend"),
+		cfg.HelpText(flagSigningBackend),
 	)
 	pf.BoolVar(
 		&s.Timestamp,
-		cfg.LongFlag("signing-timestamp"),
+		cfg.LongFlag(flagSigningTimestamp),
 		s.Timestamp,
-		cfg.HelpText("signing-timestamp"),
+		cfg.HelpText(flagSigningTimestamp),
 	)
 	if s.Keys != nil {
 		s.Keys.AddFlags(cmd)

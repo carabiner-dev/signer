@@ -49,6 +49,11 @@ var _ command.OptionsSet = (*KeysSign)(nil)
 // --signing-key-passphrase-env flag.
 const defaultPassphraseEnvVar = "SIGNING_KEY_PASSPHRASE"
 
+const (
+	flagSigningKey              = "signing-key"
+	flagSigningKeyPassphraseEnv = "signing-key-passphrase-env"
+)
+
 // DefaultKeysSign returns a KeysSign ready to bind flags. The
 // passphrase env-var name defaults to SIGNING_KEY_PASSPHRASE; users
 // who export that variable get encrypted-key support out of the box,
@@ -64,13 +69,13 @@ func (k *KeysSign) Config() *command.OptionsSetConfig {
 	if k.config == nil {
 		k.config = &command.OptionsSetConfig{
 			Flags: map[string]command.FlagConfig{
-				"signing-key": {
+				flagSigningKey: {
 					Short: "K",
-					Long:  "signing-key",
+					Long:  flagSigningKey,
 					Help:  "path to a private signing key file (PEM PKCS#8/PKCS#1/SEC1 or OpenPGP)",
 				},
-				"signing-key-passphrase-env": {
-					Long: "signing-key-passphrase-env",
+				flagSigningKeyPassphraseEnv: {
+					Long: flagSigningKeyPassphraseEnv,
 					Help: "envvar to read the signing key passphrase from",
 				},
 			},
@@ -85,16 +90,16 @@ func (k *KeysSign) AddFlags(cmd *cobra.Command) {
 	pf := cmd.PersistentFlags()
 	pf.StringSliceVarP(
 		&k.PrivateKeyPaths,
-		cfg.LongFlag("signing-key"),
-		cfg.ShortFlag("signing-key"),
+		cfg.LongFlag(flagSigningKey),
+		cfg.ShortFlag(flagSigningKey),
 		k.PrivateKeyPaths,
-		cfg.HelpText("signing-key"),
+		cfg.HelpText(flagSigningKey),
 	)
 	pf.StringVar(
 		&k.PassphraseEnvVar,
-		cfg.LongFlag("signing-key-passphrase-env"),
+		cfg.LongFlag(flagSigningKeyPassphraseEnv),
 		k.PassphraseEnvVar,
-		cfg.HelpText("signing-key-passphrase-env"),
+		cfg.HelpText(flagSigningKeyPassphraseEnv),
 	)
 }
 
