@@ -608,8 +608,8 @@ func validateSigstore(s *IdentitySigstore) []error {
 			errs = append(errs, fmt.Errorf("source_repository_uri_match: %w", err))
 		}
 	}
-	// source_repository_uri has no legacy (plain-field) form, so setting it on
-	// a policy identity won't do what the author expects; require the matcher.
+	// source_repository_uri isn't supported by legacy mode so anyone setting it
+	// won't get what they expect. They must use the matcher instead.
 	if s.GetSourceRepositoryUri() != "" {
 		errs = append(errs, errors.New("source_repository_uri cannot be set on a policy identity; use source_repository_uri_match"))
 	}
