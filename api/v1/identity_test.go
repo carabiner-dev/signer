@@ -146,6 +146,26 @@ func TestVerifyIdentity(t *testing.T) {
 				},
 			},
 		}},
+		{"sigstore-source-repo-match-only-valid", false, &Identity{
+			Sigstore: &IdentitySigstore{
+				SourceRepositoryUriMatch: &StringMatcher{
+					Kind: &StringMatcher_Exact{Exact: "https://github.com/myorg/repo"},
+				},
+			},
+		}},
+		{"sigstore-source-repo-match-bad-regex", true, &Identity{
+			Sigstore: &IdentitySigstore{
+				SourceRepositoryUriMatch: &StringMatcher{
+					Kind: &StringMatcher_Regex{Regex: "[unclosed"},
+				},
+			},
+		}},
+		{"sigstore-source-repo-data-on-expectation-invalid", true, &Identity{
+			Sigstore: &IdentitySigstore{
+				IdentityMatch:       &StringMatcher{Kind: &StringMatcher_Exact{Exact: "user@example.com"}},
+				SourceRepositoryUri: "https://github.com/myorg/repo",
+			},
+		}},
 		{"key-id-match-valid", false, &Identity{
 			Key: &IdentityKey{
 				IdMatch: &StringMatcher{

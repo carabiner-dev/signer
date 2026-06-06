@@ -125,6 +125,7 @@ against any variant. Other paths are variant-qualified:
 | `principal`             | `Identity.Principal()` — works for any variant                            |
 | `sigstore.issuer`       | `Sigstore.Issuer` (signer must be sigstore)                               |
 | `sigstore.identity`     | `Sigstore.Identity`                                                       |
+| `sigstore.source_repository_uri` | `Sigstore.SourceRepositoryUri`                                   |
 | `key.id`                | `Key.Id`                                                                  |
 | `key.type`              | `Key.Type`                                                                |
 | `key.signing_fingerprint` | `Key.SigningFingerprint`                                                |
@@ -147,6 +148,8 @@ the matcher **fails closed** for that signer.
 | `Mode`          | `exact` (default) or `regexp` — applies to legacy `Issuer`/`Identity`.    |
 | `IssuerMatch`   | `StringMatcher` applied to the signer's issuer.                           |
 | `IdentityMatch` | `StringMatcher` applied to the signer's identity.                         |
+| `SourceRepositoryUri` | Source repository URI captured from the Fulcio cert (verified-side data). Pinned only via `SourceRepositoryUriMatch`; setting it on a policy identity is rejected at validation. |
+| `SourceRepositoryUriMatch` | `StringMatcher` applied to the signer's source repository URI. |
 
 ### Matching rules (new + legacy combined)
 

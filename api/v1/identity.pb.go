@@ -135,10 +135,12 @@ type IdentitySigstore struct {
 	// Convenience per-field matchers. When set, participate in the
 	// virtual matcher union alongside the legacy Mode/Issuer/Identity
 	// fields and the outer Matcher slice.
-	IssuerMatch   *StringMatcher `protobuf:"bytes,4,opt,name=issuer_match,json=issuerMatch,proto3" json:"issuer_match,omitempty"`
-	IdentityMatch *StringMatcher `protobuf:"bytes,5,opt,name=identity_match,json=identityMatch,proto3" json:"identity_match,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	IssuerMatch              *StringMatcher `protobuf:"bytes,4,opt,name=issuer_match,json=issuerMatch,proto3" json:"issuer_match,omitempty"`
+	IdentityMatch            *StringMatcher `protobuf:"bytes,5,opt,name=identity_match,json=identityMatch,proto3" json:"identity_match,omitempty"`
+	SourceRepositoryUri      string         `protobuf:"bytes,6,opt,name=source_repository_uri,json=sourceRepositoryUri,proto3" json:"source_repository_uri,omitempty"` // Fulcio OID 1.3.6.1.4.1.57264.1.12
+	SourceRepositoryUriMatch *StringMatcher `protobuf:"bytes,7,opt,name=source_repository_uri_match,json=sourceRepositoryUriMatch,proto3" json:"source_repository_uri_match,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
 }
 
 func (x *IdentitySigstore) Reset() {
@@ -202,6 +204,20 @@ func (x *IdentitySigstore) GetIssuerMatch() *StringMatcher {
 func (x *IdentitySigstore) GetIdentityMatch() *StringMatcher {
 	if x != nil {
 		return x.IdentityMatch
+	}
+	return nil
+}
+
+func (x *IdentitySigstore) GetSourceRepositoryUri() string {
+	if x != nil {
+		return x.SourceRepositoryUri
+	}
+	return ""
+}
+
+func (x *IdentitySigstore) GetSourceRepositoryUriMatch() *StringMatcher {
+	if x != nil {
+		return x.SourceRepositoryUriMatch
 	}
 	return nil
 }
@@ -454,13 +470,15 @@ const file_carabiner_signer_v1_identity_proto_rawDesc = "" +
 	"\t_sigstoreB\x06\n" +
 	"\x04_keyB\x06\n" +
 	"\x04_refB\t\n" +
-	"\a_spiffe\"\xfa\x01\n" +
+	"\a_spiffe\"\x91\x03\n" +
 	"\x10IdentitySigstore\x12\x17\n" +
 	"\x04mode\x18\x01 \x01(\tH\x00R\x04mode\x88\x01\x01\x12\x16\n" +
 	"\x06issuer\x18\x02 \x01(\tR\x06issuer\x12\x1a\n" +
 	"\bidentity\x18\x03 \x01(\tR\bidentity\x12E\n" +
 	"\fissuer_match\x18\x04 \x01(\v2\".carabiner.signer.v1.StringMatcherR\vissuerMatch\x12I\n" +
-	"\x0eidentity_match\x18\x05 \x01(\v2\".carabiner.signer.v1.StringMatcherR\ridentityMatchB\a\n" +
+	"\x0eidentity_match\x18\x05 \x01(\v2\".carabiner.signer.v1.StringMatcherR\ridentityMatch\x122\n" +
+	"\x15source_repository_uri\x18\x06 \x01(\tR\x13sourceRepositoryUri\x12a\n" +
+	"\x1bsource_repository_uri_match\x18\a \x01(\v2\".carabiner.signer.v1.StringMatcherR\x18sourceRepositoryUriMatchB\a\n" +
 	"\x05_mode\"\xd8\x02\n" +
 	"\vIdentityKey\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
@@ -514,17 +532,18 @@ var file_carabiner_signer_v1_identity_proto_depIdxs = []int32{
 	5,  // 4: carabiner.signer.v1.Identity.matchers:type_name -> carabiner.signer.v1.Matcher
 	6,  // 5: carabiner.signer.v1.IdentitySigstore.issuer_match:type_name -> carabiner.signer.v1.StringMatcher
 	6,  // 6: carabiner.signer.v1.IdentitySigstore.identity_match:type_name -> carabiner.signer.v1.StringMatcher
-	6,  // 7: carabiner.signer.v1.IdentityKey.id_match:type_name -> carabiner.signer.v1.StringMatcher
-	6,  // 8: carabiner.signer.v1.IdentityKey.type_match:type_name -> carabiner.signer.v1.StringMatcher
-	6,  // 9: carabiner.signer.v1.IdentityKey.signing_fingerprint_match:type_name -> carabiner.signer.v1.StringMatcher
-	6,  // 10: carabiner.signer.v1.IdentitySpiffe.svid_match:type_name -> carabiner.signer.v1.StringMatcher
-	6,  // 11: carabiner.signer.v1.IdentitySpiffe.trust_domain_match:type_name -> carabiner.signer.v1.StringMatcher
-	6,  // 12: carabiner.signer.v1.IdentitySpiffe.path_match:type_name -> carabiner.signer.v1.StringMatcher
-	13, // [13:13] is the sub-list for method output_type
-	13, // [13:13] is the sub-list for method input_type
-	13, // [13:13] is the sub-list for extension type_name
-	13, // [13:13] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	6,  // 7: carabiner.signer.v1.IdentitySigstore.source_repository_uri_match:type_name -> carabiner.signer.v1.StringMatcher
+	6,  // 8: carabiner.signer.v1.IdentityKey.id_match:type_name -> carabiner.signer.v1.StringMatcher
+	6,  // 9: carabiner.signer.v1.IdentityKey.type_match:type_name -> carabiner.signer.v1.StringMatcher
+	6,  // 10: carabiner.signer.v1.IdentityKey.signing_fingerprint_match:type_name -> carabiner.signer.v1.StringMatcher
+	6,  // 11: carabiner.signer.v1.IdentitySpiffe.svid_match:type_name -> carabiner.signer.v1.StringMatcher
+	6,  // 12: carabiner.signer.v1.IdentitySpiffe.trust_domain_match:type_name -> carabiner.signer.v1.StringMatcher
+	6,  // 13: carabiner.signer.v1.IdentitySpiffe.path_match:type_name -> carabiner.signer.v1.StringMatcher
+	14, // [14:14] is the sub-list for method output_type
+	14, // [14:14] is the sub-list for method input_type
+	14, // [14:14] is the sub-list for extension type_name
+	14, // [14:14] is the sub-list for extension extendee
+	0,  // [0:14] is the sub-list for field type_name
 }
 
 func init() { file_carabiner_signer_v1_identity_proto_init() }

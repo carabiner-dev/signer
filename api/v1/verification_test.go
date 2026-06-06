@@ -6,6 +6,7 @@ package v1
 import (
 	"testing"
 
+	"github.com/sigstore/sigstore-go/pkg/fulcio/certificate"
 	"github.com/sigstore/sigstore-go/pkg/verify"
 	"github.com/stretchr/testify/require"
 )
@@ -214,8 +215,9 @@ func TestMatchesSigstoreIdentityConvenienceMatchers(t *testing.T) {
 	t.Parallel()
 	signer := &SignatureVerification{
 		Identities: []*Identity{{Sigstore: &IdentitySigstore{
-			Issuer:   "https://token.actions.githubusercontent.com",
-			Identity: "https://github.com/myorg/repo/.github/workflows/release.yml@refs/tags/v1.2.3",
+			Issuer:              "https://token.actions.githubusercontent.com",
+			Identity:            "https://github.com/myorg/repo/.github/workflows/release.yml@refs/tags/v1.2.3",
+			SourceRepositoryUri: "https://github.com/myorg/repo",
 		}}},
 	}
 	for _, tt := range []struct {
@@ -275,6 +277,57 @@ func TestMatchesSigstoreIdentityConvenienceMatchers(t *testing.T) {
 				},
 			},
 			true,
+		},
+		{
+			"source-repo-match-only-positive",
+			&IdentitySigstore{
+				SourceRepositoryUriMatch: &StringMatcher{
+					Kind: &StringMatcher_Exact{Exact: "https://github.com/myorg/repo"},
+				},
+			},
+			true,
+		},
+		{
+			"source-repo-match-prefix-positive",
+			&IdentitySigstore{
+				SourceRepositoryUriMatch: &StringMatcher{
+					Kind: &StringMatcher_Prefix{Prefix: "https://github.com/myorg/"},
+				},
+			},
+			true,
+		},
+		{
+			"source-repo-match-only-wrong-value",
+			&IdentitySigstore{
+				SourceRepositoryUriMatch: &StringMatcher{
+					Kind: &StringMatcher_Exact{Exact: "https://github.com/other/repo"},
+				},
+			},
+			false,
+		},
+		{
+			"source-repo-match-combined-with-issuer-and",
+			&IdentitySigstore{
+				IssuerMatch: &StringMatcher{
+					Kind: &StringMatcher_Exact{Exact: "https://token.actions.githubusercontent.com"},
+				},
+				SourceRepositoryUriMatch: &StringMatcher{
+					Kind: &StringMatcher_Exact{Exact: "https://github.com/myorg/repo"},
+				},
+			},
+			true,
+		},
+		{
+			"source-repo-match-combined-issuer-ok-repo-wrong",
+			&IdentitySigstore{
+				IssuerMatch: &StringMatcher{
+					Kind: &StringMatcher_Exact{Exact: "https://token.actions.githubusercontent.com"},
+				},
+				SourceRepositoryUriMatch: &StringMatcher{
+					Kind: &StringMatcher_Exact{Exact: "https://github.com/other/repo"},
+				},
+			},
+			false,
 		},
 		{
 			"no-constraint-at-all-rejected",
@@ -393,8 +446,9 @@ func TestMatchesIdentityOuterMatchers(t *testing.T) {
 
 	sigstoreSigner := &SignatureVerification{
 		Identities: []*Identity{{Sigstore: &IdentitySigstore{
-			Issuer:   "https://token.actions.githubusercontent.com",
-			Identity: "https://github.com/myorg/repo/.github/workflows/release.yml@refs/tags/v1.2.3",
+			Issuer:              "https://token.actions.githubusercontent.com",
+			Identity:            "https://github.com/myorg/repo/.github/workflows/release.yml@refs/tags/v1.2.3",
+			SourceRepositoryUri: "https://github.com/myorg/repo",
 		}}},
 	}
 	spiffeSigner := &SignatureVerification{
@@ -548,6 +602,34 @@ func TestMatchesIdentityOuterMatchers(t *testing.T) {
 				},
 			},
 			true,
+		},
+		{
+			"outer-source-repo-matches",
+			sigstoreSigner,
+			&Identity{
+				Sigstore: &IdentitySigstore{
+					Issuer:   "https://token.actions.githubusercontent.com",
+					Identity: "https://github.com/myorg/repo/.github/workflows/release.yml@refs/tags/v1.2.3",
+				},
+				Matchers: []*Matcher{
+					stringMatch("sigstore.source_repository_uri", "https://github.com/myorg/repo"),
+				},
+			},
+			true,
+		},
+		{
+			"outer-source-repo-mismatch",
+			sigstoreSigner,
+			&Identity{
+				Sigstore: &IdentitySigstore{
+					Issuer:   "https://token.actions.githubusercontent.com",
+					Identity: "https://github.com/myorg/repo/.github/workflows/release.yml@refs/tags/v1.2.3",
+				},
+				Matchers: []*Matcher{
+					stringMatch("sigstore.source_repository_uri", "https://github.com/other/repo"),
+				},
+			},
+			false,
 		},
 		{
 			"unknown-field-fails-closed",
@@ -801,6 +883,69 @@ func TestSignatureVerificationFromResult(t *testing.T) {
 		require.NotNil(t, ss)
 		require.Equal(t, "https://accounts.google.com", ss.GetIssuer())
 		require.Equal(t, "user@example.com", ss.GetIdentity())
+	})
+
+	t.Run("fulcio-captures-source-repository-uri", func(t *testing.T) {
+		t.Parallel()
+		sv := SignatureVerificationFromResult(&verify.VerificationResult{
+			VerifiedIdentity: &verify.CertificateIdentity{
+				SubjectAlternativeName: verify.SubjectAlternativeNameMatcher{
+					SubjectAlternativeName: "https://github.com/myorg/repo/.github/workflows/release.yml@refs/tags/v1.2.3",
+				},
+				Issuer: verify.IssuerMatcher{Issuer: "https://token.actions.githubusercontent.com"},
+			},
+			Signature: &verify.SignatureVerificationResult{
+				Certificate: &certificate.Summary{
+					Extensions: certificate.Extensions{
+						SourceRepositoryURI: "https://github.com/myorg/repo",
+					},
+				},
+			},
+		})
+		require.True(t, sv.GetVerified())
+		require.Len(t, sv.GetIdentities(), 1)
+		ss := sv.GetIdentities()[0].GetSigstore()
+		require.NotNil(t, ss)
+		require.Equal(t, "https://github.com/myorg/repo", ss.GetSourceRepositoryUri())
+	})
+
+	t.Run("fulcio-no-signature-empty-source-repo", func(t *testing.T) {
+		t.Parallel()
+		sv := SignatureVerificationFromResult(&verify.VerificationResult{
+			VerifiedIdentity: &verify.CertificateIdentity{
+				SubjectAlternativeName: verify.SubjectAlternativeNameMatcher{
+					SubjectAlternativeName: "user@example.com",
+				},
+				Issuer: verify.IssuerMatcher{Issuer: "https://accounts.google.com"},
+			},
+		})
+		require.True(t, sv.GetVerified())
+		require.Len(t, sv.GetIdentities(), 1)
+		ss := sv.GetIdentities()[0].GetSigstore()
+		require.NotNil(t, ss)
+		require.Empty(t, ss.GetSourceRepositoryUri())
+	})
+
+	t.Run("spiffe-san-with-cert-does-not-capture-source-repo", func(t *testing.T) {
+		t.Parallel()
+		sv := SignatureVerificationFromResult(&verify.VerificationResult{
+			VerifiedIdentity: &verify.CertificateIdentity{
+				SubjectAlternativeName: verify.SubjectAlternativeNameMatcher{
+					SubjectAlternativeName: "spiffe://example.org/workload",
+				},
+			},
+			Signature: &verify.SignatureVerificationResult{
+				Certificate: &certificate.Summary{
+					Extensions: certificate.Extensions{
+						SourceRepositoryURI: "https://github.com/myorg/repo",
+					},
+				},
+			},
+		})
+		require.True(t, sv.GetVerified())
+		require.Len(t, sv.GetIdentities(), 1)
+		require.NotNil(t, sv.GetIdentities()[0].GetSpiffe())
+		require.Nil(t, sv.GetIdentities()[0].GetSigstore())
 	})
 
 	t.Run("result-without-verified-identity", func(t *testing.T) {

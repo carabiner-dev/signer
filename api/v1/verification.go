@@ -55,9 +55,11 @@ func SignatureVerificationFromResult(r *verify.VerificationResult) *SignatureVer
 		}
 		sv.Identities = append(sv.Identities, &Identity{Spiffe: id})
 	case san != "" || issuer != "":
-		sv.Identities = append(sv.Identities, &Identity{
-			Sigstore: &IdentitySigstore{Issuer: issuer, Identity: san},
-		})
+		ss := &IdentitySigstore{Issuer: issuer, Identity: san}
+		if r.Signature != nil && r.Signature.Certificate != nil {
+			ss.SourceRepositoryUri = r.Signature.Certificate.Extensions.SourceRepositoryURI
+		}
+		sv.Identities = append(sv.Identities, &Identity{Sigstore: ss})
 	}
 	return sv
 }
@@ -174,9 +176,10 @@ func sigstoreCheck(id *IdentitySigstore) (func(*Identity) bool, bool) {
 	identityLegacy := id.GetIdentity()
 	issuerMatch := id.GetIssuerMatch()
 	identityMatch := id.GetIdentityMatch()
+	sourceRepoMatch := id.GetSourceRepositoryUriMatch()
 
 	useLegacy := issuerLegacy != "" || identityLegacy != ""
-	useMatchers := issuerMatch != nil || identityMatch != nil
+	useMatchers := issuerMatch != nil || identityMatch != nil || sourceRepoMatch != nil
 	if !useLegacy && !useMatchers {
 		return nil, false
 	}
@@ -233,6 +236,9 @@ func sigstoreCheck(id *IdentitySigstore) (func(*Identity) bool, bool) {
 			return false
 		}
 		if identityMatch != nil && !matchString(identityMatch, signerIdentity) {
+			return false
+		}
+		if sourceRepoMatch != nil && !matchString(sourceRepoMatch, ss.GetSourceRepositoryUri()) {
 			return false
 		}
 		return true
@@ -355,6 +361,8 @@ func resolveIdentityField(signer *Identity, field string) (string, bool) {
 			return ss.GetIssuer(), true
 		case "identity":
 			return ss.GetIdentity(), true
+		case "source_repository_uri":
+			return ss.GetSourceRepositoryUri(), true
 		}
 	case identityTypeKey:
 		k := signer.GetKey()
