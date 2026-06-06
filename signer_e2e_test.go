@@ -60,9 +60,20 @@ func TestSignAndVerifySourceRepositoryE2E(t *testing.T) {
 	require.NotNil(t, bndl)
 
 	v := NewVerifier()
-	res, err := v.VerifyParsedBundle(bndl, options.WithExpectedIdentityRegex(
-		`^https://token\.actions\.githubusercontent\.com$`, `.*`,
-	))
+
+	// Read the signing identity (issuer + workflow SAN) so we can pin it
+	// exactly on the real verification, the way a consumer that knows its
+	// expected signer does. SignatureVerificationFromResult only surfaces an
+	// identity when the verification pinned an exact issuer/SAN.
+	probe, err := v.VerifyParsedBundle(bndl, options.WithSkipIdentityCheck(true))
+	require.NoError(t, err)
+	require.NotNil(t, probe.Signature)
+	require.NotNil(t, probe.Signature.Certificate)
+	issuer := probe.Signature.Certificate.Issuer
+	san := probe.Signature.Certificate.SubjectAlternativeName
+	require.NotEmpty(t, san)
+
+	res, err := v.VerifyParsedBundle(bndl, options.WithExpectedIdentity(issuer, san))
 	require.NoError(t, err)
 	require.NotNil(t, res)
 
