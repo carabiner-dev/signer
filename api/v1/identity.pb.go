@@ -137,9 +137,8 @@ type IdentitySigstore struct {
 	// fields and the outer Matcher slice.
 	IssuerMatch   *StringMatcher `protobuf:"bytes,4,opt,name=issuer_match,json=issuerMatch,proto3" json:"issuer_match,omitempty"`
 	IdentityMatch *StringMatcher `protobuf:"bytes,5,opt,name=identity_match,json=identityMatch,proto3" json:"identity_match,omitempty"`
-	// Captured from the Fulcio cert during verification (OID
-	// 1.3.6.1.4.1.57264.1.12). Has no legacy form; pin via the matcher.
-	SourceRepositoryUri      string         `protobuf:"bytes,6,opt,name=source_repository_uri,json=sourceRepositoryUri,proto3" json:"source_repository_uri,omitempty"`
+	// Has no legacy form; pin via source_repository_uri_match.
+	SourceRepositoryUri      string         `protobuf:"bytes,6,opt,name=source_repository_uri,json=sourceRepositoryUri,proto3" json:"source_repository_uri,omitempty"` // OID 1.3.6.1.4.1.57264.1.12
 	SourceRepositoryUriMatch *StringMatcher `protobuf:"bytes,7,opt,name=source_repository_uri_match,json=sourceRepositoryUriMatch,proto3" json:"source_repository_uri_match,omitempty"`
 	unknownFields            protoimpl.UnknownFields
 	sizeCache                protoimpl.SizeCache

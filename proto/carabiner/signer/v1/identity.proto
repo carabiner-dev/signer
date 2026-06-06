@@ -47,9 +47,8 @@ message IdentitySigstore {
     StringMatcher issuer_match   = 4;
     StringMatcher identity_match = 5;
 
-    // Captured from the Fulcio cert during verification (OID
-    // 1.3.6.1.4.1.57264.1.12). Has no legacy form; pin via the matcher.
-    string source_repository_uri              = 6;
+    // Has no legacy form; pin via source_repository_uri_match.
+    string source_repository_uri              = 6; // OID 1.3.6.1.4.1.57264.1.12
     StringMatcher source_repository_uri_match = 7;
 }
 
