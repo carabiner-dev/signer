@@ -57,7 +57,7 @@ func SignatureVerificationFromResult(r *verify.VerificationResult) *SignatureVer
 	case san != "" || issuer != "":
 		ss := &IdentitySigstore{Issuer: issuer, Identity: san}
 		if r.Signature != nil && r.Signature.Certificate != nil {
-			ss.SourceRepositoryUri = r.Signature.Certificate.Extensions.SourceRepositoryURI
+			ss.SourceRepositoryUri = r.Signature.Certificate.SourceRepositoryURI
 		}
 		sv.Identities = append(sv.Identities, &Identity{Sigstore: ss})
 	}
