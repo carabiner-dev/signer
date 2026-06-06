@@ -608,6 +608,9 @@ func validateSigstore(s *IdentitySigstore) []error {
 			errs = append(errs, fmt.Errorf("source_repository_uri_match: %w", err))
 		}
 	}
+	// source_repository_uri is verified-side data captured from the cert, not
+	// a pin. Reject it on a policy identity so a no-op constraint can't be
+	// mistaken for an origin-repo binding; pin via source_repository_uri_match.
 	if s.GetSourceRepositoryUri() != "" {
 		errs = append(errs, errors.New("source_repository_uri is verified-side data and cannot be set on a policy identity; use source_repository_uri_match"))
 	}

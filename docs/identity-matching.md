@@ -148,7 +148,7 @@ the matcher **fails closed** for that signer.
 | `Mode`          | `exact` (default) or `regexp` — applies to legacy `Issuer`/`Identity`.    |
 | `IssuerMatch`   | `StringMatcher` applied to the signer's issuer.                           |
 | `IdentityMatch` | `StringMatcher` applied to the signer's identity.                         |
-| `SourceRepositoryUri` | Source repository URI captured from the Fulcio cert (verified-side data). Pinned only via `SourceRepositoryUriMatch`; setting it on a policy identity is rejected at validation. |
+| `SourceRepositoryUri` | Source repository URI captured from the Fulcio cert (verified-side data; not a pin — see matching rules). |
 | `SourceRepositoryUriMatch` | `StringMatcher` applied to the signer's source repository URI. |
 
 ### Matching rules (new + legacy combined)
@@ -166,6 +166,16 @@ new capability over the legacy shape.
 
 Legacy and matchers combine with AND semantics: all set constraints
 must pass.
+
+`SourceRepositoryUri` is verified-side data captured from the
+certificate, never a pin. Setting it on a policy identity is rejected
+(rather than silently ignored) so an author meaning to constrain the
+origin repo can't accidentally write a no-op — pin it with
+`SourceRepositoryUriMatch`. All identity extensions (SAN, issuer,
+source repository) live on the same leaf certificate, so they share one
+signer; a matcher-only policy still leaves the issuer unconstrained, so
+combine `SourceRepositoryUriMatch` with an issuer/identity pin when the
+origin issuer matters.
 
 ### Example — new form
 
