@@ -36,7 +36,7 @@ message Matcher {
 }
 
 // StringMatcher is the concrete matcher for string-valued fields.
-// Exactly one of the `kind` variants must be set.
+// Exactly one of the `kind` variants must be set, unless from_context is used.
 message StringMatcher {
     oneof kind {
         string exact  = 1;
@@ -45,4 +45,9 @@ message StringMatcher {
         string glob   = 4;  // shell-style glob (*, ?, [...])
     }
     bool case_insensitive = 5;
+
+    // from_context names a value the matching caller (e.g. ampel) resolves into
+    // this matcher as an exact match before use. Mutually exclusive with a
+    // `kind`. If it reaches matching unresolved, the match fails closed.
+    string from_context = 6;
 }

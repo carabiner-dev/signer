@@ -690,8 +690,16 @@ func validateMatcher(m *Matcher) error {
 }
 
 // validateStringMatcher ensures regex patterns compile and glob patterns
-// are well-formed. Exact/Prefix kinds have no format requirements.
+// are well-formed. Exact/Prefix kinds have no format requirements. A
+// from_context binding is valid on its own (the caller resolves it) but cannot
+// be combined with a match kind.
 func validateStringMatcher(m *StringMatcher) error {
+	if m.GetFromContext() != "" {
+		if m.GetKind() != nil {
+			return errors.New("from_context cannot be combined with a match kind")
+		}
+		return nil
+	}
 	switch kind := m.GetKind().(type) {
 	case *StringMatcher_Regex:
 		pattern := anchoredRegex(kind.Regex)

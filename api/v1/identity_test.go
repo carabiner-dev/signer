@@ -166,6 +166,19 @@ func TestVerifyIdentity(t *testing.T) {
 				SourceRepositoryUri: "https://github.com/myorg/repo",
 			},
 		}},
+		{"sigstore-source-repo-from-context-valid", false, &Identity{
+			Sigstore: &IdentitySigstore{
+				SourceRepositoryUriMatch: &StringMatcher{FromContext: "source_repo"},
+			},
+		}},
+		{"sigstore-from-context-with-kind-invalid", true, &Identity{
+			Sigstore: &IdentitySigstore{
+				SourceRepositoryUriMatch: &StringMatcher{
+					FromContext: "source_repo",
+					Kind:        &StringMatcher_Exact{Exact: "https://github.com/myorg/repo"},
+				},
+			},
+		}},
 		{"key-id-match-valid", false, &Identity{
 			Key: &IdentityKey{
 				IdMatch: &StringMatcher{
