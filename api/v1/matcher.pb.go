@@ -115,7 +115,7 @@ type Matcher_String_ struct {
 func (*Matcher_String_) isMatcher_Kind() {}
 
 // StringMatcher is the concrete matcher for string-valued fields.
-// Exactly one of the `kind` variants must be set.
+// Exactly one of the `kind` variants must be set, unless from_context is used.
 type StringMatcher struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Kind:
@@ -126,8 +126,12 @@ type StringMatcher struct {
 	//	*StringMatcher_Glob
 	Kind            isStringMatcher_Kind `protobuf_oneof:"kind"`
 	CaseInsensitive bool                 `protobuf:"varint,5,opt,name=case_insensitive,json=caseInsensitive,proto3" json:"case_insensitive,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// from_context names a value the matching caller (e.g. ampel) resolves into
+	// this matcher as an exact match before use. Mutually exclusive with a
+	// `kind`. If it reaches matching unresolved, the match fails closed.
+	FromContext   string `protobuf:"bytes,6,opt,name=from_context,json=fromContext,proto3" json:"from_context,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *StringMatcher) Reset() {
@@ -210,6 +214,13 @@ func (x *StringMatcher) GetCaseInsensitive() bool {
 	return false
 }
 
+func (x *StringMatcher) GetFromContext() string {
+	if x != nil {
+		return x.FromContext
+	}
+	return ""
+}
+
 type isStringMatcher_Kind interface {
 	isStringMatcher_Kind()
 }
@@ -246,13 +257,14 @@ const file_carabiner_signer_v1_matcher_proto_rawDesc = "" +
 	"\aMatcher\x12\x14\n" +
 	"\x05field\x18\x01 \x01(\tR\x05field\x12<\n" +
 	"\x06string\x18\x02 \x01(\v2\".carabiner.signer.v1.StringMatcherH\x00R\x06stringB\x06\n" +
-	"\x04kind\"\xa2\x01\n" +
+	"\x04kind\"\xc5\x01\n" +
 	"\rStringMatcher\x12\x16\n" +
 	"\x05exact\x18\x01 \x01(\tH\x00R\x05exact\x12\x16\n" +
 	"\x05regex\x18\x02 \x01(\tH\x00R\x05regex\x12\x18\n" +
 	"\x06prefix\x18\x03 \x01(\tH\x00R\x06prefix\x12\x14\n" +
 	"\x04glob\x18\x04 \x01(\tH\x00R\x04glob\x12)\n" +
-	"\x10case_insensitive\x18\x05 \x01(\bR\x0fcaseInsensitiveB\x06\n" +
+	"\x10case_insensitive\x18\x05 \x01(\bR\x0fcaseInsensitive\x12!\n" +
+	"\ffrom_context\x18\x06 \x01(\tR\vfromContextB\x06\n" +
 	"\x04kindB\xbd\x01\n" +
 	"\x17com.carabiner.signer.v1B\fMatcherProtoP\x01Z&github.com/carabiner-dev/signer/api/v1\xa2\x02\x03CSX\xaa\x02\x13Carabiner.Signer.V1\xca\x02\x13Carabiner\\Signer\\V1\xe2\x02\x1fCarabiner\\Signer\\V1\\GPBMetadata\xea\x02\x15Carabiner::Signer::V1b\x06proto3"
 

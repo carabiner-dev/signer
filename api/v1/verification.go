@@ -408,6 +408,12 @@ func matchString(m *StringMatcher, value string) bool {
 	if m == nil {
 		return true
 	}
+	// An unresolved from_context binding must be filled in by the caller (e.g.
+	// ampel resolves it from the verification context) before matching. If it
+	// reaches here unresolved, fail closed rather than silently ignoring it.
+	if m.GetFromContext() != "" {
+		return false
+	}
 	switch kind := m.GetKind().(type) {
 	case *StringMatcher_Exact:
 		if m.GetCaseInsensitive() {

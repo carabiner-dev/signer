@@ -306,6 +306,13 @@ func TestMatchesSigstoreIdentityConvenienceMatchers(t *testing.T) {
 			false,
 		},
 		{
+			"source-repo-from-context-unresolved-fails-closed",
+			&IdentitySigstore{
+				SourceRepositoryUriMatch: &StringMatcher{FromContext: "source_repo"},
+			},
+			false,
+		},
+		{
 			"source-repo-match-combined-with-issuer-and",
 			&IdentitySigstore{
 				IssuerMatch: &StringMatcher{
