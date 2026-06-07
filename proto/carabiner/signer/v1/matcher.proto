@@ -12,6 +12,7 @@ option go_package = "github.com/carabiner-dev/signer/api/v1";
 //   "principal"                  // the whole principal string
 //   "sigstore.issuer"
 //   "sigstore.identity"
+//   "sigstore.source_repository_uri"
 //   "key.id"
 //   "key.type"
 //   "key.signing_fingerprint"

@@ -30,6 +30,7 @@ const (
 //	"principal"                  // the whole principal string
 //	"sigstore.issuer"
 //	"sigstore.identity"
+//	"sigstore.source_repository_uri"
 //	"key.id"
 //	"key.type"
 //	"key.signing_fingerprint"

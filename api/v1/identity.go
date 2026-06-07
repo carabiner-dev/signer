@@ -184,8 +184,9 @@ func (i *Identity) Principal() string {
 //
 // Spec covers the per-variant *_match conveniences and the dominant
 // principal-slot fields. It does NOT encode the outer Matchers slice,
-// IdentityKey.signing_fingerprint(_match), or IdentitySpiffe.trust_roots —
-// callers that need full fidelity should use the proto directly.
+// IdentityKey.signing_fingerprint(_match), IdentitySpiffe.trust_roots, or
+// IdentitySigstore.source_repository_uri(_match) — callers that need full
+// fidelity should use the proto directly.
 func (i *Identity) Spec() string {
 	switch {
 	case i.GetSigstore() != nil:
@@ -571,9 +572,9 @@ func validateSigstore(s *IdentitySigstore) []error {
 	var errs []error
 
 	useLegacy := s.GetIssuer() != "" || s.GetIdentity() != ""
-	useMatchers := s.GetIssuerMatch() != nil || s.GetIdentityMatch() != nil
+	useMatchers := s.GetIssuerMatch() != nil || s.GetIdentityMatch() != nil || s.GetSourceRepositoryUriMatch() != nil
 	if !useLegacy && !useMatchers {
-		errs = append(errs, errors.New("sigstore identity requires issuer, identity, issuer_match, or identity_match"))
+		errs = append(errs, errors.New("sigstore identity requires issuer, identity, issuer_match, identity_match, or source_repository_uri_match"))
 	}
 	if useLegacy && !useMatchers && (s.GetIssuer() == "" || s.GetIdentity() == "") {
 		errs = append(errs, errors.New("sigstore legacy form requires both issuer and identity when matchers are not used"))
@@ -601,6 +602,16 @@ func validateSigstore(s *IdentitySigstore) []error {
 		if err := validateStringMatcher(m); err != nil {
 			errs = append(errs, fmt.Errorf("identity_match: %w", err))
 		}
+	}
+	if m := s.GetSourceRepositoryUriMatch(); m != nil {
+		if err := validateStringMatcher(m); err != nil {
+			errs = append(errs, fmt.Errorf("source_repository_uri_match: %w", err))
+		}
+	}
+	// source_repository_uri isn't supported by legacy mode so anyone setting it
+	// won't get what they expect. They must use the matcher instead.
+	if s.GetSourceRepositoryUri() != "" {
+		errs = append(errs, errors.New("source_repository_uri cannot be set on a policy identity; use source_repository_uri_match"))
 	}
 	return errs
 }
