@@ -14,7 +14,7 @@ require (
 	github.com/sigstore/sigstore-go v1.2.1
 	github.com/sirupsen/logrus v1.9.4
 	github.com/spf13/cobra v1.10.2
-	github.com/spiffe/go-spiffe/v2 v2.7.0
+	github.com/spiffe/go-spiffe/v2 v2.8.1
 	github.com/stretchr/testify v1.11.1
 	github.com/theupdateframework/go-tuf/v2 v2.4.2
 	golang.org/x/term v0.44.0
