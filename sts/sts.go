@@ -9,6 +9,7 @@ import (
 
 	"github.com/sigstore/sigstore/pkg/oauthflow"
 
+	"github.com/carabiner-dev/signer/sts/providers/gcp"
 	"github.com/carabiner-dev/signer/sts/providers/github"
 	"github.com/carabiner-dev/signer/sts/providers/gitlab"
 )
@@ -17,14 +18,18 @@ import (
 var (
 	_ Provider = &github.Actions{}
 	_ Provider = &gitlab.CI{}
+	_ Provider = &gcp.Metadata{}
 )
 
-// These are the two default STS providers, the signer project has additional
+// These are the default STS providers, the signer project has additional
 // providers in https://github.com/carabiner-dev/signer-extras which have a
-// heavier dependency footprint.
+// heavier dependency footprint. gcp reads the service-account identity token
+// from the Google Cloud metadata server and, like the others, reports no token
+// when its environment is absent.
 var DefaultProviders = map[string]Provider{
 	"gitlab":  &gitlab.CI{},
 	"actions": &github.Actions{},
+	"gcp":     &gcp.Metadata{},
 }
 
 var mtx sync.Mutex
