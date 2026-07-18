@@ -4,7 +4,11 @@
 package sigstore
 
 import (
+	"bytes"
 	"context"
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
 	"errors"
@@ -39,9 +43,10 @@ type CredentialProvider struct {
 	// that it is parsed/validated the same way as a freshly issued one.
 	Token *oauthflow.OIDCIDToken
 
-	keypair  *sign.EphemeralKeypair
-	cp       sign.CertificateProvider
-	prepared bool
+	keypair     *sign.EphemeralKeypair
+	cp          sign.CertificateProvider
+	trustedRoot *root.TrustedRoot
+	prepared    bool
 }
 
 // NewCredentialProvider creates a sigstore CredentialProvider for the given Instance.
@@ -67,9 +72,13 @@ func (p *CredentialProvider) Prepare(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("creating TUF client: %w", err)
 	}
-	if _, err := root.GetTrustedRoot(tufClient); err != nil {
+	trustedRoot, err := root.GetTrustedRoot(tufClient)
+	if err != nil {
 		return fmt.Errorf("fetching TUF root: %w", err)
 	}
+	// Keep the trusted root so CertifiedKey can reconstruct the Fulcio
+	// intermediate chain (sigstore-go's Fulcio provider returns only the leaf).
+	p.trustedRoot = trustedRoot
 
 	// Generate the ephemeral keypair that will be bound to the Fulcio cert.
 	kp, err := sign.NewEphemeralKeypair(nil)
@@ -130,6 +139,138 @@ func (p *CredentialProvider) CertificateProvider() (sign.CertificateProvider, *s
 // time from the sigstore TUF root, so no intermediates are embedded in the
 // bundle's VerificationMaterial.
 func (p *CredentialProvider) Intermediates() []*x509.Certificate { return nil }
+
+// CertifiedKey runs the keyless (Fulcio) flow with a freshly generated key and
+// returns the leaf certificate with its intermediate chain (leaf-adjacent first,
+// root excluded), and the private key. The material is suitable for building a
+// detached CMS/PKCS7 signature. We built this to emulate the gitsign signer but
+// it can be used to sign anything with the same ambient identity the sigstore
+// bundle backend signs with.
+//
+// Unlike the bundle path, the returned key is available to the caller as a
+// crypto.Signer,. this function generates its own key and drives the Fulcio
+// certificate request with it but ( as opposed to sigstore-go's that hides its
+// its key in EphemeralKeypair), the issued certificate binds to a key the caller
+// gets to keep.
+//
+// The ambient OIDC token and Fulcio provider are obtained through Prepare, so an
+// injected Token / DisableSTS is honored exactly like the signing path.
+func (p *CredentialProvider) CertifiedKey(ctx context.Context) (
+	leaf *x509.Certificate, chain []*x509.Certificate, key crypto.Signer, err error,
+) {
+	if err := p.Prepare(ctx); err != nil {
+		return nil, nil, nil, fmt.Errorf("preparing credentials: %w", err)
+	}
+
+	// Generate our own key so we can hand the crypto.Signer back to the caller.
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("generating signing key: %w", err)
+	}
+	kp, err := NewSignerKeypair(priv, nil)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("building keypair: %w", err)
+	}
+
+	cp, opts := p.CertificateProvider()
+	if cp == nil {
+		return nil, nil, nil, errors.New("no certificate provider available after Prepare")
+	}
+	// Bypass the validity-window cache: it is keyed only by time, not by
+	// keypair, so it may hold a certificate bound to the bundle path's ephemeral
+	// key. We need one freshly bound to the key we just generated.
+	if cc, ok := cp.(*cachingCertProvider); ok {
+		cp = cc.inner
+	}
+
+	// When the provider can return a full chain (leaf + intermediates), use it.
+	// The real Fulcio provider only returns the leaf, so fall back to
+	// reconstructing the intermediates from the sigstore trusted root.
+	if ccp, ok := cp.(sign.CertificateChainProvider); ok {
+		chainDER, cerr := ccp.GetCertificateChain(ctx, kp, opts)
+		if cerr != nil {
+			return nil, nil, nil, fmt.Errorf("requesting certificate chain: %w", cerr)
+		}
+		leaf, chain, err = parseLeafAndChain(chainDER)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		return leaf, chain, priv, nil
+	}
+
+	leafDER, cerr := cp.GetCertificate(ctx, kp, opts)
+	if cerr != nil {
+		return nil, nil, nil, fmt.Errorf("requesting certificate: %w", cerr)
+	}
+	leaf, err = x509.ParseCertificate(leafDER)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("parsing leaf certificate: %w", err)
+	}
+	return leaf, p.fulcioIntermediates(leaf), priv, nil
+}
+
+// fulcioIntermediates reconstructs the intermediate chain for a Fulcio-issued
+// leaf from the sigstore trusted root. sigstore-go's Fulcio provider returns
+// only the leaf, so the intermediates — which a detached CMS signature needs to
+// chain to the Fulcio root — come from the trust root fetched during Prepare.
+// Returns nil when no matching authority is found: the leaf alone is still
+// usable and the caller can supply intermediates from its own trust root.
+func (p *CredentialProvider) fulcioIntermediates(leaf *x509.Certificate) []*x509.Certificate {
+	if p.trustedRoot == nil || leaf == nil {
+		return nil
+	}
+	for _, ca := range p.trustedRoot.FulcioCertificateAuthorities() {
+		chains, err := ca.Verify(leaf, leaf.NotBefore)
+		if err != nil || len(chains) == 0 {
+			continue
+		}
+		// Each chain is [leaf, intermediate(s)..., root]; drop leaf and root.
+		chain := chains[0]
+		if len(chain) <= 2 {
+			return nil
+		}
+		intermediates := chain[1 : len(chain)-1]
+		out := make([]*x509.Certificate, len(intermediates))
+		copy(out, intermediates)
+		return out
+	}
+	return nil
+}
+
+// parseLeafAndChain parses a DER chain (leaf first) into the leaf certificate
+// and its intermediates, dropping a trailing self-signed root if the provider
+// included one (CMS callers supply the trust anchor out of band).
+func parseLeafAndChain(chainDER [][]byte) (leaf *x509.Certificate, chain []*x509.Certificate, err error) {
+	if len(chainDER) == 0 {
+		return nil, nil, errors.New("certificate provider returned an empty chain")
+	}
+	certs := make([]*x509.Certificate, 0, len(chainDER))
+	for i, der := range chainDER {
+		c, perr := x509.ParseCertificate(der)
+		if perr != nil {
+			return nil, nil, fmt.Errorf("parsing certificate %d in chain: %w", i, perr)
+		}
+		certs = append(certs, c)
+	}
+
+	leaf = certs[0]
+	intermediates := certs[1:]
+	if n := len(intermediates); n > 0 && isSelfSigned(intermediates[n-1]) {
+		intermediates = intermediates[:n-1]
+	}
+	if len(intermediates) == 0 {
+		return leaf, nil, nil
+	}
+	out := make([]*x509.Certificate, len(intermediates))
+	copy(out, intermediates)
+	return leaf, out, nil
+}
+
+// isSelfSigned reports whether a certificate's issuer equals its subject, the
+// hallmark of a trust-anchor root.
+func isSelfSigned(cert *x509.Certificate) bool {
+	return bytes.Equal(cert.RawIssuer, cert.RawSubject)
+}
 
 // runAmbientSTS iterates over the configured STS providers until it gets a token
 func (p *CredentialProvider) runAmbientSTS(ctx context.Context) error {
