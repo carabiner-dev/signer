@@ -4,6 +4,9 @@
 package signer
 
 import (
+	"context"
+	"crypto"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -306,6 +309,31 @@ func (s *Signer) SignEnvelope(envelope *sdsse.Envelope, funcs ...options.SignOpt
 		return fmt.Errorf("signing envelope: %w", err)
 	}
 	return nil
+}
+
+// CertifiedKey runs the keyless (Fulcio) flow with a fresh key and returns the
+// leaf certificate, its intermediate chain, and the private key, suitable for
+// building a detached CMS/PKCS7 signature. It uses the same ambient identity
+// as the signer's sigstore backend: the OIDC token is obtained through the
+// existing credential/Prepare flow, honoring an injected Options.Token and DisableSTS.
+//
+// It requires the sigstore backend. When Signer.Credentials is already a
+// *sigstore.CredentialProvider it is reused, otherwise one is built from
+// Signer.Options. A non-sigstore Credentials value is rejected.
+func (s *Signer) CertifiedKey(ctx context.Context) (leaf *x509.Certificate, chain []*x509.Certificate, key crypto.Signer, err error) {
+	var cp *sigstore.CredentialProvider
+	switch creds := s.Credentials.(type) {
+	case nil:
+		if verr := s.Options.Validate(); verr != nil {
+			return nil, nil, nil, fmt.Errorf("validating options: %w", verr)
+		}
+		cp = s.Options.BuildSigstoreCredentials()
+	case *sigstore.CredentialProvider:
+		cp = creds
+	default:
+		return nil, nil, nil, fmt.Errorf("CertifiedKey requires the sigstore backend; Signer.Credentials is %T", s.Credentials)
+	}
+	return cp.CertifiedKey(ctx)
 }
 
 // Close releases resources held by the Signer's credentials. It's a
