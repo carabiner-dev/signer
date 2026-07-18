@@ -17,7 +17,6 @@ import (
 	"github.com/sigstore/sigstore-go/pkg/verify"
 	"github.com/sirupsen/logrus"
 
-	"github.com/carabiner-dev/signer/internal/tuf"
 	"github.com/carabiner-dev/signer/options"
 	"github.com/carabiner-dev/signer/sigstore"
 )
@@ -188,20 +187,13 @@ func (bv *DefaultVerifier) BuildSigstoreVerifier(conf *sigstore.InstanceConfig) 
 }
 
 func (bv *DefaultVerifier) assembleTrustedMaterial(conf *sigstore.InstanceConfig) (root.TrustedMaterialCollection, error) {
-	trustedMaterial := make(root.TrustedMaterialCollection, 1)
-
-	// Fetch the trusted root data
-	data, err := tuf.GetRoot(&conf.TufOptions)
+	// Resolve the trusted root through the single sigstore accessor (embedded
+	// when fresh, TUF otherwise, embedded fallback if TUF is unreachable).
+	trustedRoot, err := conf.TrustedRoot()
 	if err != nil {
 		return nil, fmt.Errorf("fetching trusted root: %w", err)
 	}
-
-	trustedRoot, err := root.NewTrustedRootFromJSON(data)
-	if err != nil {
-		return nil, err
-	}
-	trustedMaterial[0] = trustedRoot
-	return trustedMaterial, nil
+	return root.TrustedMaterialCollection{trustedRoot}, nil
 }
 
 // buildVerifierConfig creates a verifier configuration from an options set

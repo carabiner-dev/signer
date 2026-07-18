@@ -6,6 +6,7 @@ package sigstore
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/sigstore/sigstore-go/pkg/root"
 
@@ -16,6 +17,17 @@ import (
 type Instance struct {
 	// Embed the tuf options struct
 	tuf.TufOptions
+
+	// ID is the stable identifier for the instance. We ship with "sigstore" and
+	// "github"). It selects the embedded TUF bootstrap and trusted roots from
+	// (roots/<id>.json and roots/<id>.trusted_root.json).
+	ID string `json:"id"`
+
+	// TrustedRootSnapshot records when the embedded trusted_root.json for
+	// this instance was captured. TrustedRoot uses it to decide whether the
+	// embedded copy is still fresh (see DefaultTrustedRootMaxAge) or should
+	// be refreshed from TUF.
+	TrustedRootSnapshot time.Time `json:"trusted-root-snapshot"`
 
 	// SigningConfig holds the official sigstore signing configuration
 	// (application/vnd.dev.sigstore.signingconfig.v0.2+json).

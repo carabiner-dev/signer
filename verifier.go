@@ -16,7 +16,6 @@ import (
 
 	"github.com/carabiner-dev/signer/bundle"
 	"github.com/carabiner-dev/signer/dsse"
-	"github.com/carabiner-dev/signer/internal/tuf"
 	"github.com/carabiner-dev/signer/key"
 	"github.com/carabiner-dev/signer/options"
 	"github.com/carabiner-dev/signer/sigstore"
@@ -190,13 +189,9 @@ func tsaMaterialLoader(rootsData []byte) func() (root.TrustedMaterial, error) {
 		if len(parsed.Roots) == 0 {
 			return nil, errors.New("no sigstore instances in roots configuration")
 		}
-		data, err := tuf.GetRoot(&parsed.Roots[0].TufOptions)
+		tr, err := parsed.Roots[0].TrustedRoot()
 		if err != nil {
-			return nil, fmt.Errorf("fetching trusted root via TUF: %w", err)
-		}
-		tr, err := root.NewTrustedRootFromJSON(data)
-		if err != nil {
-			return nil, fmt.Errorf("parsing trusted root JSON: %w", err)
+			return nil, fmt.Errorf("resolving trusted root: %w", err)
 		}
 		return tr, nil
 	}

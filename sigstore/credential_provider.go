@@ -24,7 +24,6 @@ import (
 	"github.com/sigstore/sigstore/pkg/oauthflow"
 	"golang.org/x/term"
 
-	"github.com/carabiner-dev/signer/internal/tuf"
 	"github.com/carabiner-dev/signer/sts"
 )
 
@@ -65,19 +64,13 @@ func (p *CredentialProvider) Prepare(ctx context.Context) error {
 		return errors.New("sigstore instance not set")
 	}
 
-	// Ensure TUF roots are available on disk. sigstore-go's internals look
-	// them up during verification; fetch once here so the first sign call
-	// doesn't race with TUF bootstrap.
-	tufClient, err := tuf.GetClient(&p.Instance.TufOptions)
+	// Resolve the trusted root through the new single sigstore resolver (embedded
+	// when fresh or TUF). Keep it so CertifiedKey can reconstruct the Fulcio
+	// intermediate chain (sigstore-go's Fulcio provider returns onlythe leaf).
+	trustedRoot, err := p.Instance.TrustedRoot()
 	if err != nil {
-		return fmt.Errorf("creating TUF client: %w", err)
+		return fmt.Errorf("fetching trusted root: %w", err)
 	}
-	trustedRoot, err := root.GetTrustedRoot(tufClient)
-	if err != nil {
-		return fmt.Errorf("fetching TUF root: %w", err)
-	}
-	// Keep the trusted root so CertifiedKey can reconstruct the Fulcio
-	// intermediate chain (sigstore-go's Fulcio provider returns only the leaf).
 	p.trustedRoot = trustedRoot
 
 	// Generate the ephemeral keypair that will be bound to the Fulcio cert.
