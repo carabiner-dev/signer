@@ -18,9 +18,17 @@ var DefaultRoots []byte
 //go:embed roots
 var rootFiles embed.FS
 
-// readEmbeddedRoot reads the embedded root data for an ID
+// readEmbeddedRoot reads the embedded TUF bootstrap root data for an ID
 func readEmbeddedRoot(id string) ([]byte, error) {
 	return rootFiles.ReadFile(fmt.Sprintf("roots/%s.json", id))
+}
+
+// readEmbeddedTrustedRoot reads the embedded sigstore trusted_root.json for an
+// ID. Unlike readEmbeddedRoot (which returns the TUF bootstrap root), this
+// returns the resolved trust material consumed by TrustedRoot. Note that some
+// instances may not ship their embedded trusted root
+func readEmbeddedTrustedRoot(id string) ([]byte, error) {
+	return rootFiles.ReadFile(fmt.Sprintf("roots/%s.trusted_root.json", id))
 }
 
 type CaCertMatcher func()
@@ -30,7 +38,6 @@ type SigstoreRoots struct {
 }
 
 type InstanceConfig struct {
-	ID               string          `json:"id"`
 	IssuerOrg        string          `json:"issuer-org"`
 	SigningConfigRaw json.RawMessage `json:"signing-config"`
 	Instance
