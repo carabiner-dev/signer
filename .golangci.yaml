@@ -189,3 +189,10 @@ linters:
       - path: _test\.go
         linters:
           - goconst
+      # The hack/ maintenance tools read and write repo-local config paths
+      # (e.g. refresh-roots), so taint-based path-traversal warnings there
+      # are false positives, consistent with the global G304 exclusion.
+      - path: hack/
+        linters:
+          - gosec
+        text: "G703"

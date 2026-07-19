@@ -20,6 +20,10 @@ fakes: ## Rebuild the implementation fakes
 proto: ## Rebuild the code from the protobuf definitions
 	hack/generate-protos.sh
 
+.PHONY: refresh-roots
+refresh-roots: ## Refresh the embedded sigstore trusted roots from TUF
+	go run ./hack/refresh-roots
+
 .PHONY: spire-up
 spire-up: ## Start a local SPIRE server+agent fixture for e2e tests
 	hack/spire/up.sh
