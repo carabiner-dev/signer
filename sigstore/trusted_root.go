@@ -82,7 +82,7 @@ func defaultTrustedRootOptions() trustedRootOptions {
 
 // TrustedRoot resolves the sigstore trusted root for the default instance
 // (Roots[0], which is the public good sigstore instance) or the one selected
-// if selected iwth WithInstance().
+// if selected with WithInstance().
 //
 // It is the single source of sigstore trust material for the signer and its
 // consumers. See (*Instance).TrustedRoot for the resolution order.
