@@ -19,17 +19,19 @@ var (
 	_ Provider = &github.Actions{}
 	_ Provider = &gitlab.CI{}
 	_ Provider = &gcp.Metadata{}
+	_ Provider = &gcp.Provider{}
 )
 
 // These are the default STS providers, the signer project has additional
 // providers in https://github.com/carabiner-dev/signer-extras which have a
-// heavier dependency footprint. gcp reads the service-account identity token
-// from the Google Cloud metadata server and, like the others, reports no token
-// when its environment is absent.
+// heavier dependency footprint. gcp mints a service-account identity token
+// from $GOOGLE_APPLICATION_CREDENTIALS or the Google Cloud metadata server
+// and, like the others, reports no token when its environment is absent.
+// Build it with gcp.New to pin a service account key explicitly.
 var DefaultProviders = map[string]Provider{
 	"gitlab":  &gitlab.CI{},
 	"actions": &github.Actions{},
-	"gcp":     &gcp.Metadata{},
+	"gcp":     &gcp.Provider{},
 }
 
 var mtx sync.Mutex
