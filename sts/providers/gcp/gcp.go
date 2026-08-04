@@ -1,12 +1,14 @@
 // SPDX-FileCopyrightText: Copyright 2025 Carabiner Systems, Inc
 // SPDX-License-Identifier: Apache-2.0
 
-// Package gcp implements an ambient STS provider that reads an OIDC identity
-// token for the current service account from the Google Cloud metadata
-// server. It works on any Google Cloud compute surface that exposes the
-// metadata server (Cloud Run, GCE, GKE, Cloud Functions).
+// Package gcp implements an STS provider that mints Google Cloud OIDC
+// identity tokens. Provider resolves a credential in application-default
+// order: an explicitly configured service-account key, then a key file named
+// by $GOOGLE_APPLICATION_CREDENTIALS, then the ambient metadata server
+// (available when running on Google Cloud. Metadata is the metadata-server
+// piece on its own.
 //
-// When not running on Google Cloud the provider reports no token (nil, nil)
+// When no credential source yields a token the provider reports (nil, nil)
 // so the ambient credential flow falls through to the other providers. It is
 // deliberately dependency-light (standard library + oauthflow only), matching
 // the github and gitlab providers, so it belongs in signer itself rather than
@@ -70,12 +72,9 @@ type Metadata struct {
 // Provide returns an OIDC identity token for the current service account with
 // the given audience, or (nil, nil) when not running on Google Cloud.
 func (m *Metadata) Provide(ctx context.Context, audience string) (*oauthflow.OIDCIDToken, error) {
-	audience = strings.TrimSpace(audience)
-	if audience == "" {
-		return nil, fmt.Errorf("audience string must not be empty")
-	}
-	if strings.ContainsAny(audience, " \t\n\r&?#") {
-		return nil, fmt.Errorf("audience string contains invalid characters")
+	audience, err := validateAudience(audience)
+	if err != nil {
+		return nil, err
 	}
 
 	endpoint := fmt.Sprintf(
@@ -154,6 +153,19 @@ func (m *Metadata) client() *http.Client {
 		timeout = defaultTimeout
 	}
 	return &http.Client{Timeout: timeout}
+}
+
+// validateAudience normalizes and validates the requested token audience.
+// Shared by the metadata and service-account flows.
+func validateAudience(audience string) (string, error) {
+	audience = strings.TrimSpace(audience)
+	if audience == "" {
+		return "", fmt.Errorf("audience string must not be empty")
+	}
+	if strings.ContainsAny(audience, " \t\n\r&?#") {
+		return "", fmt.Errorf("audience string contains invalid characters")
+	}
+	return audience, nil
 }
 
 // subjectFromJWT extracts the subject claim from an unverified JWT (Fulcio
