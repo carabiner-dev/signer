@@ -17,6 +17,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/sigstore/sigstore-go/pkg/root"
@@ -40,8 +41,15 @@ type CredentialProvider struct {
 	// Token is an optional pre-provided OIDC ID token. When set, Prepare skips
 	// the ambient STS providers; the token still flows through OIDConnect so
 	// that it is parsed/validated the same way as a freshly issued one.
+	// Treated as read-only input: Prepare stores the parsed result in the
+	// private token field instead of writing back here.
 	Token *oauthflow.OIDCIDToken
 
+	// mu guards the lazy preparation state below. Prepare errors are not
+	// cached: prepared is only set on success, so later calls retry after
+	// a transient failure.
+	mu          sync.Mutex
+	token       *oauthflow.OIDCIDToken
 	keypair     *sign.EphemeralKeypair
 	cp          sign.CertificateProvider
 	trustedRoot *root.TrustedRoot
@@ -55,8 +63,11 @@ func NewCredentialProvider(instance *Instance) *CredentialProvider {
 
 // Prepare runs the OIDC flow, ensures TUF roots are on disk, generates an
 // ephemeral keypair, and builds the Fulcio certificate provider. Subsequent
-// calls are no-ops.
+// calls are no-ops. Safe for concurrent use.
 func (p *CredentialProvider) Prepare(ctx context.Context) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	if p.prepared {
 		return nil
 	}
@@ -84,17 +95,20 @@ func (p *CredentialProvider) Prepare(ctx context.Context) error {
 	p.keypair = kp
 
 	// Try ambient STS providers before falling back to an interactive flow.
-	if !p.DisableSTS && p.Token == nil {
-		if err := p.runAmbientSTS(ctx); err != nil {
+	seed := p.Token
+	if !p.DisableSTS && seed == nil {
+		ambient, err := p.runAmbientSTS(ctx)
+		if err != nil {
 			return fmt.Errorf("fetching ambient credentials: %w", err)
 		}
+		seed = ambient
 	}
 
-	tok, err := p.runOIDCFlow()
+	tok, err := p.runOIDCFlow(seed)
 	if err != nil {
 		return fmt.Errorf("getting ID token: %w", err)
 	}
-	p.Token = tok
+	p.token = tok
 
 	fulcioURL := p.Instance.FulcioURL()
 	if fulcioURL == "" {
@@ -116,14 +130,28 @@ func (p *CredentialProvider) Prepare(ctx context.Context) error {
 }
 
 // Keypair returns the ephemeral keypair bound to the Fulcio certificate.
-func (p *CredentialProvider) Keypair() sign.Keypair { return p.keypair }
+func (p *CredentialProvider) Keypair() sign.Keypair {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.keypair
+}
 
 // CertificateProvider returns the Fulcio provider and the OIDC ID token that
-// authenticates the signing cert request.
+// authenticates the signing cert request. The token parsed during Prepare
+// wins; the public Token field is the fallback for providers assembled by
+// hand that never went through Prepare.
 func (p *CredentialProvider) CertificateProvider() (sign.CertificateProvider, *sign.CertificateProviderOptions) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	tok := p.token
+	if tok == nil {
+		tok = p.Token
+	}
+
 	var opts *sign.CertificateProviderOptions
-	if p.Token != nil {
-		opts = &sign.CertificateProviderOptions{IDToken: p.Token.RawString}
+	if tok != nil {
+		opts = &sign.CertificateProviderOptions{IDToken: tok.RawString}
 	}
 	return p.cp, opts
 }
@@ -265,32 +293,32 @@ func isSelfSigned(cert *x509.Certificate) bool {
 	return bytes.Equal(cert.RawIssuer, cert.RawSubject)
 }
 
-// runAmbientSTS iterates over the configured STS providers until it gets a token
-func (p *CredentialProvider) runAmbientSTS(ctx context.Context) error {
-	for k, provider := range sts.DefaultProviders {
+// runAmbientSTS iterates over the configured STS providers and returns the
+// first token one of them yields, or nil when no provider has credentials.
+func (p *CredentialProvider) runAmbientSTS(ctx context.Context) (*oauthflow.OIDCIDToken, error) {
+	for k, provider := range sts.Providers() {
 		token, err := provider.Provide(ctx, p.Instance.OIDCConfig.ClientID)
 		if err != nil {
-			return fmt.Errorf("trying ambien credentials from %s: %w", k, err)
+			return nil, fmt.Errorf("trying ambient credentials from %s: %w", k, err)
 		}
 		if token != nil {
-			p.Token = token
-			return nil
+			return token, nil
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 // runOIDCFlow does the OIDC exchange to get the token.
-// If a token is already set it goes through the static flow which just
+// If a seed token is provided it goes through the static flow which just
 // parses and returns it unchanged. Otherwise the flow is chosen based on the
 // environment (browser, device flow, or fail-fast in CI).
-func (p *CredentialProvider) runOIDCFlow() (*oauthflow.OIDCIDToken, error) {
+func (p *CredentialProvider) runOIDCFlow(seed *oauthflow.OIDCIDToken) (*oauthflow.OIDCIDToken, error) {
 	issuer := p.Instance.OidcIssuerURL()
 
 	var flow oauthflow.TokenGetter
 	switch {
-	case p.Token != nil:
-		flow = &oauthflow.StaticTokenGetter{RawToken: p.Token.RawString}
+	case seed != nil:
+		flow = &oauthflow.StaticTokenGetter{RawToken: seed.RawString}
 	case !term.IsTerminal(0):
 		if os.Getenv("CI") != "" {
 			return nil, fmt.Errorf(
@@ -333,7 +361,12 @@ func randomizePort(redirectURL string) string {
 // cachingCertProvider wraps a CertificateProvider and caches the certificate
 // within its validity window. This avoids issuing multiple Fulcio certificate
 // requests when the same keypair is used to sign several artifacts.
+//
+// The mutex spans the whole check-fetch-store sequence, which doubles as
+// singleflight: when the cached certificate expires mid-run, one caller
+// refreshes it while concurrent signs wait instead of stampeding Fulcio.
 type cachingCertProvider struct {
+	mu        sync.Mutex
 	inner     sign.CertificateProvider
 	cert      []byte
 	notBefore time.Time
@@ -341,6 +374,9 @@ type cachingCertProvider struct {
 }
 
 func (c *cachingCertProvider) GetCertificate(ctx context.Context, kp sign.Keypair, opts *sign.CertificateProviderOptions) ([]byte, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	now := time.Now()
 	if c.cert != nil && now.After(c.notBefore) && now.Before(c.notAfter) {
 		return c.cert, nil

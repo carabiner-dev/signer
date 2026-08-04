@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 
 	sdsse "github.com/sigstore/protobuf-specs/gen/pb-go/dsse"
 	sbundle "github.com/sigstore/sigstore-go/pkg/bundle"
@@ -85,6 +86,13 @@ func NewSigner() *Signer {
 // concrete Backend that does the actual signing on each call. The
 // signing logic lives entirely in the Backend implementations
 // (sigstoreBackend / spiffeBackend / keyBackend in backend.go).
+//
+// A Signer instance is safe for concurrent use by multiple goroutines
+// once constructed: the lazy backend/credential initialization and the
+// Fulcio certificate cache are internally synchronized.
+//
+// Important: Options and Credentials must not be mutated after the
+// first sign call.
 type Signer struct {
 	Options options.Signer
 
@@ -103,9 +111,12 @@ type Signer struct {
 
 	// persistent caches the resolved Backend across calls so the OIDC
 	// flow + Fulcio cert request happen once, not per call. Built
-	// lazily on first sign call. Per-call options.WithKey produces a
-	// transient keyBackend that does NOT replace this cache.
+	// lazily on first sign call under mu. Per-call options.WithKey
+	// produces a transient keyBackend that does NOT replace this cache.
 	persistent Backend
+
+	// mu guards the lazy construction of persistent.
+	mu sync.Mutex
 }
 
 // SignStatement signs an in-toto attestation and returns a polymorphic
@@ -156,8 +167,12 @@ func (s *Signer) resolveBackend(funcs []options.SignOptFn) (Backend, error) {
 }
 
 // persistentBackend returns the cached persistent backend, building it
-// on first call from Signer.Options.Backend.
+// on first call from Signer.Options.Backend. Safe for concurrent use;
+// construction errors are not cached, so later calls retry.
 func (s *Signer) persistentBackend() (Backend, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.persistent != nil {
 		return s.persistent, nil
 	}

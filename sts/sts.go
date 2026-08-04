@@ -28,13 +28,29 @@ var (
 // from $GOOGLE_APPLICATION_CREDENTIALS or the Google Cloud metadata server
 // and, like the others, reports no token when its environment is absent.
 // Build it with gcp.New to pin a service account key explicitly.
+//
+// Access the map through Providers/RegisterProvider/UnregisterProvider:
+// iterating it directly is not synchronized with concurrent registration.
 var DefaultProviders = map[string]Provider{
 	"gitlab":  &gitlab.CI{},
 	"actions": &github.Actions{},
 	"gcp":     &gcp.Provider{},
 }
 
-var mtx sync.Mutex
+var mtx sync.RWMutex
+
+// Providers returns a snapshot of the registered STS providers, safe to
+// iterate while other goroutines register or unregister providers.
+func Providers() map[string]Provider {
+	mtx.RLock()
+	defer mtx.RUnlock()
+
+	snapshot := make(map[string]Provider, len(DefaultProviders))
+	for k, p := range DefaultProviders {
+		snapshot[k] = p
+	}
+	return snapshot
+}
 
 // RegisterProvider registers a new provider
 func RegisterProvider(key string, p Provider) {
@@ -43,8 +59,8 @@ func RegisterProvider(key string, p Provider) {
 	mtx.Unlock()
 }
 
-// RegisterProvider registers a new provider
-func UnregisterProvider(key string, p Provider) {
+// UnregisterProvider removes a registered provider
+func UnregisterProvider(key string, _ Provider) {
 	mtx.Lock()
 	delete(DefaultProviders, key)
 	mtx.Unlock()

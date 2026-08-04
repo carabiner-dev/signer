@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
 	protobundle "github.com/sigstore/protobuf-specs/gen/pb-go/bundle/v1"
 	protocommon "github.com/sigstore/protobuf-specs/gen/pb-go/common/v1"
@@ -49,8 +50,8 @@ type Backend interface {
 }
 
 // bundleBackendBase carries the shared state and signing helpers used
-// by sigstoreBackend and spiffeBackend — both produce sigstore
-// bundles from a bundle.CredentialProvider. It is embedded by both;
+// by both sigstoreBackend and spiffeBackend. Both produce sigstore
+// bundles from a bundle.CredentialProvider. It is embedded by both
 // the per-backend prepare logic (auto-build creds for sigstore, require
 // pre-set creds for spiffe) lives on the wrapping types.
 type bundleBackendBase struct {
@@ -58,6 +59,10 @@ type bundleBackendBase struct {
 	creds        bundle.CredentialProvider
 	bundleSigner bundle.Signer
 
+	// mu guards the lazy preparation state (ready, creds, bundleOpts).
+	// prepare errors are not cached: ready is only set on success, so
+	// later sign calls retry after a transient failure.
+	mu         sync.Mutex
 	ready      bool
 	bundleOpts *sign.BundleOptions
 }
@@ -119,9 +124,12 @@ func (b *sigstoreBackend) SignMessage(data []byte, _ ...options.SignOptFn) (Sign
 }
 
 // prepare builds (lazily, once) the sigstore credentials + bundle
-// options. Auto-builds creds from Options when not pre-set — that's
-// the sigstore-specific behavior.
+// options. Auto-builds creds from Options when not pre-set (a
+// sigstore-specific behavior). Safe for concurrent use.
 func (b *sigstoreBackend) prepare() error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	if b.ready {
 		return nil
 	}
@@ -190,9 +198,12 @@ func (b *spiffeBackend) SignMessage(data []byte, _ ...options.SignOptFn) (Signed
 }
 
 // prepare prepares the SVID and computes bundle options. Unlike
-// sigstoreBackend.prepare, this does not auto-build creds — the
-// constructor enforces a non-nil creds value.
+// sigstoreBackend.prepare, this does not auto-build creds: the
+// constructor enforces a non-nil creds value. Safe for concurrent use.
 func (b *spiffeBackend) prepare() error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	if b.ready {
 		return nil
 	}

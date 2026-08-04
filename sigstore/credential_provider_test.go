@@ -17,7 +17,7 @@ func TestRunOIDCFlowFailsInCI(t *testing.T) {
 
 	t.Setenv("CI", "true")
 
-	_, err := cp.runOIDCFlow()
+	_, err := cp.runOIDCFlow(nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "no OIDC ambient credentials found in CI environment")
 }
