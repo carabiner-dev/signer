@@ -18,7 +18,7 @@ require (
 	github.com/stretchr/testify v1.12.0
 	github.com/theupdateframework/go-tuf/v2 v2.4.2
 	golang.org/x/term v0.45.0
-	google.golang.org/protobuf v1.36.11
+	google.golang.org/protobuf v1.36.12
 	sigs.k8s.io/release-utils v0.12.4
 )
 
