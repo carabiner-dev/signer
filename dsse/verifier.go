@@ -79,7 +79,7 @@ func (dv *DefaultVerifier) RunVerification(
 
 	// Got all required data, now verify the sigs in parallel
 	var mutex sync.Mutex
-	t := throttler.New((4), len(env.GetSignatures())*len(keys))
+	t := throttler.New(4, len(env.GetSignatures())*len(keys))
 	for _, sig := range env.GetSignatures() {
 		for i, k := range publicKeys {
 			provider := providers[i]
