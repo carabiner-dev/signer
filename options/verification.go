@@ -7,6 +7,9 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"regexp"
+	"slices"
+
+	"github.com/carabiner-dev/signer/key"
 )
 
 type VerificationOptFunc func(*Verification) error
@@ -144,6 +147,18 @@ func WithExpectedSpiffeIDRegex(trustDomain, pathRegex string) VerificationOptFun
 		v.ExpectedTrustDomain = trustDomain
 		v.ExpectedPathRegex = pathRegex
 		v.ExpectedPath = ""
+		return nil
+	}
+}
+
+// WithPublicKeys sets the public keys used to verify DSSE signatures for
+// this call, replacing any keys configured on the verifier. The slice is
+// copied so later changes by the caller do not affect the verification.
+// Passing no keys clears the set, in which case DSSE signatures cannot be
+// checked and are reported as unverifiable.
+func WithPublicKeys(keys ...key.PublicKeyProvider) VerificationOptFunc {
+	return func(v *Verification) error {
+		v.PubKeys = slices.Clone(keys)
 		return nil
 	}
 }
