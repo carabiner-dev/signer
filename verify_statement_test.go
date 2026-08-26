@@ -330,7 +330,15 @@ func TestVerifyStatementSigstoreIntegration(t *testing.T) {
 			require.NotNil(t, ver.GetSignature())
 			assert.Equal(t, tc.wantStatus, ver.GetSignature().GetStatus())
 			assert.Equal(t, tc.wantStatus == api.VerificationStatus_VERIFIED, ver.GetVerified())
-			if tc.wantStatus != api.VerificationStatus_VERIFIED {
+			if tc.wantStatus == api.VerificationStatus_VERIFIED {
+				// Identity checks were skipped, so the signer must come
+				// from the verified certificate itself.
+				require.Len(t, ver.GetSignature().GetIdentities(), 1)
+				ss := ver.GetSignature().GetIdentities()[0].GetSigstore()
+				require.NotNil(t, ss)
+				assert.NotEmpty(t, ss.GetIssuer())
+				assert.NotEmpty(t, ss.GetIdentity())
+			} else {
 				assert.NotEmpty(t, ver.GetSignature().GetError())
 			}
 		})
