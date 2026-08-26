@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sync"
 
 	"github.com/nozzle/throttler"
 	commonv1 "github.com/sigstore/protobuf-specs/gen/pb-go/common/v1"
@@ -17,6 +18,7 @@ import (
 	"github.com/sigstore/sigstore-go/pkg/verify"
 	"github.com/sirupsen/logrus"
 
+	api "github.com/carabiner-dev/signer/api/v1"
 	"github.com/carabiner-dev/signer/options"
 	"github.com/carabiner-dev/signer/sigstore"
 )
@@ -119,43 +121,59 @@ func (bv *DefaultVerifier) OpenBundle(path string) (*bundle.Bundle, error) {
 // Verify is the main verification function to check bundles. Dispatches to
 // the SPIFFE verifier when the bundle carries a spiffe:// URI SAN; otherwise
 // iterates the configured sigstore instances.
+//
+// Errors carry the verification conclusion: api.ErrUnverifiable when no
+// verifier is configured for the bundle's kind, api.ErrVerificationFailed
+// when every applicable instance concluded the bundle does not verify. An
+// error wrapping neither means nothing was concluded: at least one
+// instance could not run the verification, so the bundle may still be
+// valid against it.
 func (bv *DefaultVerifier) Verify(opts *options.Verification, bndl *bundle.Bundle) (*verify.VerificationResult, error) {
 	if isSpiffeBundle(bndl) {
 		if bv.SPIFFE == nil {
-			return nil, errors.New("bundle carries a spiffe identity but no spiffe verifier is configured")
+			return nil, api.UnverifiableError("bundle carries a spiffe identity but no spiffe verifier is configured", nil)
 		}
 		return bv.SPIFFE.Verify(opts, bndl)
 	}
 	if len(bv.Verifiers) == 0 {
-		return nil, fmt.Errorf("unable to verify bundle, no sigstore instances loaded")
+		return nil, api.UnverifiableError("no sigstore instances loaded", nil)
 	}
 
 	// TODO(puerco): Befor brute forcing all instances, we could try to guess which
 	// instance should be used by looking at the cert issuer.
 
-	var finalRes *verify.VerificationResult
+	var (
+		mu       sync.Mutex
+		finalRes *verify.VerificationResult
+		errs     = make([]error, len(bv.Verifiers))
+	)
 
 	t := throttler.New(4, len(bv.Verifiers))
 	for i := range bv.Verifiers {
 		go func() {
-			if finalRes != nil {
-				t.Done(nil)
+			defer t.Done(nil)
+
+			mu.Lock()
+			done := finalRes != nil
+			mu.Unlock()
+			if done {
 				return
 			}
 
 			// Run the verification
 			res, err := bv.RunVerification(&opts.SigstoreVerification, bv.Verifiers[i], bndl)
-			if err != nil {
-				t.Done(err)
-				return
-			}
 
-			// No error with a result? Then we got it.
-			if res != nil {
+			mu.Lock()
+			defer mu.Unlock()
+			switch {
+			case err != nil:
+				errs[i] = err
+			case res == nil:
+				errs[i] = errors.New("verifier returned no result")
+			case finalRes == nil:
+				// No error with a result? Then we got it.
 				finalRes = res
 			}
-
-			t.Done(nil)
 		}()
 		t.Throttle()
 	}
@@ -163,7 +181,32 @@ func (bv *DefaultVerifier) Verify(opts *options.Verification, bndl *bundle.Bundl
 	if finalRes != nil {
 		return finalRes, nil
 	}
-	return nil, fmt.Errorf("unable to verify with the configured sigstore instances: %w", t.Err())
+
+	// No instance verified the bundle. This is a conclusion only when
+	// every instance reached one; an instance that could not run may
+	// have been the one able to verify it. In that case only the
+	// operational errors are wrapped, so the conclusion sentinel does
+	// not leak into the chain and get read as a failed verification.
+	var conclusions, failures []error
+	for _, err := range errs {
+		switch {
+		case err == nil:
+		case errors.Is(err, api.ErrVerificationFailed):
+			conclusions = append(conclusions, err)
+		default:
+			failures = append(failures, err)
+		}
+	}
+	if len(failures) > 0 {
+		msg := "unable to verify with the configured sigstore instances"
+		if len(conclusions) > 0 {
+			// Rendered as text, not wrapped: the conclusion sentinel must
+			// stay out of the chain when nothing was concluded.
+			msg += " (other instances concluded: " + errors.Join(conclusions...).Error() + ")"
+		}
+		return nil, fmt.Errorf("%s: %w", msg, errors.Join(failures...))
+	}
+	return nil, api.VerificationFailedError("no configured sigstore instance verified the bundle", errors.Join(conclusions...))
 }
 
 // BuildSigstoreVerifier creates a configured sigstore verifier from the
@@ -221,7 +264,13 @@ func (bv *DefaultVerifier) buildVerifierConfig(conf *sigstore.InstanceConfig) []
 	return config
 }
 
-// RunVerification verifies an artifact using the provided verifier
+// RunVerification checks the bundle against one sigstore instance with the
+// policy built from the options. Errors that arise before the sigstore
+// verifier runs — an undefined identity policy, an invalid expected
+// identity, a malformed artifact digest — are plain errors: verification
+// could not run. A defect in the bundle itself and any failure reported by
+// the sigstore verifier are conclusions, wrapped in
+// api.ErrVerificationFailed.
 func (bv *DefaultVerifier) RunVerification(
 	opts *options.SigstoreVerification, sigstoreVerifier VerifyCapable, bndl *bundle.Bundle,
 ) (*verify.VerificationResult, error) {
@@ -229,7 +278,7 @@ func (bv *DefaultVerifier) RunVerification(
 	dsse := bndl.GetDsseEnvelope()
 	if dsse != nil {
 		if dsse.GetPayload() == nil {
-			return nil, fmt.Errorf("unable to extract payload from DSSE envelope")
+			return nil, api.VerificationFailedError("DSSE envelope has no payload", nil)
 		}
 	}
 
@@ -273,7 +322,7 @@ func (bv *DefaultVerifier) RunVerification(
 		md := bndl.GetMessageSignature().GetMessageDigest()
 		algo, err := hashAlgorithmToString(md.GetAlgorithm())
 		if err != nil {
-			return nil, err
+			return nil, api.VerificationFailedError("reading message signature digest", err)
 		}
 		artifactPolicy = verify.WithArtifactDigest(algo, md.GetDigest())
 
@@ -285,7 +334,7 @@ func (bv *DefaultVerifier) RunVerification(
 		bndl, verify.NewPolicy(artifactPolicy, identityPolicies...),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("verifying: %w", err)
+		return nil, api.VerificationFailedError("verifying", err)
 	}
 
 	return res, nil

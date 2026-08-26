@@ -14,6 +14,32 @@ message Verification  {
     SignatureVerification signature = 1;
 }
 
+// VerificationStatus is the conclusion of a signature verification. It
+// encodes the three signals a verifier can read from a signed statement:
+// whether it is signed, whether the cryptographic signature could be
+// checked, and whether it verified against the content. A status other
+// than VERIFIED is a conclusion, not an execution error.
+enum VerificationStatus {
+    // UNSPECIFIED means the producer did not record a status. Consumers
+    // should fall back to the verified boolean.
+    UNSPECIFIED = 0;
+
+    // UNSIGNED means the statement carries no signatures.
+    UNSIGNED = 1;
+
+    // UNVERIFIABLE means the statement is signed but the verifier had no
+    // key or trust material to check the signatures against.
+    UNVERIFIABLE = 2;
+
+    // FAILED means the statement is signed, the verifier checked the
+    // signatures against its key or trust material, and none verified.
+    FAILED = 3;
+
+    // VERIFIED means at least one signature verified against the content.
+    // The identities list names the signers that verified.
+    VERIFIED = 4;
+}
+
 message SignatureVerification {
     // Date when the verification was performed
     google.protobuf.Timestamp date = 1;
@@ -32,4 +58,8 @@ message SignatureVerification {
 
 	// Error is a message explaining why verification failed. 
 	string error = 5;
+
+	// Status is the conclusion of the verification. When set, verified is
+	// equivalent to status == VERIFIED.
+	VerificationStatus status = 6;
 }

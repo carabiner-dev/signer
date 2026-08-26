@@ -4,6 +4,8 @@
 package signer
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 
@@ -113,4 +115,43 @@ func (e *EnvelopeArtifact) WriteTo(w io.Writer) (int64, error) {
 		return int64(n), fmt.Errorf("writing envelope: %w", err)
 	}
 	return int64(n), nil
+}
+
+// ErrUnknownArtifact is returned by ParseArtifact when the data is neither
+// a sigstore bundle nor a DSSE envelope.
+var ErrUnknownArtifact = errors.New("data is not a sigstore bundle or a DSSE envelope")
+
+// ParseArtifact is the inverse of SignedArtifact.WriteTo: it reads the
+// canonical JSON form of a signed artifact and returns the matching
+// SignedArtifact. Sigstore bundles are recognized by their top-level
+// mediaType, DSSE envelopes by their payloadType. Callers branch on
+// Kind() or type-assert to *BundleArtifact / *EnvelopeArtifact when the
+// underlying format matters.
+func ParseArtifact(data []byte) (SignedArtifact, error) {
+	var probe struct {
+		MediaType   string `json:"mediaType"`
+		PayloadType string `json:"payloadType"`
+	}
+	if err := json.Unmarshal(data, &probe); err != nil {
+		return nil, fmt.Errorf("parsing artifact: %w", err)
+	}
+
+	switch {
+	case probe.MediaType != "":
+		bndl := &sbundle.Bundle{}
+		if err := bndl.UnmarshalJSON(data); err != nil {
+			return nil, fmt.Errorf("parsing sigstore bundle: %w", err)
+		}
+		return &BundleArtifact{Bundle: bndl}, nil
+
+	case probe.PayloadType != "":
+		env := &sdsse.Envelope{}
+		if err := protojson.Unmarshal(data, env); err != nil {
+			return nil, fmt.Errorf("parsing DSSE envelope: %w", err)
+		}
+		return &EnvelopeArtifact{Envelope: env}, nil
+
+	default:
+		return nil, ErrUnknownArtifact
+	}
 }

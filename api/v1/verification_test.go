@@ -916,6 +916,65 @@ func TestSignatureVerificationFromResult(t *testing.T) {
 		require.Equal(t, "https://github.com/myorg/repo", ss.GetSourceRepositoryUri())
 	})
 
+	t.Run("identity-check-skipped-reads-certificate-summary", func(t *testing.T) {
+		t.Parallel()
+		sv := SignatureVerificationFromResult(&verify.VerificationResult{
+			Signature: &verify.SignatureVerificationResult{
+				Certificate: &certificate.Summary{
+					SubjectAlternativeName: "https://github.com/myorg/repo/.github/workflows/release.yml@refs/tags/v1.2.3",
+					Extensions: certificate.Extensions{
+						Issuer:              "https://token.actions.githubusercontent.com",
+						SourceRepositoryURI: "https://github.com/myorg/repo",
+					},
+				},
+			},
+		})
+		require.True(t, sv.GetVerified())
+		require.Len(t, sv.GetIdentities(), 1)
+		ss := sv.GetIdentities()[0].GetSigstore()
+		require.NotNil(t, ss)
+		require.Equal(t, "https://token.actions.githubusercontent.com", ss.GetIssuer())
+		require.Equal(t, "https://github.com/myorg/repo/.github/workflows/release.yml@refs/tags/v1.2.3", ss.GetIdentity())
+		require.Equal(t, "https://github.com/myorg/repo", ss.GetSourceRepositoryUri())
+	})
+
+	t.Run("identity-check-skipped-spiffe-certificate-summary", func(t *testing.T) {
+		t.Parallel()
+		sv := SignatureVerificationFromResult(&verify.VerificationResult{
+			Signature: &verify.SignatureVerificationResult{
+				Certificate: &certificate.Summary{SubjectAlternativeName: "spiffe://example.org/workload"},
+			},
+		})
+		require.True(t, sv.GetVerified())
+		require.Len(t, sv.GetIdentities(), 1)
+		require.Equal(t, "spiffe://example.org/workload", sv.GetIdentities()[0].GetSpiffe().GetSvid())
+	})
+
+	t.Run("verified-identity-takes-precedence-over-summary", func(t *testing.T) {
+		t.Parallel()
+		sv := SignatureVerificationFromResult(&verify.VerificationResult{
+			VerifiedIdentity: &verify.CertificateIdentity{
+				SubjectAlternativeName: verify.SubjectAlternativeNameMatcher{SubjectAlternativeName: "policy@example.com"},
+				Issuer:                 verify.IssuerMatcher{Issuer: "https://policy.example.com"},
+			},
+			Signature: &verify.SignatureVerificationResult{
+				Certificate: &certificate.Summary{
+					SubjectAlternativeName: "summary@example.com",
+					Extensions:             certificate.Extensions{Issuer: "https://summary.example.com"},
+				},
+			},
+		})
+		require.Len(t, sv.GetIdentities(), 1)
+		require.Equal(t, "policy@example.com", sv.GetIdentities()[0].GetSigstore().GetIdentity())
+	})
+
+	t.Run("no-identity-and-no-certificate-is-verified-without-signers", func(t *testing.T) {
+		t.Parallel()
+		sv := SignatureVerificationFromResult(&verify.VerificationResult{})
+		require.True(t, sv.GetVerified())
+		require.Empty(t, sv.GetIdentities())
+	})
+
 	t.Run("fulcio-no-signature-empty-source-repo", func(t *testing.T) {
 		t.Parallel()
 		sv := SignatureVerificationFromResult(&verify.VerificationResult{

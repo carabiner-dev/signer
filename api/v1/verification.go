@@ -20,9 +20,17 @@ var _ attestation.Verification = (*Verification)(nil) //nolint:errcheck
 
 // SignatureVerificationFromResult translates sigstore-go's
 // *verify.VerificationResult into the api/v1 SignatureVerification used for
-// identity matching. Handles both sigstore and SPIFFE flows by inspecting
-// VerifiedIdentity: a spiffe:// SAN produces an IdentitySpiffe; any other
-// SAN/Issuer pair produces an IdentitySigstore.
+// identity matching. Handles both sigstore and SPIFFE flows: a spiffe://
+// SAN produces an IdentitySpiffe; any other SAN/Issuer pair produces an
+// IdentitySigstore.
+//
+// The signer is read from VerifiedIdentity when an identity policy was
+// evaluated. When verification ran without one (WithoutIdentitiesUnsafe,
+// as set by options.WithSkipIdentityCheck) sigstore-go leaves
+// VerifiedIdentity nil, and the signer is read from the verified
+// certificate's summary instead: the chain and signature were checked,
+// only the match against an expectation was skipped, so the certificate's
+// identity is still the verified signer.
 //
 // Pass a nil result (e.g. when verification failed) to get back an empty,
 // unverified SignatureVerification. Callers typically invoke this after a
@@ -41,11 +49,18 @@ func SignatureVerificationFromResult(r *verify.VerificationResult) *SignatureVer
 		return &SignatureVerification{}
 	}
 	sv := &SignatureVerification{Verified: true}
-	if r.VerifiedIdentity == nil {
+
+	var san, issuer string
+	switch {
+	case r.VerifiedIdentity != nil:
+		san = r.VerifiedIdentity.SubjectAlternativeName.SubjectAlternativeName
+		issuer = r.VerifiedIdentity.Issuer.Issuer
+	case r.Signature != nil && r.Signature.Certificate != nil:
+		san = r.Signature.Certificate.SubjectAlternativeName
+		issuer = r.Signature.Certificate.Issuer
+	default:
 		return sv
 	}
-	san := r.VerifiedIdentity.SubjectAlternativeName.SubjectAlternativeName
-	issuer := r.VerifiedIdentity.Issuer.Issuer
 
 	switch {
 	case strings.HasPrefix(san, "spiffe://"):

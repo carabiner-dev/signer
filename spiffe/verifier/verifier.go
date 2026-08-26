@@ -34,6 +34,7 @@ import (
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
 	"google.golang.org/protobuf/encoding/protojson"
 
+	api "github.com/carabiner-dev/signer/api/v1"
 	"github.com/carabiner-dev/signer/dsse"
 	"github.com/carabiner-dev/signer/options"
 )
@@ -269,6 +270,14 @@ func fetchTrustRootsFromWorkloadAPI(socket string) (*x509.CertPool, error) {
 // used as x509.VerifyOptions.CurrentTime so SVID-signed bundles remain
 // verifiable past the SVID's TTL. With timestamps but no
 // TSATrustedMaterial, chain validation falls back to time.Now().
+//
+// A negative conclusion — the bundle lacks a usable certificate, the
+// chain does not validate against the trust roots, the SVID does not
+// match the expected identity, the timestamps do not verify, or no
+// signature verifies against the leaf key — is returned wrapped in
+// api.ErrVerificationFailed. An error that does not wrap it means
+// verification could not run: invalid per-call options or TSA trust
+// material that failed to load.
 func (v *Verifier) Verify(opts *options.Verification, bndl *sbundle.Bundle) (*verify.VerificationResult, error) {
 	effective, err := v.effectiveOptions(opts)
 	if err != nil {
@@ -277,7 +286,7 @@ func (v *Verifier) Verify(opts *options.Verification, bndl *sbundle.Bundle) (*ve
 
 	chain, err := extractChain(bndl)
 	if err != nil {
-		return nil, fmt.Errorf("extracting x509 chain from bundle: %w", err)
+		return nil, api.VerificationFailedError("extracting x509 chain from bundle", err)
 	}
 	leaf := chain[0]
 
@@ -312,19 +321,19 @@ func (v *Verifier) Verify(opts *options.Verification, bndl *sbundle.Bundle) (*ve
 		KeyUsages:   []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
 		CurrentTime: chainTime, // zero falls back to time.Now() inside x509.Verify
 	}); err != nil {
-		return nil, fmt.Errorf("chain verification failed: %w", err)
+		return nil, api.VerificationFailedError("chain verification failed", err)
 	}
 
 	id, err := extractSpiffeID(leaf)
 	if err != nil {
-		return nil, fmt.Errorf("extracting spiffe id: %w", err)
+		return nil, api.VerificationFailedError("extracting spiffe id", err)
 	}
 	if err := matchIdentity(effective, id); err != nil {
-		return nil, err
+		return nil, api.VerificationFailedError("spiffe identity mismatch", err)
 	}
 
 	if err := verifyDSSESignature(bndl, leaf.PublicKey); err != nil {
-		return nil, fmt.Errorf("verifying dsse signature: %w", err)
+		return nil, api.VerificationFailedError("verifying dsse signature", err)
 	}
 
 	result := buildResult(bndl, leaf, id)
@@ -399,7 +408,7 @@ func (v *Verifier) effectiveOptions(opts *options.Verification) (VerifierOptions
 func (v *Verifier) chainValidationTime(bndl *sbundle.Bundle) (time.Time, []*root.Timestamp, error) {
 	signedTimestamps, err := bndl.Timestamps()
 	if err != nil {
-		return time.Time{}, nil, fmt.Errorf("reading bundle timestamps: %w", err)
+		return time.Time{}, nil, api.VerificationFailedError("reading bundle timestamps", err)
 	}
 	if len(signedTimestamps) == 0 {
 		return time.Time{}, nil, nil
@@ -413,10 +422,10 @@ func (v *Verifier) chainValidationTime(bndl *sbundle.Bundle) (time.Time, []*root
 	}
 	verified, _, err := verify.VerifySignedTimestamp(bndl, tm)
 	if err != nil {
-		return time.Time{}, nil, fmt.Errorf("validating bundle timestamps: %w", err)
+		return time.Time{}, nil, api.VerificationFailedError("validating bundle timestamps", err)
 	}
 	if len(verified) == 0 {
-		return time.Time{}, nil, errors.New("bundle has timestamps but none verified against the TSA trust material")
+		return time.Time{}, nil, api.VerificationFailedError("bundle has timestamps but none verified against the TSA trust material", nil)
 	}
 	earliest := verified[0].Time
 	for _, ts := range verified[1:] {
