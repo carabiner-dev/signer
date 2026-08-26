@@ -304,3 +304,35 @@ func TestVerifyStatementBundle(t *testing.T) {
 		})
 	}
 }
+
+// TestVerifyStatementSigstoreIntegration runs real sigstore bundles from
+// the bundle testdata through VerifyStatement. Not parallel: the subtests
+// share the global TUF cache.
+func TestVerifyStatementSigstoreIntegration(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		rootsPath  string
+		bundlePath string
+		wantStatus api.VerificationStatus
+	}{
+		{"verifies against its instance", "bundle/testdata/sigstore-roots.json", "bundle/testdata/public-good.sigstore.json", api.VerificationStatus_VERIFIED},
+		{"fails against the wrong instance", "bundle/testdata/github.json", "bundle/testdata/public-good.sigstore.json", api.VerificationStatus_FAILED},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			roots, err := os.ReadFile(tc.rootsPath)
+			require.NoError(t, err)
+			data, err := os.ReadFile(tc.bundlePath)
+			require.NoError(t, err)
+
+			v := NewVerifier(func(o *options.Verifier) { o.SigstoreRootsData = roots })
+			ver, err := v.VerifyStatementBytes(data, options.WithSkipIdentityCheck(true))
+			require.NoError(t, err)
+			require.NotNil(t, ver.GetSignature())
+			assert.Equal(t, tc.wantStatus, ver.GetSignature().GetStatus())
+			assert.Equal(t, tc.wantStatus == api.VerificationStatus_VERIFIED, ver.GetVerified())
+			if tc.wantStatus != api.VerificationStatus_VERIFIED {
+				assert.NotEmpty(t, ver.GetSignature().GetError())
+			}
+		})
+	}
+}
