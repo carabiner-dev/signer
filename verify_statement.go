@@ -15,20 +15,6 @@ import (
 	"github.com/carabiner-dev/signer/options"
 )
 
-var (
-	// ErrVerificationFailed marks a verification error whose cause is a
-	// negative conclusion: the signatures were checked against the
-	// available key or trust material and none verified. Wrap it with
-	// the reason so callers can tell a failed verification apart from a
-	// verification that could not run.
-	ErrVerificationFailed = errors.New("signature verification failed")
-
-	// ErrUnverifiable marks a verification error whose cause is missing
-	// material: the statement is signed, but the verifier has no key,
-	// trust root or backend able to check the signatures.
-	ErrUnverifiable = errors.New("signature could not be verified")
-)
-
 // VerifyStatement is the inverse of Signer.SignStatement. It takes a
 // signed statement in any supported format and returns the verification
 // conclusion as an api.Verification carrying the three signals a
@@ -41,6 +27,9 @@ var (
 // trust material could not be used, or the artifact is not a statement.
 // A negative conclusion is not an error; it is returned as a
 // Verification with the corresponding status and the reason in Error.
+// Bundle verifiers report their conclusions by wrapping
+// api.ErrVerificationFailed or api.ErrUnverifiable, which this method
+// translates into the FAILED and UNVERIFIABLE statuses.
 //
 // Keys for DSSE envelopes come from options.WithPublicKeys or from the
 // keys configured on the verifier. Bundles verify against the sigstore
@@ -132,9 +121,9 @@ func (v *Verifier) verifyBundleStatement(bndl *sbundle.Bundle, fnOpts ...options
 
 	res, err := v.VerifyParsedBundle(bndl, fnOpts...)
 	switch {
-	case errors.Is(err, ErrUnverifiable):
+	case errors.Is(err, api.ErrUnverifiable):
 		return conclude(api.VerificationStatus_UNVERIFIABLE, err.Error()), nil
-	case errors.Is(err, ErrVerificationFailed):
+	case errors.Is(err, api.ErrVerificationFailed):
 		return conclude(api.VerificationStatus_FAILED, err.Error()), nil
 	case err != nil:
 		return nil, err

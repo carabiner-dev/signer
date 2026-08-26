@@ -253,7 +253,7 @@ func TestVerifyStatementBundle(t *testing.T) {
 		},
 		{
 			name: "failed conclusion",
-			art:  bundleWithSigs(1), err: fmt.Errorf("chain verification failed: x509: unknown authority: %w", ErrVerificationFailed),
+			art:  bundleWithSigs(1), err: fmt.Errorf("chain verification failed: x509: unknown authority: %w", api.ErrVerificationFailed),
 			wantStatus: api.VerificationStatus_FAILED,
 			check: func(t *testing.T, ver *api.Verification) {
 				t.Helper()
@@ -263,7 +263,7 @@ func TestVerifyStatementBundle(t *testing.T) {
 		},
 		{
 			name: "unverifiable conclusion",
-			art:  bundleWithSigs(1), err: fmt.Errorf("no spiffe verifier configured: %w", ErrUnverifiable),
+			art:  bundleWithSigs(1), err: fmt.Errorf("no spiffe verifier configured: %w", api.ErrUnverifiable),
 			wantStatus: api.VerificationStatus_UNVERIFIABLE,
 		},
 		{

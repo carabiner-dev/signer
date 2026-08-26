@@ -25,6 +25,7 @@ import (
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	"github.com/stretchr/testify/require"
 
+	api "github.com/carabiner-dev/signer/api/v1"
 	"github.com/carabiner-dev/signer/dsse"
 	"github.com/carabiner-dev/signer/options"
 )
@@ -196,6 +197,7 @@ func TestVerifierRejectsWrongTrustDomain(t *testing.T) {
 
 	_, err = v.Verify(nil, bndl)
 	require.Error(t, err)
+	require.ErrorIs(t, err, api.ErrVerificationFailed)
 	require.Contains(t, err.Error(), "trust domain")
 }
 
@@ -212,6 +214,7 @@ func TestVerifierRejectsWrongPath(t *testing.T) {
 
 	_, err = v.Verify(nil, bndl)
 	require.Error(t, err)
+	require.ErrorIs(t, err, api.ErrVerificationFailed)
 	require.Contains(t, err.Error(), "path")
 }
 
@@ -290,6 +293,7 @@ func TestVerifierSkipSVIDValidityToggle(t *testing.T) {
 		require.NoError(t, err)
 		_, err = v.Verify(nil, bndl)
 		require.Error(t, err)
+		require.ErrorIs(t, err, api.ErrVerificationFailed)
 		require.Contains(t, err.Error(), "chain verification failed")
 	})
 
@@ -319,6 +323,7 @@ func TestVerifierRejectsUntrustedRoot(t *testing.T) {
 
 	_, err = v.Verify(nil, bndl)
 	require.Error(t, err)
+	require.ErrorIs(t, err, api.ErrVerificationFailed)
 	require.Contains(t, err.Error(), "chain verification failed")
 }
 
@@ -337,6 +342,7 @@ func TestVerifierRejectsTamperedPayload(t *testing.T) {
 
 	_, err = v.Verify(nil, bndl)
 	require.Error(t, err)
+	require.ErrorIs(t, err, api.ErrVerificationFailed)
 	require.Contains(t, err.Error(), "dsse signature")
 }
 
@@ -356,11 +362,13 @@ func TestVerifierHonorsPerCallIdentityOptions(t *testing.T) {
 	// With per-call trust domain that doesn't match → reject.
 	_, err = v.Verify(withExpectedSpiffeID("other.example", ""), bndl)
 	require.Error(t, err)
+	require.ErrorIs(t, err, api.ErrVerificationFailed)
 	require.Contains(t, err.Error(), "trust domain")
 
 	// With per-call path that doesn't match → reject.
 	_, err = v.Verify(withExpectedSpiffeID("example.org", "/other"), bndl)
 	require.Error(t, err)
+	require.ErrorIs(t, err, api.ErrVerificationFailed)
 	require.Contains(t, err.Error(), "path")
 }
 
@@ -383,6 +391,7 @@ func TestVerifierPerCallOverridesConstructorIdentity(t *testing.T) {
 	// Per-call path that disagrees with construction-time overrides it and rejects.
 	_, err = v.Verify(withExpectedSpiffeID("", "/other"), bndl)
 	require.Error(t, err, "per-call path override must be applied")
+	require.ErrorIs(t, err, api.ErrVerificationFailed)
 	require.Contains(t, err.Error(), "/other")
 }
 
@@ -419,6 +428,7 @@ func TestVerifierPerCallRejectsAmbiguousPathOptions(t *testing.T) {
 	}
 	_, err = v.Verify(opts, bndl)
 	require.Error(t, err)
+	require.NotErrorIs(t, err, api.ErrVerificationFailed, "option errors are not conclusions")
 	require.Contains(t, err.Error(), "mutually exclusive")
 }
 
@@ -440,6 +450,7 @@ func TestVerifierRegexAnchoredAgainstPrefixCollision(t *testing.T) {
 	}
 	_, err = v.Verify(opts, bndl)
 	require.Error(t, err, "regex /work must not match full path /workload-stealer")
+	require.ErrorIs(t, err, api.ErrVerificationFailed)
 
 	// Via NewVerifierFromOptions (construction-time) — same guarantee.
 	v2, err := NewVerifierFromOptions(&options.SpiffeVerification{
@@ -449,6 +460,7 @@ func TestVerifierRegexAnchoredAgainstPrefixCollision(t *testing.T) {
 	require.NoError(t, err)
 	_, err = v2.Verify(nil, bndl)
 	require.Error(t, err)
+	require.ErrorIs(t, err, api.ErrVerificationFailed)
 }
 
 func TestVerifierPerCallRejectsInvalidRegex(t *testing.T) {
@@ -466,6 +478,7 @@ func TestVerifierPerCallRejectsInvalidRegex(t *testing.T) {
 	}
 	_, err = v.Verify(opts, bndl)
 	require.Error(t, err)
+	require.NotErrorIs(t, err, api.ErrVerificationFailed, "option errors are not conclusions")
 }
 
 func TestVerifierPerCallRejectsInvalidTrustDomain(t *testing.T) {
@@ -478,6 +491,7 @@ func TestVerifierPerCallRejectsInvalidTrustDomain(t *testing.T) {
 
 	_, err = v.Verify(withExpectedSpiffeID("not a valid trust domain!!", ""), bndl)
 	require.Error(t, err)
+	require.NotErrorIs(t, err, api.ErrVerificationFailed, "option errors are not conclusions")
 	require.Contains(t, err.Error(), "trust domain")
 }
 
