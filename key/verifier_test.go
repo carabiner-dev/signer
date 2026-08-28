@@ -4,6 +4,8 @@
 package key
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/base64"
 	"testing"
 
@@ -48,6 +50,19 @@ func TestVerifyHash(t *testing.T) {
 			"", false, false,
 		},
 		{
+			// Malformed signature bytes (neither DER nor raw R||S) are a
+			// negative result, not an error: the key is fine, the
+			// signature is not one.
+			"ecdsa-garbage-signature", false, "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEXkyL5IFxz/Hg6DwUy0HBumXcMxt9\nnQSECAK6r262hPwIzjd6LpE7IPlUbwgheE87vU8EUE9tsS02MShFZGo1gg==\n-----END PUBLIC KEY-----\n",
+			"6b9e695a3f7bc780cdeba0e5c82e4a06f8eae3bc90752eeaa36cdc6af9a39e8a", "Z2FyYmFnZQ==", // "garbage": odd length
+			"ecdsa-sha2-nistp256", false, false,
+		},
+		{
+			"ecdsa-empty-signature", false, "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEXkyL5IFxz/Hg6DwUy0HBumXcMxt9\nnQSECAK6r262hPwIzjd6LpE7IPlUbwgheE87vU8EUE9tsS02MShFZGo1gg==\n-----END PUBLIC KEY-----\n",
+			"6b9e695a3f7bc780cdeba0e5c82e4a06f8eae3bc90752eeaa36cdc6af9a39e8a", "",
+			"ecdsa-sha2-nistp256", false, false,
+		},
+		{
 			// Same as "ecdsa" but signature is in raw IEEE P1363 format (R||S) instead of DER.
 			"ecdsa-p1363", false, "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEXkyL5IFxz/Hg6DwUy0HBumXcMxt9\nnQSECAK6r262hPwIzjd6LpE7IPlUbwgheE87vU8EUE9tsS02MShFZGo1gg==\n-----END PUBLIC KEY-----\n",
 			"6b9e695a3f7bc780cdeba0e5c82e4a06f8eae3bc90752eeaa36cdc6af9a39e8a", "N/IBUiN1EhIsACwTZo6MMYW8FpzTYZz3PzRWSUlI8t9DwINgrGs4KgJLgM+lw2yoZt12a48jTAd2hdrKxQO+2A==",
@@ -80,6 +95,36 @@ func TestVerifyHash(t *testing.T) {
 			require.NoError(t, err)
 
 			require.Equal(t, tt.result, res)
+		})
+	}
+}
+
+// Ed25519 signatures of the wrong size are a negative result, not an error.
+func TestVerifyMessageEd25519(t *testing.T) {
+	t.Parallel()
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	pk := &Public{Type: ED25519, Key: pub}
+	msg := []byte("the message")
+	sig := ed25519.Sign(priv, msg)
+
+	for _, tc := range []struct {
+		name      string
+		message   []byte
+		signature []byte
+		want      bool
+	}{
+		{"valid", msg, sig, true},
+		{"wrong message", []byte("other"), sig, false},
+		{"truncated signature", msg, sig[:len(sig)-1], false},
+		{"garbage signature", msg, []byte("garbage"), false},
+		{"empty signature", msg, nil, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ok, err := NewVerifier().VerifyMessage(pk, tc.message, tc.signature)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, ok)
 		})
 	}
 }

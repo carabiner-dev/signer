@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	sdsse "github.com/sigstore/protobuf-specs/gen/pb-go/dsse"
 	"github.com/stretchr/testify/require"
 
 	"github.com/carabiner-dev/signer/key"
@@ -181,4 +182,40 @@ func TestRunVerificationGPG(t *testing.T) {
 	)
 	require.Equal(t, primaryFingerprint, res.Keys[0].ID())
 	require.Equal(t, signingSubkeyFP, res.Keys[0].SigningKeyFingerprint)
+}
+
+// A malformed signature in the envelope must not abort verification: it
+// simply does not verify, and any other signature that does still counts.
+func TestRunVerificationMalformedSignature(t *testing.T) {
+	t.Parallel()
+	v := &DefaultVerifier{}
+	keydata, err := os.ReadFile(filepath.Join("testdata", "rebuild.key"))
+	require.NoError(t, err)
+	pubKey, err := key.NewParser().ParsePublicKey(keydata)
+	require.NoError(t, err)
+	keys := []key.PublicKeyProvider{pubKey}
+
+	t.Run("only a malformed signature", func(t *testing.T) {
+		t.Parallel()
+		env, err := v.OpenEnvelope(filepath.Join("testdata", "rebuild.dsse.json"))
+		require.NoError(t, err)
+		env.Signatures[0].Sig = []byte("garbage")
+
+		res, err := v.RunVerification(&options.Verifier{}, key.NewVerifier(), env, keys)
+		require.NoError(t, err)
+		require.False(t, res.Verified)
+		require.Empty(t, res.Keys)
+	})
+
+	t.Run("a malformed signature next to a good one", func(t *testing.T) {
+		t.Parallel()
+		env, err := v.OpenEnvelope(filepath.Join("testdata", "rebuild.dsse.json"))
+		require.NoError(t, err)
+		env.Signatures = append(env.Signatures, &sdsse.Signature{Keyid: "junk", Sig: []byte("garbage")})
+
+		res, err := v.RunVerification(&options.Verifier{}, key.NewVerifier(), env, keys)
+		require.NoError(t, err)
+		require.True(t, res.Verified)
+		require.Len(t, res.Keys, 1)
+	})
 }
