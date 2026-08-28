@@ -27,7 +27,10 @@ var (
 // heavier dependency footprint. gcp mints a service-account identity token
 // from $GOOGLE_APPLICATION_CREDENTIALS or the Google Cloud metadata server
 // and, like the others, reports no token when its environment is absent.
-// Build it with gcp.New to pin a service account key explicitly.
+// Build it with gcp.New to pin a service account key explicitly. When
+// $GOOGLE_SERVICE_ACCOUNT_NAME names a service account, gcp impersonates it
+// through the IAM Credentials API instead (see docs/gcp-identity.md) and
+// fails rather than falling back to another identity.
 //
 // Access the map through Providers/RegisterProvider/UnregisterProvider:
 // iterating it directly is not synchronized with concurrent registration.

@@ -53,6 +53,10 @@ const (
 	// assertionSkew is subtracted from the assertion's iat so a slightly
 	// fast local clock does not make Google reject it as not yet valid.
 	assertionSkew = 10 * time.Second
+
+	// cloudPlatformScope is the OAuth scope requested for access tokens, the
+	// one the IAM Credentials API accepts.
+	cloudPlatformScope = "https://www.googleapis.com/auth/cloud-platform"
 )
 
 // serviceAccount is a parsed Google service-account key file.
@@ -109,11 +113,63 @@ func (sa *serviceAccount) provide(ctx context.Context, audience string) (*oauthf
 		return nil, err
 	}
 
-	assertion, err := sa.signAssertion(audience, time.Now())
+	assertion, err := sa.signAssertion(assertionClaims{TargetAudience: audience}, time.Now())
 	if err != nil {
 		return nil, err
 	}
 
+	body, err := sa.exchange(ctx, assertion)
+	if err != nil {
+		return nil, err
+	}
+
+	token := struct {
+		IDToken string `json:"id_token"`
+	}{}
+	if err := json.Unmarshal(body, &token); err != nil {
+		return nil, fmt.Errorf("parsing token endpoint response: %w", err)
+	}
+	if token.IDToken == "" {
+		return nil, errors.New("token endpoint response has no id_token")
+	}
+
+	subject, err := subjectFromJWT(token.IDToken)
+	if err != nil {
+		return nil, fmt.Errorf("extracting subject from identity token: %w", err)
+	}
+	return &oauthflow.OIDCIDToken{RawString: token.IDToken, Subject: subject}, nil
+}
+
+// accessToken obtains an OAuth2 access token for the service account, scoped
+// to the Cloud Platform, by exchanging a JWT-bearer assertion carrying a
+// scope claim. It authenticates the IAM Credentials API calls that
+// impersonate another service account.
+func (sa *serviceAccount) accessToken(ctx context.Context) (string, error) {
+	assertion, err := sa.signAssertion(assertionClaims{Scope: cloudPlatformScope}, time.Now())
+	if err != nil {
+		return "", err
+	}
+
+	body, err := sa.exchange(ctx, assertion)
+	if err != nil {
+		return "", err
+	}
+
+	token := struct {
+		AccessToken string `json:"access_token"`
+	}{}
+	if err := json.Unmarshal(body, &token); err != nil {
+		return "", fmt.Errorf("parsing token endpoint response: %w", err)
+	}
+	if token.AccessToken == "" {
+		return "", errors.New("token endpoint response has no access_token")
+	}
+	return token.AccessToken, nil
+}
+
+// exchange posts a signed JWT-bearer assertion to the key's token endpoint
+// and returns the response body of a successful exchange.
+func (sa *serviceAccount) exchange(ctx context.Context, assertion string) ([]byte, error) {
 	form := url.Values{
 		"grant_type": []string{jwtBearerGrant},
 		"assertion":  []string{assertion},
@@ -144,27 +200,19 @@ func (sa *serviceAccount) provide(ctx context.Context, audience string) (*oauthf
 			"token endpoint returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)),
 		)
 	}
-
-	token := struct {
-		IDToken string `json:"id_token"`
-	}{}
-	if err := json.Unmarshal(body, &token); err != nil {
-		return nil, fmt.Errorf("parsing token endpoint response: %w", err)
-	}
-	if token.IDToken == "" {
-		return nil, errors.New("token endpoint response has no id_token")
-	}
-
-	subject, err := subjectFromJWT(token.IDToken)
-	if err != nil {
-		return nil, fmt.Errorf("extracting subject from identity token: %w", err)
-	}
-	return &oauthflow.OIDCIDToken{RawString: token.IDToken, Subject: subject}, nil
+	return body, nil
 }
 
-// signAssertion builds and signs the RS256 JWT-bearer assertion whose
-// target_audience claim asks Google for an identity token with that audience.
-func (sa *serviceAccount) signAssertion(audience string, now time.Time) (string, error) {
+// assertionClaims selects what a JWT-bearer assertion asks for: an identity
+// token for TargetAudience, or an access token for Scope.
+type assertionClaims struct {
+	TargetAudience string
+	Scope          string
+}
+
+// signAssertion builds and signs the RS256 JWT-bearer assertion for the
+// given claims.
+func (sa *serviceAccount) signAssertion(what assertionClaims, now time.Time) (string, error) {
 	header, err := json.Marshal(map[string]string{
 		"alg": "RS256",
 		"typ": "JWT",
@@ -179,14 +227,16 @@ func (sa *serviceAccount) signAssertion(audience string, now time.Time) (string,
 		Audience       string `json:"aud"`
 		IssuedAt       int64  `json:"iat"`
 		Expiry         int64  `json:"exp"`
-		TargetAudience string `json:"target_audience"`
+		TargetAudience string `json:"target_audience,omitempty"`
+		Scope          string `json:"scope,omitempty"`
 	}{
 		Issuer:         sa.ClientEmail,
 		Subject:        sa.ClientEmail,
 		Audience:       sa.TokenURI,
 		IssuedAt:       now.Add(-assertionSkew).Unix(),
 		Expiry:         now.Add(assertionLifetime).Unix(),
-		TargetAudience: audience,
+		TargetAudience: what.TargetAudience,
+		Scope:          what.Scope,
 	})
 	if err != nil {
 		return "", err

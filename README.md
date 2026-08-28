@@ -46,6 +46,15 @@ func main() {
 }
 ```
 
+### Ambient Credentials
+
+When no identity token is set, the signer looks for one in the ambient
+credentials of the environment: GitHub Actions, GitLab CI and Google Cloud
+(service account keys or the metadata server) are supported out of the box,
+falling back to an interactive OIDC flow. On Google Cloud the signer can also
+impersonate a dedicated signing service account instead of signing as the
+workload's own identity, see [docs/gcp-identity.md](docs/gcp-identity.md).
+
 ## Dead Simple Signing Envelope (DSSE)
 
 Initial support for DSSE has been implemented since v0.2.0. The library can sign
