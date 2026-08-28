@@ -13,11 +13,19 @@
 // deliberately dependency-light (standard library + oauthflow only), matching
 // the github and gitlab providers, so it belongs in signer itself rather than
 // signer-extras.
+//
+// The provider can also impersonate another service account (see
+// WithImpersonation and $GOOGLE_SERVICE_ACCOUNT_NAME): the resolved
+// credential then authenticates a call to the IAM Credentials API that mints
+// the identity token for the impersonated account, the way cosign's
+// google-impersonate provider works.
 package gcp
 
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -49,6 +57,10 @@ const (
 	// identityPath mints an OIDC identity token for the default service
 	// account.
 	identityPath = "/computeMetadata/v1/instance/service-accounts/default/identity"
+
+	// accessTokenPath returns an OAuth2 access token for the default service
+	// account, used to authenticate calls to Google APIs.
+	accessTokenPath = "/computeMetadata/v1/instance/service-accounts/default/token"
 
 	// defaultTimeout bounds the metadata request. Off Google Cloud the dial
 	// usually fails fast, but this cap keeps a slow or hanging lookup from
@@ -121,6 +133,48 @@ func (m *Metadata) Provide(ctx context.Context, audience string) (*oauthflow.OID
 	}
 
 	return &oauthflow.OIDCIDToken{RawString: raw, Subject: subject}, nil
+}
+
+// AccessToken returns an OAuth2 access token for the current service account,
+// or ("", nil) when not running on Google Cloud.
+func (m *Metadata) AccessToken(ctx context.Context) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, m.baseURL()+accessTokenPath, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set(metadataFlavorHeader, metadataFlavorValue)
+
+	resp, err := m.client().Do(req)
+	if err != nil {
+		// Unreachable metadata server: not on Google Cloud.
+		return "", nil
+	}
+	defer resp.Body.Close() //nolint:errcheck
+
+	if resp.Header.Get(metadataFlavorHeader) != metadataFlavorValue {
+		return "", nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf(
+			"metadata server returned status %d requesting access token", resp.StatusCode,
+		)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return "", fmt.Errorf("reading access token from metadata server: %w", err)
+	}
+
+	token := struct {
+		AccessToken string `json:"access_token"`
+	}{}
+	if err := json.Unmarshal(body, &token); err != nil {
+		return "", fmt.Errorf("parsing access token from metadata server: %w", err)
+	}
+	if token.AccessToken == "" {
+		return "", errors.New("metadata server returned an empty access token")
+	}
+	return token.AccessToken, nil
 }
 
 // baseURL returns the scheme+host of the metadata server. The metadata server

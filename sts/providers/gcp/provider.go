@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/sigstore/sigstore/pkg/oauthflow"
 )
@@ -21,6 +22,14 @@ import (
 // When a service-account key fails, the provider falls back to the metadata
 // server unless WithAmbientCredentials(false) disabled it. The zero value is
 // the ambient default: no explicit key, env var honored, metadata enabled.
+//
+// When a service account to impersonate is configured with WithImpersonation
+// (or named by $GOOGLE_SERVICE_ACCOUNT_NAME, as cosign does), the resolved
+// credential is not used as the identity itself but to call the IAM
+// Credentials API and mint an identity token for the impersonated account.
+// Impersonation never falls back to another identity: any failure is an
+// error, so callers that pin an identity cannot end up signing as something
+// else.
 type Provider struct {
 	// Metadata is the metadata-server provider used as the ambient credential
 	// source. Its exported fields exist so tests can redirect it.
@@ -28,6 +37,11 @@ type Provider struct {
 
 	sa      *serviceAccount
 	ambient *bool
+
+	// target is the service account to impersonate, if any.
+	target string
+	// iamURL overrides the IAM Credentials API base URL (tests).
+	iamURL string
 }
 
 // Option configures a Provider built with New.
@@ -78,14 +92,40 @@ func WithAmbientCredentials(enabled bool) Option {
 	}
 }
 
+// WithImpersonation configures the provider to mint identity tokens for the
+// service account with the given email by impersonating it through the IAM
+// Credentials API. The caller's own credential (a configured key, the
+// $GOOGLE_APPLICATION_CREDENTIALS key or the metadata server identity) must
+// hold roles/iam.serviceAccountTokenCreator on the target. It overrides
+// $GOOGLE_SERVICE_ACCOUNT_NAME.
+func WithImpersonation(serviceAccount string) Option {
+	return func(p *Provider) error {
+		serviceAccount = strings.TrimSpace(serviceAccount)
+		if serviceAccount == "" {
+			return errors.New("service account to impersonate must not be empty")
+		}
+		if strings.ContainsAny(serviceAccount, " \t\n\r/?#") || !strings.Contains(serviceAccount, "@") {
+			return fmt.Errorf("%q is not a valid service account email", serviceAccount)
+		}
+		p.target = serviceAccount
+		return nil
+	}
+}
+
 func (p *Provider) ambientEnabled() bool {
 	return p.ambient == nil || *p.ambient
 }
 
 // Provide returns an OIDC identity token with the given audience from the
 // first credential source that yields one, or (nil, nil) when none is
-// available and none was explicitly configured.
+// available and none was explicitly configured. When a service account to
+// impersonate is configured, the token is minted for it instead and any
+// failure is an error.
 func (p *Provider) Provide(ctx context.Context, audience string) (*oauthflow.OIDCIDToken, error) {
+	if target := p.impersonationTarget(); target != "" {
+		return p.impersonate(ctx, target, audience)
+	}
+
 	sa, saErr := p.credential()
 	if sa != nil {
 		token, err := sa.provide(ctx, audience)
