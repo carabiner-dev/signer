@@ -182,7 +182,10 @@ func verifyECDSA(pubKey *Public, digest, signature []byte) (bool, error) {
 		// Raw P1363: R and S are zero-padded to equal length and concatenated.
 		n := len(signature)
 		if n == 0 || n%2 != 0 {
-			return false, fmt.Errorf("unmarshaling ECDSA signature: %w", err)
+			// Neither encoding: the signature is malformed. That is a
+			// property of the signature under verification, not of the
+			// key, so it is a negative result rather than an error.
+			return false, nil
 		}
 		half := n / 2
 		sig.R = new(big.Int).SetBytes(signature[:half])
@@ -217,9 +220,10 @@ func verifyEd25519Message(pubKey *Public, message, signature []byte) (bool, erro
 	if !ok {
 		return false, fmt.Errorf("unable to verify, key is not an ed25519 public key")
 	}
-	// Signature must be 64 bytes long
+	// A signature of the wrong size cannot be an ed25519 signature over
+	// anything: a negative result, not an error.
 	if len(signature) != ed25519.SignatureSize {
-		return false, errors.New("invalid ed25519 signature length")
+		return false, nil
 	}
 
 	// Key must be 32 bytes, always

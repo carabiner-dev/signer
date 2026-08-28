@@ -84,6 +84,20 @@ func TestVerifyStatementDSSE(t *testing.T) {
 			wantStatus: api.VerificationStatus_FAILED,
 		},
 		{
+			// Malformed signature bytes are a conclusion about the envelope,
+			// not an error: the key was supplied and the check ran.
+			name: "signed with garbage bytes, right key",
+			envelope: func(t *testing.T) *EnvelopeArtifact {
+				t.Helper()
+				env := loadTestEnvelope(t)
+				env.Envelope.Signatures[0].Sig = []byte("garbage")
+				return env
+			},
+			verifier:   func() *Verifier { return NewVerifier() },
+			opts:       []options.VerificationOptFunc{options.WithPublicKeys(rightKey)},
+			wantStatus: api.VerificationStatus_FAILED,
+		},
+		{
 			name:       "signed, right key via option",
 			envelope:   func(t *testing.T) *EnvelopeArtifact { t.Helper(); return loadTestEnvelope(t) },
 			verifier:   func() *Verifier { return NewVerifier() },
