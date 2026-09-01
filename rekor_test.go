@@ -4,6 +4,7 @@
 package signer
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -29,6 +30,11 @@ const (
 func rekorTestServer(t *testing.T, payload []byte) *httptest.Server {
 	t.Helper()
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Drain the request before answering: the search POST is large
+		// (the proposed entries embed the whole envelope) and closing a
+		// connection with unread data makes Windows reset it, which the
+		// client reports as a forcibly closed connection.
+		_, _ = io.Copy(io.Discard, r.Body) //nolint:errcheck // best-effort drain
 		if r.URL.Path != "/api/v1/log/entries/retrieve" {
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 			w.WriteHeader(http.StatusNotFound)
