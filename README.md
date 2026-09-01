@@ -60,6 +60,11 @@ workload's own identity, see [docs/gcp-identity.md](docs/gcp-identity.md).
 Initial support for DSSE has been implemented since v0.2.0. The library can sign
 and verify envelopes signed with arbitrary keys.
 
+Envelopes signed keyless with a Sigstore certificate — the pre-bundle
+flow of cosign and the slsa-github-generator — can be verified against
+the Rekor transparency log. The lookup is off by default because it goes
+over the network; see [docs/keyless-dsse.md](docs/keyless-dsse.md).
+
 ### DSSE Example
 
 ```golang

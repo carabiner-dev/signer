@@ -87,6 +87,19 @@ func (b *BundleArtifact) WriteTo(w io.Writer) (int64, error) {
 // This is produced by the key signing backend.
 type EnvelopeArtifact struct {
 	Envelope *sdsse.Envelope
+
+	// Raw preserves the envelope's original serialization when the
+	// artifact was parsed from bytes. Transparency log lookups need it:
+	// the log stores entries keyed by the hash of the envelope as it
+	// was uploaded, which a protojson re-marshal may not reproduce.
+	Raw []byte
+
+	// SignatureCerts holds, per signature (index-aligned with
+	// Envelope.Signatures), the PEM certificate the producer attached
+	// in the non-standard "cert" field some keyless signers (the
+	// slsa-github-generator among them) add to DSSE signatures. Nil
+	// entries mean the signature carried none.
+	SignatureCerts [][]byte
 }
 
 var _ SignedArtifact = (*EnvelopeArtifact)(nil)
@@ -146,10 +159,34 @@ func ParseArtifact(data []byte) (SignedArtifact, error) {
 
 	case probe.PayloadType != "":
 		env := &sdsse.Envelope{}
-		if err := protojson.Unmarshal(data, env); err != nil {
+		// The envelope may carry non-standard fields (the keyless
+		// "cert" extension below); they are read separately.
+		if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(data, env); err != nil {
 			return nil, fmt.Errorf("parsing DSSE envelope: %w", err)
 		}
-		return &EnvelopeArtifact{Envelope: env}, nil
+		art := &EnvelopeArtifact{Envelope: env, Raw: data}
+		// Sidecar-decode the "cert" extension keyless signers add to
+		// each signature. Both decoders keep the array order, so the
+		// certificates stay index-aligned with the proto signatures.
+		var ext struct {
+			Signatures []struct {
+				Cert string `json:"cert"`
+			} `json:"signatures"`
+		}
+		if err := json.Unmarshal(data, &ext); err == nil && len(ext.Signatures) == len(env.GetSignatures()) {
+			certs := make([][]byte, len(ext.Signatures))
+			var found bool
+			for i, sig := range ext.Signatures {
+				if sig.Cert != "" {
+					certs[i] = []byte(sig.Cert)
+					found = true
+				}
+			}
+			if found {
+				art.SignatureCerts = certs
+			}
+		}
+		return art, nil
 
 	default:
 		return nil, ErrUnknownArtifact
