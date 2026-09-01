@@ -6,6 +6,7 @@ package signer
 import (
 	"context"
 	"crypto"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/pem"
@@ -14,14 +15,14 @@ import (
 	"os"
 	"time"
 
+	"github.com/go-openapi/strfmt"
+	"github.com/go-openapi/swag/conv"
 	rekorclient "github.com/sigstore/rekor/pkg/client"
 	"github.com/sigstore/rekor/pkg/generated/client/entries"
 	"github.com/sigstore/rekor/pkg/generated/models"
 	"github.com/sigstore/rekor/pkg/types"
 	rekordsse "github.com/sigstore/rekor/pkg/types/dsse"
 	dsse_v001 "github.com/sigstore/rekor/pkg/types/dsse/v0.0.1"
-	rekorintoto "github.com/sigstore/rekor/pkg/types/intoto"
-	intoto_v001 "github.com/sigstore/rekor/pkg/types/intoto/v0.0.1"
 	rverify "github.com/sigstore/rekor/pkg/verify"
 	"github.com/sigstore/sigstore-go/pkg/fulcio/certificate"
 	"github.com/sigstore/sigstore-go/pkg/root"
@@ -166,20 +167,32 @@ func searchRekorEntry(ctx context.Context, url string, envelope, certPEM []byte)
 	if err != nil {
 		return nil, fmt.Errorf("building transparency log client: %w", err)
 	}
-	proposed := []models.ProposedEntry{}
-	for _, kv := range []struct{ kind, version string }{
-		{rekorintoto.KIND, intoto_v001.APIVERSION},
-		{rekordsse.KIND, dsse_v001.APIVERSION},
-	} {
-		entry, err := types.NewProposedEntry(ctx, kv.kind, kv.version, types.ArtifactProperties{
-			ArtifactBytes:  envelope,
-			PublicKeyBytes: [][]byte{certPEM},
-		})
-		if err != nil {
-			return nil, fmt.Errorf("building proposed %s entry: %w", kv.kind, err)
-		}
-		proposed = append(proposed, entry)
+	// The intoto v0.0.1 proposed entry is built by hand: its type
+	// package drags rekor's server logging (and an HTTP router) into
+	// the module graph, and the model is three fields.
+	envelopeHash := sha256.Sum256(envelope)
+	publicKey := strfmt.Base64(certPEM)
+	intotoProposed := &models.Intoto{
+		APIVersion: conv.Pointer("0.0.1"),
+		Spec: models.IntotoV001Schema{
+			Content: &models.IntotoV001SchemaContent{
+				Envelope: string(envelope),
+				Hash: &models.IntotoV001SchemaContentHash{
+					Algorithm: conv.Pointer(models.IntotoV001SchemaContentHashAlgorithmSha256),
+					Value:     conv.Pointer(hex.EncodeToString(envelopeHash[:])),
+				},
+			},
+			PublicKey: &publicKey,
+		},
 	}
+	dsseProposed, err := types.NewProposedEntry(ctx, rekordsse.KIND, dsse_v001.APIVERSION, types.ArtifactProperties{
+		ArtifactBytes:  envelope,
+		PublicKeyBytes: [][]byte{certPEM},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("building proposed dsse entry: %w", err)
+	}
+	proposed := []models.ProposedEntry{intotoProposed, dsseProposed}
 	params := entries.NewSearchLogQueryParamsWithContext(ctx)
 	query := models.SearchLogQuery{}
 	query.SetEntries(proposed)
