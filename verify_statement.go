@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 
-	sdsse "github.com/sigstore/protobuf-specs/gen/pb-go/dsse"
 	sbundle "github.com/sigstore/sigstore-go/pkg/bundle"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -40,7 +39,7 @@ func (v *Verifier) VerifyStatement(art SignedArtifact, fnOpts ...options.Verific
 	}
 	switch a := art.(type) {
 	case *EnvelopeArtifact:
-		return v.verifyEnvelopeStatement(a.Envelope, fnOpts...)
+		return v.verifyEnvelopeStatement(a, fnOpts...)
 	case *BundleArtifact:
 		return v.verifyBundleStatement(a.Bundle, fnOpts...)
 	default:
@@ -59,12 +58,16 @@ func (v *Verifier) VerifyStatementBytes(data []byte, fnOpts ...options.Verificat
 	return v.VerifyStatement(art, fnOpts...)
 }
 
-// verifyEnvelopeStatement verifies a bare DSSE envelope against the
-// configured public keys.
-func (v *Verifier) verifyEnvelopeStatement(env *sdsse.Envelope, fnOpts ...options.VerificationOptFunc) (*api.Verification, error) {
-	if env == nil {
+// verifyEnvelopeStatement verifies a bare DSSE envelope. Envelopes are
+// checked against the configured public keys when there are any; a
+// keyless envelope carrying a Sigstore certificate in its signatures is
+// verified against the Rekor transparency log when that is enabled
+// (options.WithRekorVerification) and is UNVERIFIABLE otherwise.
+func (v *Verifier) verifyEnvelopeStatement(art *EnvelopeArtifact, fnOpts ...options.VerificationOptFunc) (*api.Verification, error) {
+	if art == nil || art.Envelope == nil {
 		return nil, errors.New("envelope artifact has no DSSE envelope")
 	}
+	env := art.Envelope
 	if len(env.GetSignatures()) == 0 {
 		return conclude(api.VerificationStatus_UNSIGNED, "DSSE envelope has no signatures"), nil
 	}
@@ -76,6 +79,24 @@ func (v *Verifier) verifyEnvelopeStatement(env *sdsse.Envelope, fnOpts ...option
 		}
 	}
 	if len(opts.PubKeys) == 0 {
+		// No keys to check against. A certificate attached to a
+		// signature means the envelope is keyless-signed and the
+		// transparency log can vouch for it.
+		if cert := firstSignatureCert(art); cert != nil {
+			if opts.Rekor.Enabled {
+				return v.verifyKeylessDSSE(art, cert, &opts)
+			}
+			return conclude(api.VerificationStatus_UNVERIFIABLE, fmt.Sprintf(
+				"the envelope is signed with a Sigstore certificate (%s); verifying it needs a "+
+					"transparency log lookup, which is disabled — enable it with options.WithRekorVerification",
+				certIdentityHint(cert),
+			)), nil
+		}
+		if opts.Rekor.Enabled {
+			return conclude(api.VerificationStatus_UNVERIFIABLE,
+				"no public keys to verify the DSSE signatures against, and the envelope carries no "+
+					"certificate to find in the transparency log"), nil
+		}
 		return conclude(api.VerificationStatus_UNVERIFIABLE, "no public keys to verify the DSSE signatures against"), nil
 	}
 

@@ -19,6 +19,54 @@ type Verification struct {
 	SigstoreVerification
 	KeyVerification
 	SpiffeVerification
+
+	// Rekor gates the online verification of keyless DSSE envelopes
+	// against a transparency log.
+	Rekor RekorVerification
+}
+
+// DefaultRekorURL is the transparency log queried when Rekor
+// verification is enabled and no URL is configured.
+const DefaultRekorURL = "https://rekor.sigstore.dev"
+
+// RekorVerification configures the verification of keyless DSSE
+// envelopes: legacy envelopes signed with a short-lived Sigstore
+// certificate whose proof of timeliness lives in the Rekor transparency
+// log rather than in the document (the pre-bundle cosign flow). Because
+// checking one means querying the log over the network, the feature is
+// off by default: without it such envelopes conclude UNVERIFIABLE.
+type RekorVerification struct {
+	// Enabled turns the transparency log lookup on.
+	Enabled bool
+
+	// URL is the Rekor instance to query. Empty means DefaultRekorURL.
+	URL string
+}
+
+// GetURL returns the configured Rekor URL or the default.
+func (r *RekorVerification) GetURL() string {
+	if r.URL == "" {
+		return DefaultRekorURL
+	}
+	return r.URL
+}
+
+// WithRekorVerification enables or disables verifying keyless DSSE
+// envelopes against the Rekor transparency log. See RekorVerification.
+func WithRekorVerification(enabled bool) VerificationOptFunc {
+	return func(v *Verification) error {
+		v.Rekor.Enabled = enabled
+		return nil
+	}
+}
+
+// WithRekorURL sets the transparency log instance queried when Rekor
+// verification is enabled.
+func WithRekorURL(url string) VerificationOptFunc {
+	return func(v *Verification) error {
+		v.Rekor.URL = url
+		return nil
+	}
 }
 
 var DefaultVerification = Verification{}
