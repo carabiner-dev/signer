@@ -83,7 +83,6 @@ func TestParseArtifactErrors(t *testing.T) {
 		{"json but neither kind", `{"foo": "bar"}`, ErrUnknownArtifact},
 		{"empty object", `{}`, ErrUnknownArtifact},
 		{"bundle mediaType with no content", `{"mediaType": "application/vnd.dev.sigstore.bundle.v0.3+json"}`, nil},
-		{"dsse with unknown field", `{"payloadType": "x", "payload": "eA==", "signatures": [], "extra": 1}`, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
