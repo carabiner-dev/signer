@@ -193,11 +193,11 @@ func searchRekorEntry(ctx context.Context, url string, envelope, certPEM []byte)
 		return nil, fmt.Errorf("building proposed dsse entry: %w", err)
 	}
 	proposed := []models.ProposedEntry{intotoProposed, dsseProposed}
-	params := entries.NewSearchLogQueryParamsWithContext(ctx)
+	params := entries.NewSearchLogQueryParams()
 	query := models.SearchLogQuery{}
 	query.SetEntries(proposed)
 	params.SetEntry(&query)
-	resp, err := client.Entries.SearchLogQuery(params)
+	resp, err := client.Entries.SearchLogQueryContext(ctx, params)
 	if err != nil {
 		return nil, fmt.Errorf("searching the log: %w", err)
 	}
