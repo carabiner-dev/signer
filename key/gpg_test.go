@@ -8,6 +8,7 @@ import (
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/hex"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/ProtonMail/go-crypto/openpgp/armor"
+	gpgecdsa "github.com/ProtonMail/go-crypto/openpgp/ecdsa"
 	"github.com/ProtonMail/go-crypto/openpgp/packet"
 	"github.com/stretchr/testify/require"
 )
@@ -770,6 +772,49 @@ func TestGPG_RejectsRawCryptoSignature(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, accepted,
 		"raw ECDSA signature must not verify against a GPG entity — OpenPGP framing is required")
+}
+
+// TestGPG_ECDSAConversionPadsShortScalar converts a go-crypto private key
+// whose scalar encodes to fewer bytes than the curve's length. go-crypto
+// strips leading zeros from the scalar, while ParseRawPrivateKey demands
+// the full length, so the conversion has to pad. It also checks that a
+// scalar which does not produce the stated public point is rejected.
+func TestGPG_ECDSAConversionPadsShortScalar(t *testing.T) {
+	t.Parallel()
+	// Borrow the curve descriptor from a generated key; its concrete type
+	// lives in a go-crypto internal package.
+	entity := generateTestEntity(t, "Pad", "pad@example.com", &packet.Config{
+		Algorithm: packet.PubKeyAlgoECDSA,
+		Curve:     packet.CurveNistP256,
+	})
+	seed, ok := entity.PrivateKey.PrivateKey.(*gpgecdsa.PrivateKey)
+	require.True(t, ok)
+	curve := seed.GetCurve()
+
+	// Scalar 7: 31 leading zero bytes once padded to P-256's 32.
+	scalar := make([]byte, 32)
+	scalar[31] = 7
+	want, err := ecdsa.ParseRawPrivateKey(elliptic.P256(), scalar)
+	require.NoError(t, err)
+	wantPoint, err := want.PublicKey.Bytes()
+	require.NoError(t, err)
+
+	gpgPub := gpgecdsa.NewPublicKey(curve)
+	require.NoError(t, gpgPub.UnmarshalPoint(wantPoint))
+	gpgPriv := gpgecdsa.NewPrivateKey(*gpgPub)
+	require.NoError(t, gpgPriv.UnmarshalIntegerSecret([]byte{7}))
+	require.Len(t, gpgPriv.MarshalIntegerSecret(), 1,
+		"fixture invariant: go-crypto encodes the scalar without leading zeros")
+
+	got, err := gpgPrivateKeyToStdlib(gpgPriv, gpgPub)
+	require.NoError(t, err)
+	require.True(t, want.Equal(got))
+
+	// The generated entity's public point belongs to a different scalar.
+	otherPub, ok := entity.PrimaryKey.PublicKey.(*gpgecdsa.PublicKey)
+	require.True(t, ok)
+	_, err = gpgPrivateKeyToStdlib(gpgPriv, otherPub)
+	require.ErrorContains(t, err, "does not match")
 }
 
 // TestGPG_FixtureSignVerify loads the pre-generated GPG key and signature

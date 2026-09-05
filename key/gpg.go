@@ -440,11 +440,12 @@ func gpgPublicKeyToStdlib(pub any) (crypto.PublicKey, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &ecdsa.PublicKey{
-			Curve: curve,
-			X:     k.X,
-			Y:     k.Y,
-		}, nil
+		// MarshalPoint returns the SEC 1 uncompressed point for NIST curves.
+		stdPub, err := ecdsa.ParseUncompressedPublicKey(curve, k.MarshalPoint())
+		if err != nil {
+			return nil, fmt.Errorf("parsing ECDSA public key: %w", err)
+		}
+		return stdPub, nil
 	case *gpgeddsa.PublicKey:
 		if len(k.X) != ed25519.PublicKeySize {
 			return nil, fmt.Errorf("invalid ed25519 public key length: %d", len(k.X))
@@ -469,10 +470,23 @@ func gpgPrivateKeyToStdlib(priv, pub any) (crypto.PrivateKey, error) {
 		if !ok {
 			return nil, fmt.Errorf("expected *ecdsa.PublicKey, got %T", stdPub)
 		}
-		return &ecdsa.PrivateKey{
-			PublicKey: *ecdsaPub,
-			D:         k.D,
-		}, nil
+		// ParseRawPrivateKey wants the scalar at the curve's byte length,
+		// but go-crypto encodes it without leading zeros. Left-pad it.
+		byteLen := (ecdsaPub.Curve.Params().BitSize + 7) / 8
+		d := k.MarshalIntegerSecret()
+		if len(d) > byteLen {
+			return nil, fmt.Errorf("ECDSA private scalar is %d bytes, longer than the curve's %d", len(d), byteLen)
+		}
+		padded := make([]byte, byteLen)
+		copy(padded[byteLen-len(d):], d)
+		stdPriv, err := ecdsa.ParseRawPrivateKey(ecdsaPub.Curve, padded)
+		if err != nil {
+			return nil, fmt.Errorf("parsing ECDSA private key: %w", err)
+		}
+		if !stdPriv.PublicKey.Equal(ecdsaPub) {
+			return nil, errors.New("ECDSA private key does not match its public key")
+		}
+		return stdPriv, nil
 	case *gpgeddsa.PrivateKey:
 		if len(k.D) != ed25519.SeedSize {
 			return nil, fmt.Errorf("invalid ed25519 seed length: %d", len(k.D))
