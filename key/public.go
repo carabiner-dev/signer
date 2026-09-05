@@ -4,6 +4,7 @@
 package key
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
@@ -13,6 +14,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 )
@@ -92,15 +94,34 @@ func (p *Public) ID() string {
 	case *rsa.PublicKey:
 		hash = sha256.Sum256(pubKey.N.Bytes())
 	case *ecdsa.PublicKey:
-		coords := append(pubKey.X.Bytes(), pubKey.Y.Bytes()...)
+		coords, err := ecdsaKeyIDBytes(pubKey)
+		if err != nil {
+			return ""
+		}
 		hash = sha256.Sum256(coords)
-		return hex.EncodeToString(hash[:8])
 	case ed25519.PublicKey:
 		hash = sha256.Sum256(pubKey)
 	default:
 		return ""
 	}
 	return hex.EncodeToString(hash[:8])
+}
+
+// ecdsaKeyIDBytes returns the bytes hashed to compute the ID of an ECDSA
+// public key: the X and Y coordinates, each stripped of leading zero bytes,
+// concatenated. This is the historical big.Int encoding of the coordinates
+// and must not change, as key IDs are pinned in policies.
+func ecdsaKeyIDBytes(pub *ecdsa.PublicKey) ([]byte, error) {
+	// SEC 1 uncompressed point: 0x04 || X || Y, X and Y fixed-width.
+	point, err := pub.Bytes()
+	if err != nil {
+		return nil, err
+	}
+	coords := point[1:]
+	half := len(coords) / 2
+	x := bytes.TrimLeft(coords[:half], "\x00")
+	y := bytes.TrimLeft(coords[half:], "\x00")
+	return slices.Concat(x, y), nil
 }
 
 // SetScheme sets the scheme string in the key, verifying consistency and defining
