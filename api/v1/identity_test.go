@@ -166,6 +166,26 @@ func TestVerifyIdentity(t *testing.T) {
 				SourceRepositoryUri: "https://github.com/myorg/repo",
 			},
 		}},
+		{"sigstore-build-config-match-only-valid", false, &Identity{
+			Sigstore: &IdentitySigstore{
+				BuildConfigUriMatch: &StringMatcher{
+					Kind: &StringMatcher_Exact{Exact: "https://github.com/myorg/repo/.github/workflows/release.yml@refs/tags/v1.2.3"},
+				},
+			},
+		}},
+		{"sigstore-build-config-match-bad-regex", true, &Identity{
+			Sigstore: &IdentitySigstore{
+				BuildConfigUriMatch: &StringMatcher{
+					Kind: &StringMatcher_Regex{Regex: "[unclosed"},
+				},
+			},
+		}},
+		{"sigstore-build-config-data-on-expectation-invalid", true, &Identity{
+			Sigstore: &IdentitySigstore{
+				IdentityMatch:  &StringMatcher{Kind: &StringMatcher_Exact{Exact: "user@example.com"}},
+				BuildConfigUri: "https://github.com/myorg/repo/.github/workflows/release.yml@refs/tags/v1.2.3",
+			},
+		}},
 		{"sigstore-source-repo-from-context-valid", false, &Identity{
 			Sigstore: &IdentitySigstore{
 				SourceRepositoryUriMatch: &StringMatcher{FromContext: "source_repo"},
