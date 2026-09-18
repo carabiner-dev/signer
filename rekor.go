@@ -154,6 +154,7 @@ func (v *Verifier) verifyKeylessDSSE(art *EnvelopeArtifact, certPEM []byte, opts
 			Issuer:              summary.Issuer,
 			Identity:            summary.SubjectAlternativeName,
 			SourceRepositoryUri: summary.SourceRepositoryURI,
+			BuildConfigUri:      summary.BuildConfigURI,
 		},
 	}}), nil
 }

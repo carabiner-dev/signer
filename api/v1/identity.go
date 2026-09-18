@@ -572,9 +572,9 @@ func validateSigstore(s *IdentitySigstore) []error {
 	var errs []error
 
 	useLegacy := s.GetIssuer() != "" || s.GetIdentity() != ""
-	useMatchers := s.GetIssuerMatch() != nil || s.GetIdentityMatch() != nil || s.GetSourceRepositoryUriMatch() != nil
+	useMatchers := s.GetIssuerMatch() != nil || s.GetIdentityMatch() != nil || s.GetSourceRepositoryUriMatch() != nil || s.GetBuildConfigUriMatch() != nil
 	if !useLegacy && !useMatchers {
-		errs = append(errs, errors.New("sigstore identity requires issuer, identity, issuer_match, identity_match, or source_repository_uri_match"))
+		errs = append(errs, errors.New("sigstore identity requires issuer, identity, issuer_match, identity_match, source_repository_uri_match, or build_config_uri_match"))
 	}
 	if useLegacy && !useMatchers && (s.GetIssuer() == "" || s.GetIdentity() == "") {
 		errs = append(errs, errors.New("sigstore legacy form requires both issuer and identity when matchers are not used"))
@@ -608,10 +608,19 @@ func validateSigstore(s *IdentitySigstore) []error {
 			errs = append(errs, fmt.Errorf("source_repository_uri_match: %w", err))
 		}
 	}
-	// source_repository_uri isn't supported by legacy mode so anyone setting it
-	// won't get what they expect. They must use the matcher instead.
+	if m := s.GetBuildConfigUriMatch(); m != nil {
+		if err := validateStringMatcher(m); err != nil {
+			errs = append(errs, fmt.Errorf("build_config_uri_match: %w", err))
+		}
+	}
+	// source_repository_uri and build_config_uri aren't supported by legacy
+	// mode so anyone setting them won't get what they expect. They must use
+	// the matchers instead.
 	if s.GetSourceRepositoryUri() != "" {
 		errs = append(errs, errors.New("source_repository_uri cannot be set on a policy identity; use source_repository_uri_match"))
+	}
+	if s.GetBuildConfigUri() != "" {
+		errs = append(errs, errors.New("build_config_uri cannot be set on a policy identity; use build_config_uri_match"))
 	}
 	return errs
 }

@@ -218,6 +218,7 @@ func TestMatchesSigstoreIdentityConvenienceMatchers(t *testing.T) {
 			Issuer:              "https://token.actions.githubusercontent.com",
 			Identity:            "https://github.com/myorg/repo/.github/workflows/release.yml@refs/tags/v1.2.3",
 			SourceRepositoryUri: "https://github.com/myorg/repo",
+			BuildConfigUri:      "https://github.com/myorg/repo/.github/workflows/caller.yml@refs/tags/v1.2.3",
 		}}},
 	}
 	for _, tt := range []struct {
@@ -311,6 +312,36 @@ func TestMatchesSigstoreIdentityConvenienceMatchers(t *testing.T) {
 				SourceRepositoryUriMatch: &StringMatcher{FromContext: "source_repo"},
 			},
 			false,
+		},
+		{
+			"build-config-match-only-positive",
+			&IdentitySigstore{
+				BuildConfigUriMatch: &StringMatcher{
+					Kind: &StringMatcher_Exact{Exact: "https://github.com/myorg/repo/.github/workflows/caller.yml@refs/tags/v1.2.3"},
+				},
+			},
+			true,
+		},
+		{
+			"build-config-match-only-wrong-value",
+			&IdentitySigstore{
+				BuildConfigUriMatch: &StringMatcher{
+					Kind: &StringMatcher_Exact{Exact: "https://github.com/other/repo/.github/workflows/caller.yml@refs/tags/v1.2.3"},
+				},
+			},
+			false,
+		},
+		{
+			"build-config-match-combined-with-issuer-and",
+			&IdentitySigstore{
+				IssuerMatch: &StringMatcher{
+					Kind: &StringMatcher_Exact{Exact: "https://token.actions.githubusercontent.com"},
+				},
+				BuildConfigUriMatch: &StringMatcher{
+					Kind: &StringMatcher_Prefix{Prefix: "https://github.com/myorg/repo/"},
+				},
+			},
+			true,
 		},
 		{
 			"source-repo-match-combined-with-issuer-and",
@@ -456,6 +487,7 @@ func TestMatchesIdentityOuterMatchers(t *testing.T) {
 			Issuer:              "https://token.actions.githubusercontent.com",
 			Identity:            "https://github.com/myorg/repo/.github/workflows/release.yml@refs/tags/v1.2.3",
 			SourceRepositoryUri: "https://github.com/myorg/repo",
+			BuildConfigUri:      "https://github.com/myorg/repo/.github/workflows/caller.yml@refs/tags/v1.2.3",
 		}}},
 	}
 	spiffeSigner := &SignatureVerification{
@@ -905,6 +937,7 @@ func TestSignatureVerificationFromResult(t *testing.T) {
 				Certificate: &certificate.Summary{
 					Extensions: certificate.Extensions{
 						SourceRepositoryURI: "https://github.com/myorg/repo",
+						BuildConfigURI:      "https://github.com/myorg/repo/.github/workflows/caller.yml@refs/tags/v1.2.3",
 					},
 				},
 			},
@@ -914,6 +947,7 @@ func TestSignatureVerificationFromResult(t *testing.T) {
 		ss := sv.GetIdentities()[0].GetSigstore()
 		require.NotNil(t, ss)
 		require.Equal(t, "https://github.com/myorg/repo", ss.GetSourceRepositoryUri())
+		require.Equal(t, "https://github.com/myorg/repo/.github/workflows/caller.yml@refs/tags/v1.2.3", ss.GetBuildConfigUri())
 	})
 
 	t.Run("identity-check-skipped-reads-certificate-summary", func(t *testing.T) {
