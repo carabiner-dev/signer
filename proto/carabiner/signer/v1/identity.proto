@@ -50,6 +50,12 @@ message IdentitySigstore {
     // Has no legacy form; pin via source_repository_uri_match.
     string source_repository_uri              = 6; // OID 1.3.6.1.4.1.57264.1.12
     StringMatcher source_repository_uri_match = 7;
+
+    // The workflow the certificate was issued for (for a reusable
+    // workflow, the calling workflow). Has no legacy form; pin via
+    // build_config_uri_match.
+    string build_config_uri              = 8; // OID 1.3.6.1.4.1.57264.1.18
+    StringMatcher build_config_uri_match = 9;
 }
 
 // IdentityKey registers the data of a key used to sign attestations.
