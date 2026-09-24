@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	github.com/ProtonMail/go-crypto v1.4.1
 	github.com/carabiner-dev/attestation v0.2.1
-	github.com/carabiner-dev/command v0.3.1
+	github.com/carabiner-dev/command v0.3.2
 	github.com/go-openapi/strfmt v0.27.2
 	github.com/go-openapi/swag/conv v0.29.2
 	github.com/in-toto/attestation v1.2.0
@@ -17,7 +17,7 @@ require (
 	github.com/sigstore/sigstore-go v1.3.0
 	github.com/sirupsen/logrus v1.10.2
 	github.com/spf13/cobra v1.10.2
-	github.com/spiffe/go-spiffe/v2 v2.8.1
+	github.com/spiffe/go-spiffe/v2 v2.8.2
 	github.com/stretchr/testify v1.12.1
 	github.com/theupdateframework/go-tuf/v2 v2.4.2
 	golang.org/x/term v0.46.0
@@ -36,7 +36,7 @@ require (
 	github.com/cyberphone/json-canonicalization v0.0.0-20241213102144-19d51d7fe467 // indirect
 	github.com/digitorus/pkcs7 v0.0.0-20250730155240-ffadbf3f398c // indirect
 	github.com/digitorus/timestamp v0.0.0-20250524132541-c45532741eea // indirect
-	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.5 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/analysis v0.26.0 // indirect
