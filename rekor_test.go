@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	api "github.com/carabiner-dev/signer/api/v1"
-	"github.com/carabiner-dev/signer/options"
+	api "github.com/policylabs/signer/api/v1"
+	"github.com/policylabs/signer/options"
 )
 
 const (

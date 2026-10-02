@@ -4,9 +4,9 @@ package bundlefakes
 import (
 	"sync"
 
-	"github.com/carabiner-dev/signer/bundle"
-	"github.com/carabiner-dev/signer/options"
-	"github.com/carabiner-dev/signer/sigstore"
+	"github.com/policylabs/signer/bundle"
+	"github.com/policylabs/signer/options"
+	"github.com/policylabs/signer/sigstore"
 	bundlea "github.com/sigstore/sigstore-go/pkg/bundle"
 	"github.com/sigstore/sigstore-go/pkg/verify"
 )

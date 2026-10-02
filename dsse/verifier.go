@@ -15,8 +15,8 @@ import (
 	sdsse "github.com/sigstore/protobuf-specs/gen/pb-go/dsse"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	"github.com/carabiner-dev/signer/key"
-	"github.com/carabiner-dev/signer/options"
+	"github.com/policylabs/signer/key"
+	"github.com/policylabs/signer/options"
 )
 
 type Verifier interface {

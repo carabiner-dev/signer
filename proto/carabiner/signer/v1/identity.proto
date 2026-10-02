@@ -6,7 +6,7 @@ package carabiner.signer.v1;
 
 import "carabiner/signer/v1/matcher.proto";
 
-option go_package = "github.com/carabiner-dev/signer/api/v1";
+option go_package = "github.com/policylabs/signer/api/v1";
 
 // Identity captures a signer identity. An identity can one of:
 //   a) A sigstore identity

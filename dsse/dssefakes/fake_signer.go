@@ -4,8 +4,8 @@ package dssefakes
 import (
 	"sync"
 
-	"github.com/carabiner-dev/signer/dsse"
-	"github.com/carabiner-dev/signer/key"
+	"github.com/policylabs/signer/dsse"
+	"github.com/policylabs/signer/key"
 	dssea "github.com/sigstore/protobuf-specs/gen/pb-go/dsse"
 )
 

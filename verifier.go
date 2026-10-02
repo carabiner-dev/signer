@@ -14,12 +14,12 @@ import (
 	"github.com/sigstore/sigstore-go/pkg/verify"
 	"github.com/sirupsen/logrus"
 
-	"github.com/carabiner-dev/signer/bundle"
-	"github.com/carabiner-dev/signer/dsse"
-	"github.com/carabiner-dev/signer/key"
-	"github.com/carabiner-dev/signer/options"
-	"github.com/carabiner-dev/signer/sigstore"
-	spiffeverifier "github.com/carabiner-dev/signer/spiffe/verifier"
+	"github.com/policylabs/signer/bundle"
+	"github.com/policylabs/signer/dsse"
+	"github.com/policylabs/signer/key"
+	"github.com/policylabs/signer/options"
+	"github.com/policylabs/signer/sigstore"
+	spiffeverifier "github.com/policylabs/signer/spiffe/verifier"
 )
 
 // NewVerifierFromSet builds a *Verifier from a VerifierSet. Equivalent

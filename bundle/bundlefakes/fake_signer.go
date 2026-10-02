@@ -4,8 +4,8 @@ package bundlefakes
 import (
 	"sync"
 
-	"github.com/carabiner-dev/signer/bundle"
-	"github.com/carabiner-dev/signer/options"
+	"github.com/policylabs/signer/bundle"
+	"github.com/policylabs/signer/options"
 	v1 "github.com/sigstore/protobuf-specs/gen/pb-go/bundle/v1"
 	"github.com/sigstore/sigstore-go/pkg/sign"
 )

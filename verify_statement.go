@@ -10,8 +10,8 @@ import (
 	sbundle "github.com/sigstore/sigstore-go/pkg/bundle"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	api "github.com/carabiner-dev/signer/api/v1"
-	"github.com/carabiner-dev/signer/options"
+	api "github.com/policylabs/signer/api/v1"
+	"github.com/policylabs/signer/options"
 )
 
 // VerifyStatement is the inverse of Signer.SignStatement. It takes a

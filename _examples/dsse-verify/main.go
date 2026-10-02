@@ -7,8 +7,8 @@ import (
 	sdsse "github.com/sigstore/protobuf-specs/gen/pb-go/dsse"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	"github.com/carabiner-dev/signer"
-	"github.com/carabiner-dev/signer/key"
+	"github.com/policylabs/signer"
+	"github.com/policylabs/signer/key"
 )
 
 var publicKeyData = ` 

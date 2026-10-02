@@ -25,9 +25,9 @@ import (
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	"github.com/stretchr/testify/require"
 
-	api "github.com/carabiner-dev/signer/api/v1"
-	"github.com/carabiner-dev/signer/dsse"
-	"github.com/carabiner-dev/signer/options"
+	api "github.com/policylabs/signer/api/v1"
+	"github.com/policylabs/signer/dsse"
+	"github.com/policylabs/signer/options"
 )
 
 // withExpectedSpiffeID returns a *options.Verification populated with just

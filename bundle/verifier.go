@@ -18,9 +18,9 @@ import (
 	"github.com/sigstore/sigstore-go/pkg/verify"
 	"github.com/sirupsen/logrus"
 
-	api "github.com/carabiner-dev/signer/api/v1"
-	"github.com/carabiner-dev/signer/options"
-	"github.com/carabiner-dev/signer/sigstore"
+	api "github.com/policylabs/signer/api/v1"
+	"github.com/policylabs/signer/options"
+	"github.com/policylabs/signer/sigstore"
 )
 
 type BundleOptsFunc func(*DefaultVerifier) error

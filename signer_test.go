@@ -21,12 +21,12 @@ import (
 	"github.com/sigstore/sigstore-go/pkg/verify"
 	"github.com/stretchr/testify/require"
 
-	"github.com/carabiner-dev/signer/bundle"
-	"github.com/carabiner-dev/signer/bundle/bundlefakes"
-	"github.com/carabiner-dev/signer/dsse"
-	"github.com/carabiner-dev/signer/dsse/dssefakes"
-	"github.com/carabiner-dev/signer/key"
-	"github.com/carabiner-dev/signer/options"
+	"github.com/policylabs/signer/bundle"
+	"github.com/policylabs/signer/bundle/bundlefakes"
+	"github.com/policylabs/signer/dsse"
+	"github.com/policylabs/signer/dsse/dssefakes"
+	"github.com/policylabs/signer/key"
+	"github.com/policylabs/signer/options"
 )
 
 // testHarness builds a Signer wired with fake collaborators that callers can

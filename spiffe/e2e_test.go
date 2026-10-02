@@ -15,10 +15,10 @@ import (
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
 	"github.com/stretchr/testify/require"
 
-	signerlib "github.com/carabiner-dev/signer"
-	api "github.com/carabiner-dev/signer/api/v1"
-	"github.com/carabiner-dev/signer/options"
-	"github.com/carabiner-dev/signer/spiffe"
+	signerlib "github.com/policylabs/signer"
+	api "github.com/policylabs/signer/api/v1"
+	"github.com/policylabs/signer/options"
+	"github.com/policylabs/signer/spiffe"
 )
 
 // TestE2ESPIFFESignAndVerify exercises the full SPIFFE pipeline against a

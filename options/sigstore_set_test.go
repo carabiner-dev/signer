@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 
-	"github.com/carabiner-dev/signer/sigstore"
+	"github.com/policylabs/signer/sigstore"
 )
 
 func TestSigstoreCommonLoadRoots(t *testing.T) {

@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/carabiner-dev/signer/internal/tuf"
-	"github.com/carabiner-dev/signer/sigstore"
+	"github.com/policylabs/signer/internal/tuf"
+	"github.com/policylabs/signer/sigstore"
 )
 
 // Sigstore options to control how signer handles signing with sigstore

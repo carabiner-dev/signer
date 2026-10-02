@@ -16,8 +16,8 @@ import (
 	"github.com/sigstore/sigstore-go/pkg/sign"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	"github.com/carabiner-dev/signer/options"
-	"github.com/carabiner-dev/signer/sigstore"
+	"github.com/policylabs/signer/options"
+	"github.com/policylabs/signer/sigstore"
 )
 
 // BundleSigner abstracts the signer implementation to make it easy to mock

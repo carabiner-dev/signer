@@ -16,10 +16,10 @@ import (
 	sbundle "github.com/sigstore/sigstore-go/pkg/bundle"
 	"github.com/sigstore/sigstore-go/pkg/sign"
 
-	"github.com/carabiner-dev/signer/bundle"
-	"github.com/carabiner-dev/signer/dsse"
-	"github.com/carabiner-dev/signer/key"
-	"github.com/carabiner-dev/signer/options"
+	"github.com/policylabs/signer/bundle"
+	"github.com/policylabs/signer/dsse"
+	"github.com/policylabs/signer/key"
+	"github.com/policylabs/signer/options"
 )
 
 // Backend is one of the three signing implementations the Signer

@@ -8,8 +8,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	signer "github.com/carabiner-dev/signer"
-	"github.com/carabiner-dev/signer/options"
+	signer "github.com/policylabs/signer"
+	"github.com/policylabs/signer/options"
 )
 
 func TestVerifyBundle(t *testing.T) {

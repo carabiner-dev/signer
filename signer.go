@@ -17,10 +17,10 @@ import (
 	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	"github.com/carabiner-dev/signer/bundle"
-	"github.com/carabiner-dev/signer/dsse"
-	"github.com/carabiner-dev/signer/options"
-	"github.com/carabiner-dev/signer/sigstore"
+	"github.com/policylabs/signer/bundle"
+	"github.com/policylabs/signer/dsse"
+	"github.com/policylabs/signer/options"
+	"github.com/policylabs/signer/sigstore"
 )
 
 // NewSignerFromSet builds a fully-armed *Signer from a SignerSet.

@@ -28,8 +28,8 @@ import (
 
 	"github.com/sigstore/sigstore-go/pkg/root"
 
-	"github.com/carabiner-dev/signer/internal/tuf"
-	"github.com/carabiner-dev/signer/sigstore"
+	"github.com/policylabs/signer/internal/tuf"
+	"github.com/policylabs/signer/sigstore"
 )
 
 // defaultRootsFile is the roots config relative to the repository root.

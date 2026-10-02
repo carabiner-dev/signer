@@ -34,9 +34,9 @@ import (
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	api "github.com/carabiner-dev/signer/api/v1"
-	"github.com/carabiner-dev/signer/dsse"
-	"github.com/carabiner-dev/signer/options"
+	api "github.com/policylabs/signer/api/v1"
+	"github.com/policylabs/signer/dsse"
+	"github.com/policylabs/signer/options"
 )
 
 // workloadAPIFetchTimeout bounds the trust-bundle fetch so a hung

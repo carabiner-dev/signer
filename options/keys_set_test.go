@@ -16,7 +16,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 
-	"github.com/carabiner-dev/signer/key"
+	"github.com/policylabs/signer/key"
 )
 
 // writeECPrivateKey writes a PKCS#8-encoded ECDSA P-256 private key
