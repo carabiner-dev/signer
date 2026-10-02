@@ -10,7 +10,7 @@ import (
 
 	"github.com/sigstore/sigstore-go/pkg/root"
 
-	"github.com/carabiner-dev/signer/internal/tuf"
+	"github.com/policylabs/signer/internal/tuf"
 )
 
 // Instance captures the configuration required to talk to a sigstore instance.

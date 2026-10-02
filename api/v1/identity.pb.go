@@ -521,8 +521,8 @@ const file_carabiner_signer_v1_identity_proto_rawDesc = "" +
 	"svid_match\x18\x03 \x01(\v2\".carabiner.signer.v1.StringMatcherR\tsvidMatch\x12P\n" +
 	"\x12trust_domain_match\x18\x04 \x01(\v2\".carabiner.signer.v1.StringMatcherR\x10trustDomainMatch\x12A\n" +
 	"\n" +
-	"path_match\x18\x05 \x01(\v2\".carabiner.signer.v1.StringMatcherR\tpathMatchB\xbe\x01\n" +
-	"\x17com.carabiner.signer.v1B\rIdentityProtoP\x01Z&github.com/carabiner-dev/signer/api/v1\xa2\x02\x03CSX\xaa\x02\x13Carabiner.Signer.V1\xca\x02\x13Carabiner\\Signer\\V1\xe2\x02\x1fCarabiner\\Signer\\V1\\GPBMetadata\xea\x02\x15Carabiner::Signer::V1b\x06proto3"
+	"path_match\x18\x05 \x01(\v2\".carabiner.signer.v1.StringMatcherR\tpathMatchB\xbb\x01\n" +
+	"\x17com.carabiner.signer.v1B\rIdentityProtoP\x01Z#github.com/policylabs/signer/api/v1\xa2\x02\x03CSX\xaa\x02\x13Carabiner.Signer.V1\xca\x02\x13Carabiner\\Signer\\V1\xe2\x02\x1fCarabiner\\Signer\\V1\\GPBMetadata\xea\x02\x15Carabiner::Signer::V1b\x06proto3"
 
 var (
 	file_carabiner_signer_v1_identity_proto_rawDescOnce sync.Once

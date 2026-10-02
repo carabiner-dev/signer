@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/carabiner-dev/signer"
-	"github.com/carabiner-dev/signer/options"
+	"github.com/policylabs/signer"
+	"github.com/policylabs/signer/options"
 )
 
 // When working with bundles, sigstore-go can only verify in-toto

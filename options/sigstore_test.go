@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/carabiner-dev/signer/sigstore"
+	"github.com/policylabs/signer/sigstore"
 )
 
 // TestEnsureDefaultSigstore checks that the default sigstore

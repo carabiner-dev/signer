@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/carabiner-dev/signer/bundle/bundlefakes"
+	"github.com/policylabs/signer/bundle/bundlefakes"
 )
 
 // TestCertifiedKeyRejectsNonSigstoreCredentials verifies the sigstore backend

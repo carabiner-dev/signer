@@ -10,7 +10,7 @@ import (
 	sdsse "github.com/sigstore/protobuf-specs/gen/pb-go/dsse"
 	"github.com/stretchr/testify/require"
 
-	"github.com/carabiner-dev/signer/key"
+	"github.com/policylabs/signer/key"
 )
 
 func TestSign(t *testing.T) {

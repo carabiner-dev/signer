@@ -9,7 +9,7 @@ import (
 	"regexp"
 	"slices"
 
-	"github.com/carabiner-dev/signer/key"
+	"github.com/policylabs/signer/key"
 )
 
 type VerificationOptFunc func(*Verification) error

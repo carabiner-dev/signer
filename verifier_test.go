@@ -11,10 +11,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/carabiner-dev/signer/bundle"
-	"github.com/carabiner-dev/signer/bundle/bundlefakes"
-	"github.com/carabiner-dev/signer/options"
-	"github.com/carabiner-dev/signer/sigstore"
+	"github.com/policylabs/signer/bundle"
+	"github.com/policylabs/signer/bundle/bundlefakes"
+	"github.com/policylabs/signer/options"
+	"github.com/policylabs/signer/sigstore"
 )
 
 func TestVerifyParsedBundleIntegration(t *testing.T) {

@@ -11,7 +11,7 @@ import (
 	"github.com/carabiner-dev/command"
 	"github.com/spf13/cobra"
 
-	"github.com/carabiner-dev/signer/key"
+	"github.com/policylabs/signer/key"
 )
 
 // KeysSign is a command.OptionsSet for sign-side private-key configuration.

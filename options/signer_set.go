@@ -10,7 +10,7 @@ import (
 	"github.com/carabiner-dev/command"
 	"github.com/spf13/cobra"
 
-	"github.com/carabiner-dev/signer/spiffe"
+	"github.com/policylabs/signer/spiffe"
 )
 
 // SignerSet is the top-level sign-side OptionsSet that bundles every

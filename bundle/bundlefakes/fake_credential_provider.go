@@ -6,7 +6,7 @@ import (
 	"crypto/x509"
 	"sync"
 
-	"github.com/carabiner-dev/signer/bundle"
+	"github.com/policylabs/signer/bundle"
 	"github.com/sigstore/sigstore-go/pkg/sign"
 )
 

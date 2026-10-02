@@ -1,6 +1,6 @@
 package options
 
-import "github.com/carabiner-dev/signer/key"
+import "github.com/policylabs/signer/key"
 
 // Sign options (not to be confused with signer options) are options
 // that control each signing operation behavior.

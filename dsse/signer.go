@@ -11,7 +11,7 @@ import (
 
 	sdsse "github.com/sigstore/protobuf-specs/gen/pb-go/dsse"
 
-	"github.com/carabiner-dev/signer/key"
+	"github.com/policylabs/signer/key"
 )
 
 func NewSigner() Signer {

@@ -15,7 +15,7 @@ import (
 	"github.com/sigstore/sigstore-go/pkg/root"
 	"github.com/stretchr/testify/require"
 
-	"github.com/carabiner-dev/signer/internal/tuf"
+	"github.com/policylabs/signer/internal/tuf"
 )
 
 // rootFreshnessEnv gates the freshness guard. The default `go test` run stays

@@ -11,7 +11,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/carabiner-dev/signer/options"
+	"github.com/policylabs/signer/options"
 )
 
 // TestSignAndVerifyE2E performs a real end-to-end signing and verification

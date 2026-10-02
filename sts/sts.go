@@ -9,9 +9,9 @@ import (
 
 	"github.com/sigstore/sigstore/pkg/oauthflow"
 
-	"github.com/carabiner-dev/signer/sts/providers/gcp"
-	"github.com/carabiner-dev/signer/sts/providers/github"
-	"github.com/carabiner-dev/signer/sts/providers/gitlab"
+	"github.com/policylabs/signer/sts/providers/gcp"
+	"github.com/policylabs/signer/sts/providers/github"
+	"github.com/policylabs/signer/sts/providers/gitlab"
 )
 
 // Ensure the provider implement

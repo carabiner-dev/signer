@@ -25,7 +25,7 @@ import (
 	"github.com/sigstore/sigstore/pkg/oauthflow"
 	"golang.org/x/term"
 
-	"github.com/carabiner-dev/signer/sts"
+	"github.com/policylabs/signer/sts"
 )
 
 // CredentialProvider implements bundle.CredentialProvider and binds a sigstore

@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/carabiner-dev/signer"
-	"github.com/carabiner-dev/signer/key"
-	"github.com/carabiner-dev/signer/options"
+	"github.com/policylabs/signer"
+	"github.com/policylabs/signer/key"
+	"github.com/policylabs/signer/options"
 )
 
 func main() {

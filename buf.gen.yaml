@@ -12,4 +12,4 @@ plugins:
     out: .
     opt: 
       - paths=import
-      - module=github.com/carabiner-dev/signer
+      - module=github.com/policylabs/signer

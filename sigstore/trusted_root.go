@@ -11,7 +11,7 @@ import (
 	"github.com/sigstore/sigstore-go/pkg/root"
 	"github.com/sirupsen/logrus"
 
-	"github.com/carabiner-dev/signer/internal/tuf"
+	"github.com/policylabs/signer/internal/tuf"
 )
 
 // DefaultTrustedRootMaxAge is the staleness window for an embedded trusted

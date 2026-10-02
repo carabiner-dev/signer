@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/carabiner-dev/signer"
-	"github.com/carabiner-dev/signer/options"
+	"github.com/policylabs/signer"
+	"github.com/policylabs/signer/options"
 )
 
 // Sample data to sign and verify

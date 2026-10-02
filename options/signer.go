@@ -9,8 +9,8 @@ import (
 
 	"github.com/sigstore/sigstore/pkg/oauthflow"
 
-	"github.com/carabiner-dev/signer/key"
-	"github.com/carabiner-dev/signer/sigstore"
+	"github.com/policylabs/signer/key"
+	"github.com/policylabs/signer/sigstore"
 )
 
 // Backend selects which signing backend the Signer uses. Three

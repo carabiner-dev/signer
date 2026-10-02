@@ -265,8 +265,8 @@ const file_carabiner_signer_v1_matcher_proto_rawDesc = "" +
 	"\x04glob\x18\x04 \x01(\tH\x00R\x04glob\x12)\n" +
 	"\x10case_insensitive\x18\x05 \x01(\bR\x0fcaseInsensitive\x12!\n" +
 	"\ffrom_context\x18\x06 \x01(\tR\vfromContextB\x06\n" +
-	"\x04kindB\xbd\x01\n" +
-	"\x17com.carabiner.signer.v1B\fMatcherProtoP\x01Z&github.com/carabiner-dev/signer/api/v1\xa2\x02\x03CSX\xaa\x02\x13Carabiner.Signer.V1\xca\x02\x13Carabiner\\Signer\\V1\xe2\x02\x1fCarabiner\\Signer\\V1\\GPBMetadata\xea\x02\x15Carabiner::Signer::V1b\x06proto3"
+	"\x04kindB\xba\x01\n" +
+	"\x17com.carabiner.signer.v1B\fMatcherProtoP\x01Z#github.com/policylabs/signer/api/v1\xa2\x02\x03CSX\xaa\x02\x13Carabiner.Signer.V1\xca\x02\x13Carabiner\\Signer\\V1\xe2\x02\x1fCarabiner\\Signer\\V1\\GPBMetadata\xea\x02\x15Carabiner::Signer::V1b\x06proto3"
 
 var (
 	file_carabiner_signer_v1_matcher_proto_rawDescOnce sync.Once

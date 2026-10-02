@@ -12,7 +12,7 @@ import (
 	"github.com/carabiner-dev/command"
 	"github.com/spf13/cobra"
 
-	"github.com/carabiner-dev/signer/sigstore"
+	"github.com/policylabs/signer/sigstore"
 )
 
 // SigstoreCommon holds the flag-bound sigstore roots configuration shared

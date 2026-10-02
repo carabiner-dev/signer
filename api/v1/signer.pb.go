@@ -255,8 +255,8 @@ const file_carabiner_signer_v1_signer_proto_rawDesc = "" +
 	"\fUNVERIFIABLE\x10\x02\x12\n" +
 	"\n" +
 	"\x06FAILED\x10\x03\x12\f\n" +
-	"\bVERIFIED\x10\x04B\xbc\x01\n" +
-	"\x17com.carabiner.signer.v1B\vSignerProtoP\x01Z&github.com/carabiner-dev/signer/api/v1\xa2\x02\x03CSX\xaa\x02\x13Carabiner.Signer.V1\xca\x02\x13Carabiner\\Signer\\V1\xe2\x02\x1fCarabiner\\Signer\\V1\\GPBMetadata\xea\x02\x15Carabiner::Signer::V1b\x06proto3"
+	"\bVERIFIED\x10\x04B\xb9\x01\n" +
+	"\x17com.carabiner.signer.v1B\vSignerProtoP\x01Z#github.com/policylabs/signer/api/v1\xa2\x02\x03CSX\xaa\x02\x13Carabiner.Signer.V1\xca\x02\x13Carabiner\\Signer\\V1\xe2\x02\x1fCarabiner\\Signer\\V1\\GPBMetadata\xea\x02\x15Carabiner::Signer::V1b\x06proto3"
 
 var (
 	file_carabiner_signer_v1_signer_proto_rawDescOnce sync.Once

@@ -4,8 +4,8 @@
 package options
 
 import (
-	"github.com/carabiner-dev/signer/key"
-	"github.com/carabiner-dev/signer/sigstore"
+	"github.com/policylabs/signer/key"
+	"github.com/policylabs/signer/sigstore"
 )
 
 type VerifierOptFunc func(*Verifier)

@@ -188,8 +188,8 @@ import (
 
     "github.com/spf13/cobra"
 
-    "github.com/carabiner-dev/signer"
-    "github.com/carabiner-dev/signer/options"
+    "github.com/policylabs/signer"
+    "github.com/policylabs/signer/options"
 )
 
 func main() {

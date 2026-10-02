@@ -31,9 +31,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/carabiner-dev/signer"
-	api "github.com/carabiner-dev/signer/api/v1"
-	"github.com/carabiner-dev/signer/options"
+	"github.com/policylabs/signer"
+	api "github.com/policylabs/signer/api/v1"
+	"github.com/policylabs/signer/options"
 )
 
 // Sample in-toto statement to sign.

@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/carabiner-dev/signer/options"
+	"github.com/policylabs/signer/options"
 )
 
 func TestVerify(t *testing.T) {

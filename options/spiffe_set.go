@@ -13,7 +13,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 
-	"github.com/carabiner-dev/signer/spiffe"
+	"github.com/policylabs/signer/spiffe"
 )
 
 // Standard SPIFFE-related env vars used as fallbacks when the

@@ -124,7 +124,7 @@ func cacheHasMetadata(cachePath, repoURL string) bool {
 func Defaultfetcher() fetcher.Fetcher {
 	f := fetcher.NewDefaultFetcher()
 	agentString := fmt.Sprintf(
-		"Carabiner Signer/%s (%s; %s; Carabiner Systems; https://github.com/carabiner-dev/signer)",
+		"Carabiner Signer/%s (%s; %s; Carabiner Systems; https://github.com/policylabs/signer)",
 		version.GetVersionInfo().GitVersion, runtime.GOOS, runtime.GOARCH,
 	)
 	f.SetHTTPUserAgent(agentString)
